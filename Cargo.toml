@@ -1,0 +1,9 @@
+[package]
+name = "arpad-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+midir = "0.10.1"
+midi-msg = "0.8.0"
+enum-map = "2.7.3"
