@@ -129,14 +129,14 @@ impl Mode {
 }
 
 struct ModeManager {
-    current_mode: u8,
-    modes: HashMap<u8, Mode>,
+    current_mode: Arc<Mutex<i32>>,
+    modes: HashMap<i32, Mode>,
 }
 
 impl ModeManager {
-    fn new() -> ModeManager {
+    fn new(mode: Arc<Mutex<i32>>) -> ModeManager {
         let mut mm = ModeManager {
-            current_mode: 0,
+            current_mode: mode,
             modes: HashMap::new(),
         };
         mm.modes.insert(0, Mode::new());
@@ -145,7 +145,7 @@ impl ModeManager {
 
     fn bind_cc(
         &mut self,
-        mode: u8,
+        mode: i32,
         channel: midi_msg::Channel,
         control: midi_msg::ControlNumber,
         callback: fn(u8) -> Result<(), String>,
@@ -161,23 +161,36 @@ impl ModeManager {
         }
     }
     fn call_cc(&self, channel: midi_msg::Channel, control: u8, value: u8) -> Result<(), String> {
+        let curr_mode = {
+            let guard = self.current_mode.lock().unwrap();
+            *guard
+        };
         self.modes
-            .get(&self.current_mode)
+            .get(&curr_mode)
             .unwrap()
             .call_cc(channel, control, value)
     }
-    fn bind_note<F>(&mut self, mode: u8, channel: midi_msg::Channel, callback: F)
+    fn bind_note<F>(&mut self, mode: i32, channel: midi_msg::Channel, callback: F)
     where
         F: Fn(u8, u8) -> Result<(), String> + Send + 'static,
     {
+        println!("Binding mode {mode}");
+        println!("modes: {:?}", self.modes.keys());
         self.modes
-            .get_mut(&mode)
-            .get_or_insert(&mut Mode::new())
+            .entry(mode)
+            .or_insert(Mode::new())
             .bind_note(channel, callback);
+        println!("modes: {:?}", self.modes.keys());
     }
     fn call_note(&self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), String> {
+        let curr_mode = {
+            let guard = self.current_mode.lock().unwrap();
+            *guard
+        };
+        println!("curr_mode: {}", curr_mode);
+        println!("modes: {:?}", self.modes.keys());
         self.modes
-            .get(&self.current_mode)
+            .get(&curr_mode)
             .unwrap()
             .call_note(channel, note, velocity)
     }
@@ -243,10 +256,25 @@ fn listen() -> Result<(), Box<dyn Error>> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(in_port)?;
 
-    let mut mode_manager = ModeManager::new();
-    mode_manager.bind_note(0, midi_msg::Channel::Ch1, move |note, velocity| {
-        let _ = stdout().write_all(format!("Note {} ({})\n", note, velocity).as_bytes());
-        Ok(())
+    let mode = Arc::new(Mutex::new(0));
+    let mut mode_manager = ModeManager::new(Arc::clone(&mode));
+    mode_manager.bind_note(0, midi_msg::Channel::Ch1, {
+        let mode = Arc::clone(&mode);
+        move |note, velocity| {
+            *mode.lock().unwrap() = 1;
+            let _ =
+                stdout().write_all(format!("MODE 0: Note {} ({})\n", note, velocity).as_bytes());
+            Ok(())
+        }
+    });
+    mode_manager.bind_note(1, midi_msg::Channel::Ch1, {
+        let mode = Arc::clone(&mode);
+        move |note, velocity| {
+            *mode.lock().unwrap() = 0;
+            let _ =
+                stdout().write_all(format!("MODE 1: Note {} ({})\n", note, velocity).as_bytes());
+            Ok(())
+        }
     });
 
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
