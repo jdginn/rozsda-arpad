@@ -2,6 +2,7 @@ use std::any::type_name;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::{Write, stdin, stdout};
+use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::thread::spawn;
 use std::time::Duration;
@@ -84,11 +85,10 @@ impl Mode {
         }
     }
 
-    fn bind_note(
-        &mut self,
-        channel: midi_msg::Channel,
-        callback: fn(note: u8, velocity: u8) -> Result<(), String>,
-    ) {
+    fn bind_note<F>(&mut self, channel: midi_msg::Channel, callback: F)
+    where
+        F: Fn(u8, u8) -> Result<(), String> + Send + 'static,
+    {
         self.note_callbacks
             .insert(channel as u8, Box::new(callback));
     }
@@ -166,12 +166,10 @@ impl ModeManager {
             .unwrap()
             .call_cc(channel, control, value)
     }
-    fn bind_note(
-        &mut self,
-        mode: u8,
-        channel: midi_msg::Channel,
-        callback: fn(note: u8, velocity: u8) -> Result<(), String>,
-    ) {
+    fn bind_note<F>(&mut self, mode: u8, channel: midi_msg::Channel, callback: F)
+    where
+        F: Fn(u8, u8) -> Result<(), String> + Send + 'static,
+    {
         self.modes
             .get_mut(&mode)
             .get_or_insert(&mut Mode::new())
@@ -246,7 +244,7 @@ fn listen() -> Result<(), Box<dyn Error>> {
     let in_port_name = midi_in.port_name(in_port)?;
 
     let mut mode_manager = ModeManager::new();
-    mode_manager.bind_note(0, midi_msg::Channel::Ch1, |note, velocity| {
+    mode_manager.bind_note(0, midi_msg::Channel::Ch1, move |note, velocity| {
         let _ = stdout().write_all(format!("Note {} ({})\n", note, velocity).as_bytes());
         Ok(())
     });
@@ -256,29 +254,7 @@ fn listen() -> Result<(), Box<dyn Error>> {
         in_port,
         "midir-read-input",
         move |_, message, _| {
-            mode_manager.run(message);
-
-            // println!("{}: {:?} (len = {})", stamp, message, message.len());
-            // let (msg, len) = MidiMsg::from_midi(message).expect("Not an error");
-            // match msg {
-            //     MidiMsg::ChannelVoice { channel, msg } => match msg {
-            //         ChannelVoiceMsg::NoteOn { note, velocity } => {
-            //             panic!("Note on not implemented");
-            //         }
-            //         ChannelVoiceMsg::NoteOff { note, velocity } => {
-            //             panic!("Note off not implemented");
-            //         }
-            //         ChannelVoiceMsg::ControlChange { control } => {
-            //             panic!("Control change not implemented");
-            //         }
-            //         _ => {
-            //             panic!("Not implemented msg type {}", type_of(&msg))
-            //         }
-            //     },
-            //     _ => {
-            //         panic!("Not implemented msg type {}", type_of(&msg))
-            //     }
-            // }
+            mode_manager.run(message).unwrap();
         },
         (),
     )?;
