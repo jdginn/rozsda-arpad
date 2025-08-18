@@ -5,6 +5,8 @@ use rosc::{OscMessage, OscPacket, OscType, encoder};
 
 use crate::traits::{Bind, Query, Set};
 
+mod generated_osc;
+
 pub struct OscDevice {
     addr: SocketAddrV4,
     socket: UdpSocket,

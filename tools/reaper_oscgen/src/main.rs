@@ -1,4 +1,5 @@
 use clap::Parser;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -241,7 +242,7 @@ fn write_node(
                 sanitize_path_level(arg_name),
                 child_struct_name
             ));
-            code.push_str("socket: self.socket.clone(),\n");
+            code.push_str("            socket: self.socket.clone(),\n");
             for (parent_arg, _typ) in &args {
                 code.push_str(&format!(
                     "            {}: self.{}.clone(),\n",
@@ -258,7 +259,7 @@ fn write_node(
                 "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
                 method_name, child_struct_name
             ));
-            code.push_str("socket: self.socket.clone(),\n");
+            code.push_str("            socket: self.socket.clone(),\n");
             for (parent_arg, _typ) in &args {
                 code.push_str(&format!(
                     "            {}: self.{}.clone(),\n",
@@ -295,22 +296,108 @@ fn write_node(
             struct_name
         ));
 
-        // Example trait stubs
+        // Implement Bind trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
-            "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, _callback: F)\n    where F: FnMut({0}Args) + 'static {{\n        // store callback for endpoint\n    }}\n}}\n\n",
+            "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, _callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
             struct_name, struct_name
         ));
+        code.push_str("         // store callback for endpoint\n");
+        code.push_str("     }\n}\n\n");
+
+        // Implement Set trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
-            "impl Set<{0}Args> for {1} {{\n    type Error = OscError;\n    fn set(&mut self, _args: {0}Args) -> Result<(), Self::Error> {{\n        // send OSC message for endpoint\n        Ok(())\n    }}\n}}\n\n",
+            "impl Set<{0}Args> for {1} {{\n    type Error = OscError;\n    fn set(&mut self, args: {0}Args) -> Result<(), Self::Error> {{\n",
             struct_name, struct_name
         ));
+        // Construct the OSC address by replacing placeholders with struct fields
+        let re = Regex::new(r"\{[^\}]+\}").unwrap();
+        let osc_address_template = re.replace_all(&leaf.osc_address, "{}");
+        // Only path arguments (from the struct), not endpoint args (from Args struct)
+        let path_args = path
+            .iter()
+            .filter_map(|(_seg, arg_opt)| arg_opt.as_ref())
+            .map(|arg| sanitize_path_level(arg))
+            .collect::<Vec<_>>();
+        code.push_str(&format!(
+            "        let osc_address = format!(\"{}\"{});\n",
+            osc_address_template,
+            path_args
+                .iter()
+                .map(|arg| format!(", self.{}", arg))
+                .collect::<String>()
+        ));
+        // Build the OSC message args
+        code.push_str("        let osc_msg = rosc::OscMessage {\n");
+        code.push_str("            addr: osc_address,\n");
+        code.push_str("            args: vec![\n");
+        leaf.args.iter().for_each(|arg| {
+            let arg_name = sanitize_path_level(&arg.name);
+            match arg.typ.as_str() {
+                "int" => code.push_str(&format!(
+                    "                rosc::OscType::Int(args.{}) ,\n",
+                    arg_name
+                )),
+                "float" => code.push_str(&format!(
+                    "                rosc::OscType::Float(args.{}) ,\n",
+                    arg_name
+                )),
+                "string" => code.push_str(&format!(
+                    "                rosc::OscType::String(args.{}.clone()) ,\n",
+                    arg_name
+                )),
+                "bool" => code.push_str(&format!(
+                    "                rosc::OscType::Bool(args.{}) ,\n",
+                    arg_name
+                )),
+                _ => code.push_str(&format!(
+                    "                /* Unknown type for {} */\n",
+                    arg_name
+                )),
+            }
+        });
+        code.push_str("            ],\n");
+        code.push_str("        };\n");
+        code.push_str("        let packet = rosc::OscPacket::Message(osc_msg);\n");
+        code.push_str("        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;\n");
+        code.push_str("        self.socket.send(&buf).map_err(|_| OscError)?;\n");
+        code.push_str("        Ok(())\n");
+        code.push_str("    }\n}\n\n");
+
+        // Implement Query trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
-            "impl Query for {0} {{\n    type Error = OscError;\n    fn query(&self) -> Result<(), Self::Error> {{\n        // query endpoint state\n        Ok(())\n    }}\n}}\n\n",
+            "impl Query for {0} {{\n    type Error = OscError;\n    fn query(&self) -> Result<(), Self::Error> {{\n",
             struct_name
         ));
+        // Construct the OSC address by replacing placeholders with struct fields
+        let re = Regex::new(r"\{[^\}]+\}").unwrap();
+        let osc_address_template = re.replace_all(&leaf.osc_address, "{}");
+        // Only path arguments (from the struct), not endpoint args (from Args struct)
+        let path_args = path
+            .iter()
+            .filter_map(|(_seg, arg_opt)| arg_opt.as_ref())
+            .map(|arg| sanitize_path_level(arg))
+            .collect::<Vec<_>>();
+        code.push_str(&format!(
+            "        let osc_address = format!(\"{}\"{});\n",
+            osc_address_template,
+            path_args
+                .iter()
+                .map(|arg| format!(", self.{}", arg))
+                .collect::<String>()
+        ));
+        // Build the OSC message args
+        code.push_str("        let osc_msg = rosc::OscMessage {\n");
+        code.push_str("            addr: osc_address,\n");
+        code.push_str("            args: vec![],\n");
+        code.push_str("        };\n");
+        code.push_str("        let packet = rosc::OscPacket::Message(osc_msg);\n");
+        code.push_str("        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;\n");
+        code.push_str("        self.socket.send(&buf).map_err(|_| OscError)?;\n");
+        code.push_str("        Ok(())\n");
+        code.push_str("    }\n}\n\n");
     }
 
     // Recurse into children
