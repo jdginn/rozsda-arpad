@@ -53,6 +53,8 @@ fn rust_type(yaml_type: &str) -> &str {
     match yaml_type {
         "int" => "i32",
         "string" => "String",
+        "float" => "f32",
+        "bool" => "bool",
         _ => "String", // fallback
     }
 }
@@ -109,6 +111,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         leaf: None,
     };
 
+    let re = Regex::new(r"\{([^\}]+)\}").unwrap();
     for route in routes {
         let parsed = parse_address(&route.osc_address);
         let mut node = &mut root;
@@ -127,8 +130,23 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
                 leaf: None,
             });
         }
+
+        // Get path arg names from address: e.g. "/track/{track_guid}/pan"
+        let path_arg_names: std::collections::HashSet<_> = re
+            .captures_iter(&route.osc_address)
+            .map(|cap| cap[1].to_string())
+            .collect();
+
+        // Filter arguments: only those NOT in path_arg_names
+        let endpoint_args: Vec<OscArgument> = route
+            .arguments
+            .iter()
+            .filter(|arg| !path_arg_names.contains(&arg.name))
+            .cloned()
+            .collect();
+
         node.leaf = Some(LeafInfo {
-            args: route.arguments.clone(),
+            args: endpoint_args,
             osc_address: route.osc_address.clone(),
             direction: route.direction.clone(),
         });
@@ -332,6 +350,31 @@ fn write_node(
         code.push_str("        let osc_msg = rosc::OscMessage {\n");
         code.push_str("            addr: osc_address,\n");
         code.push_str("            args: vec![\n");
+        // for arg in &leaf.args {
+        //     let arg_name = sanitize_path_level(&arg.name);
+        //     match arg.typ.as_str() {
+        //         "int" => code.push_str(&format!(
+        //             "                rosc::OscType::Int(args.{}) ,\n",
+        //             arg_name
+        //         )),
+        //         "float" => code.push_str(&format!(
+        //             "                rosc::OscType::Float(args.{}) ,\n",
+        //             arg_name
+        //         )),
+        //         "string" => code.push_str(&format!(
+        //             "                rosc::OscType::String(args.{}.clone()) ,\n",
+        //             arg_name
+        //         )),
+        //         "bool" => code.push_str(&format!(
+        //             "                rosc::OscType::Bool(args.{}) ,\n",
+        //             arg_name
+        //         )),
+        //         _ => code.push_str(&format!(
+        //             "                /* Unknown type for {} */\n",
+        //             arg_name
+        //         )),
+        //     }
+        // }
         leaf.args.iter().for_each(|arg| {
             let arg_name = sanitize_path_level(&arg.name);
             match arg.typ.as_str() {
