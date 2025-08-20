@@ -197,6 +197,14 @@ fn generate_code(root: &TreeNode) -> String {
 
     let mut generated_structs = HashSet::new();
 
+    write_child_getters(
+        &mut code,
+        root,
+        vec![],
+        &mut [("", Some(""))],
+        "Reaper".to_string(),
+    );
+
     // Recurse into children, since we handwrote the root struct above
     for child in root.children.values() {
         write_node(&mut code, child, &[], &mut generated_structs);
@@ -204,42 +212,17 @@ fn generate_code(root: &TreeNode) -> String {
     code
 }
 
-/// Recursively write struct and impls for each node
-fn write_node(
+fn write_child_getters(
     code: &mut String,
     node: &TreeNode,
-    path: &[(&str, Option<&str>)],
-    generated_structs: &mut HashSet<String>,
+    args: Vec<(String, String)>,
+    current_path: &mut [(&str, Option<&str>)], // TODO: this is clunky
+    struct_name: String,
 ) {
-    // Build struct name from path
-    let mut current_path = path.to_vec();
-    current_path.push((&node.name, node.arg_name.as_ref().map(|s| s.as_str())));
-    let struct_name = full_path_struct_name(&current_path);
-
-    // Collect all args in the hierarchy up to this node
-    let mut args = Vec::new();
-    for (_seg, arg_opt) in &current_path {
-        if let Some(arg) = arg_opt {
-            // Always string for guids
-            args.push((sanitize_path_level(arg), "String".to_string())); // TODO: This seems wrong
-        }
-    }
-
-    // Avoid duplicate struct generation
-    if !generated_structs.contains(&struct_name) {
-        code.push_str(&format!("pub struct {} {{\n", struct_name));
-        code.push_str("    socket: Arc<UdpSocket>,\n");
-        for (arg, typ) in &args {
-            code.push_str(&format!("    pub {}: {},\n", arg, typ));
-        }
-        code.push_str("}\n\n");
-        generated_structs.insert(struct_name.clone());
-    }
-
     // Fluent methods for children
     code.push_str(&format!("impl {} {{\n", struct_name));
     for child in node.children.values() {
-        let mut child_path = current_path.clone();
+        let mut child_path = current_path.to_owned();
         child_path.push((&child.name, child.arg_name.as_ref().map(|s| s.as_str())));
         let child_struct_name = full_path_struct_name(&child_path);
 
@@ -288,6 +271,46 @@ fn write_node(
         }
     }
     code.push_str("}\n\n");
+}
+
+/// Recursively write struct and impls for each node
+fn write_node(
+    code: &mut String,
+    node: &TreeNode,
+    path: &[(&str, Option<&str>)],
+    generated_structs: &mut HashSet<String>,
+) {
+    // Build struct name from path
+    let mut current_path = path.to_vec();
+    current_path.push((&node.name, node.arg_name.as_ref().map(|s| s.as_str())));
+    let struct_name = full_path_struct_name(&current_path);
+
+    // Collect all args in the hierarchy up to this node
+    let mut args = Vec::new();
+    for (_seg, arg_opt) in &current_path {
+        if let Some(arg) = arg_opt {
+            // Always string for guids
+            args.push((sanitize_path_level(arg), "String".to_string())); // TODO: This seems wrong
+        }
+    }
+
+    // Avoid duplicate struct generation
+    if !generated_structs.contains(&struct_name) {
+        code.push_str(&format!("pub struct {} {{\n", struct_name));
+        code.push_str("    socket: Arc<UdpSocket>,\n");
+        if let Some(leaf) = &node.leaf {
+            // Only endpoints need handlers
+            // TODO: only need this if we are not read-only
+            code.push_str(&format!("    handler: Option<{0}Handler>,\n", struct_name));
+        }
+        for (arg, typ) in &args {
+            code.push_str(&format!("    pub {}: {},\n", arg, typ));
+        }
+        code.push_str("}\n\n");
+        generated_structs.insert(struct_name.clone());
+    }
+
+    write_child_getters(code, node, args, &mut current_path, struct_name.clone());
 
     // If this node is a leaf, implement endpoint traits
     if let Some(leaf) = &node.leaf {
@@ -350,31 +373,6 @@ fn write_node(
         code.push_str("        let osc_msg = rosc::OscMessage {\n");
         code.push_str("            addr: osc_address,\n");
         code.push_str("            args: vec![\n");
-        // for arg in &leaf.args {
-        //     let arg_name = sanitize_path_level(&arg.name);
-        //     match arg.typ.as_str() {
-        //         "int" => code.push_str(&format!(
-        //             "                rosc::OscType::Int(args.{}) ,\n",
-        //             arg_name
-        //         )),
-        //         "float" => code.push_str(&format!(
-        //             "                rosc::OscType::Float(args.{}) ,\n",
-        //             arg_name
-        //         )),
-        //         "string" => code.push_str(&format!(
-        //             "                rosc::OscType::String(args.{}.clone()) ,\n",
-        //             arg_name
-        //         )),
-        //         "bool" => code.push_str(&format!(
-        //             "                rosc::OscType::Bool(args.{}) ,\n",
-        //             arg_name
-        //         )),
-        //         _ => code.push_str(&format!(
-        //             "                /* Unknown type for {} */\n",
-        //             arg_name
-        //         )),
-        //     }
-        // }
         leaf.args.iter().for_each(|arg| {
             let arg_name = sanitize_path_level(&arg.name);
             match arg.typ.as_str() {
