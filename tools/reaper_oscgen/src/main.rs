@@ -43,7 +43,8 @@ struct LeafInfo {
 #[derive(Debug)]
 struct TreeNode {
     name: String,                        // e.g., "track", "index"
-    arg_name: Option<String>,            // e.g., "track_guid"
+    struct_name: String, // unique name for this node that reflects the full path to get to it e.g. "TrackIndex"
+    arg_name: Option<String>, // e.g., "track_guid"
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
 }
@@ -106,6 +107,7 @@ fn parse_address(address: &str) -> Vec<(String, Option<String>)> {
 fn build_tree(routes: &[OscRoute]) -> TreeNode {
     let mut root = TreeNode {
         name: "Reaper".to_string(),
+        struct_name: "Reaper".to_string(),
         arg_name: None,
         children: HashMap::new(),
         leaf: None,
@@ -113,9 +115,11 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
 
     let re = Regex::new(r"\{([^\}]+)\}").unwrap();
     for route in routes {
+        let mut path = Vec::new(); // Reset path for each route
         let parsed = parse_address(&route.osc_address);
         let mut node = &mut root;
         for (name, arg_name) in &parsed {
+            path.push((name.as_ref(), arg_name.as_deref()));
             let key = format!(
                 "{}{}",
                 name,
@@ -125,6 +129,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
             );
             node = node.children.entry(key.clone()).or_insert(TreeNode {
                 name: name.clone(),
+                struct_name: full_path_struct_name(path.as_slice()),
                 arg_name: arg_name.clone(),
                 children: HashMap::new(),
                 leaf: None,
@@ -197,13 +202,7 @@ fn generate_code(root: &TreeNode) -> String {
 
     let mut generated_structs = HashSet::new();
 
-    write_child_getters(
-        &mut code,
-        root,
-        vec![],
-        &mut [("", Some(""))],
-        "Reaper".to_string(),
-    );
+    write_child_getters(&mut code, root, vec![], "Reaper".to_string());
 
     // Recurse into children, since we handwrote the root struct above
     for child in root.children.values() {
@@ -216,16 +215,11 @@ fn write_child_getters(
     code: &mut String,
     node: &TreeNode,
     args: Vec<(String, String)>,
-    current_path: &mut [(&str, Option<&str>)], // TODO: this is clunky
     struct_name: String,
 ) {
     // Fluent methods for children
     code.push_str(&format!("impl {} {{\n", struct_name));
     for child in node.children.values() {
-        let mut child_path = current_path.to_owned();
-        child_path.push((&child.name, child.arg_name.as_deref()));
-        let child_struct_name = full_path_struct_name(&child_path);
-
         let method_name = if child.name.is_empty() {
             if let Some(arg_name) = &child.arg_name {
                 sanitize_path_level(arg_name)
@@ -241,7 +235,7 @@ fn write_child_getters(
                 "    pub fn {0}(&self, {1}: String) -> {2} {{\n        {2} {{\n",
                 method_name,
                 sanitize_path_level(arg_name),
-                child_struct_name
+                child.struct_name
             ));
             code.push_str("            socket: self.socket.clone(),\n");
             for (parent_arg, _typ) in &args {
@@ -258,7 +252,7 @@ fn write_child_getters(
         } else {
             code.push_str(&format!(
                 "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
-                method_name, child_struct_name
+                method_name, child.struct_name
             ));
             code.push_str("            socket: self.socket.clone(),\n");
             for (parent_arg, _typ) in &args {
@@ -283,7 +277,6 @@ fn write_node(
     // Build struct name from path
     let mut current_path = path.to_vec();
     current_path.push((&node.name, node.arg_name.as_deref()));
-    let struct_name = full_path_struct_name(&current_path);
 
     // Collect all args in the hierarchy up to this node
     let mut args = Vec::new();
@@ -295,27 +288,30 @@ fn write_node(
     }
 
     // Avoid duplicate struct generation
-    if !generated_structs.contains(&struct_name) {
-        code.push_str(&format!("pub struct {} {{\n", struct_name));
+    if !generated_structs.contains(&node.struct_name) {
+        code.push_str(&format!("pub struct {} {{\n", node.struct_name));
         code.push_str("    socket: Arc<UdpSocket>,\n");
         if node.leaf.is_some() {
             // Only endpoints need handlers
             // TODO: only need this if we are not read-only
-            code.push_str(&format!("    handler: Option<{0}Handler>,\n", struct_name));
+            code.push_str(&format!(
+                "    handler: Option<{0}Handler>,\n",
+                node.struct_name
+            ));
         }
         for (arg, typ) in &args {
             code.push_str(&format!("    pub {}: {},\n", arg, typ));
         }
         code.push_str("}\n\n");
-        generated_structs.insert(struct_name.clone());
+        generated_structs.insert(node.struct_name.clone());
     }
 
-    write_child_getters(code, node, args, &mut current_path, struct_name.clone());
+    write_child_getters(code, node, args, node.struct_name.clone());
 
     // If this node is a leaf, implement endpoint traits
     if let Some(leaf) = &node.leaf {
         // Args struct for endpoint
-        let endpoint_args_struct = format!("{}Args", struct_name);
+        let endpoint_args_struct = format!("{}Args", node.struct_name);
         if !generated_structs.contains(&endpoint_args_struct) {
             code.push_str("#[derive(Debug)]\n");
             code.push_str(&format!("pub struct {} {{\n", endpoint_args_struct));
@@ -334,14 +330,14 @@ fn write_node(
         // -------- Handler type
         code.push_str(&format!(
             "pub type {0}Handler = Box<dyn FnMut({0}Args) + 'static>;\n\n",
-            struct_name
+            node.struct_name
         ));
 
         // -------- Implement Bind trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, _callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
-            struct_name, struct_name
+            node.struct_name, node.struct_name
         ));
         code.push_str("         // store callback for endpoint\n");
         code.push_str("     }\n}\n\n");
@@ -350,7 +346,7 @@ fn write_node(
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Set<{0}Args> for {1} {{\n    type Error = OscError;\n    fn set(&mut self, args: {0}Args) -> Result<(), Self::Error> {{\n",
-            struct_name, struct_name
+            node.struct_name, node.struct_name
         ));
         // Construct the OSC address by replacing placeholders with struct fields
         let re = Regex::new(r"\{[^\}]+\}").unwrap();
@@ -410,7 +406,7 @@ fn write_node(
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Query for {0} {{\n    type Error = OscError;\n    fn query(&self) -> Result<(), Self::Error> {{\n",
-            struct_name
+            node.struct_name
         ));
         // Construct the OSC address by replacing placeholders with struct fields
         let re = Regex::new(r"\{[^\}]+\}").unwrap();
