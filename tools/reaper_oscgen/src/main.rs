@@ -67,6 +67,7 @@ fn sanitize_path_level(s: &str) -> String {
     let s = s.replace(".", "_");
     let s = s.replace("/", "_");
     let s = s.replace("?", "_");
+    let s = s.replace("$", "_");
     s
 }
 
@@ -185,7 +186,8 @@ fn generate_code(root: &TreeNode) -> String {
     let mut code = String::new();
     code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
     code.push_str("use std::net::UdpSocket;\n");
-    code.push_str("use std::sync::Arc;\n");
+    code.push_str("use std::collections::HashMap;\n");
+    code.push_str("use std::sync::Arc;\n\n");
 
     code.push_str("#[derive(Debug)]\npub struct OscError;\n\n");
     code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
@@ -198,11 +200,11 @@ fn generate_code(root: &TreeNode) -> String {
     code.push_str("    pub fn new(socket: UdpSocket) -> Result<Self, OscError> {\n");
     code.push_str("        Ok(Reaper { socket: Arc::new(socket) })\n");
     code.push_str("    }\n");
-    code.push_str("}\n\n");
+    // code.push_str("}\n\n");
 
     let mut generated_structs = HashSet::new();
 
-    write_child_getters(&mut code, root, vec![], "Reaper".to_string());
+    write_child_fluent_api(&mut code, root, vec![]);
 
     // Recurse into children, since we handwrote the root struct above
     for child in root.children.values() {
@@ -211,14 +213,9 @@ fn generate_code(root: &TreeNode) -> String {
     code
 }
 
-fn write_child_getters(
-    code: &mut String,
-    node: &TreeNode,
-    args: Vec<(String, String)>,
-    struct_name: String,
-) {
+fn write_child_getters(code: &mut String, node: &TreeNode, args: Vec<(String, String)>) {
     // Fluent methods for children
-    code.push_str(&format!("impl {} {{\n", struct_name));
+    code.push_str(&format!("impl {} {{\n", node.struct_name));
     for child in node.children.values() {
         let method_name = if child.name.is_empty() {
             if let Some(arg_name) = &child.arg_name {
@@ -267,6 +264,67 @@ fn write_child_getters(
     code.push_str("}\n\n");
 }
 
+fn write_child_fluent_api(code: &mut String, node: &TreeNode, args: Vec<(String, String)>) {
+    // --- 3. Fluent API methods ---
+    for child in node.children.values() {
+        let method_name = if child.name.is_empty() {
+            if let Some(arg_name) = &child.arg_name {
+                sanitize_path_level(arg_name)
+            } else {
+                "unnamed_child".to_string()
+            }
+        } else {
+            sanitize_path_level(&child.name)
+        };
+
+        let child_struct_name = full_path_struct_name(&[(&child.name, child.arg_name.as_deref())]);
+
+        println!("Child: {:#?}", child);
+        if let Some(arg_name) = &child.arg_name {
+            // If child is keyed by arg_name, return mutable reference from map
+            code.push_str(&format!(
+                "    pub fn {0}_mut(&mut self, {1}: String) -> &mut {2} {{\n",
+                method_name,
+                sanitize_path_level(arg_name),
+                child_struct_name
+            ));
+            code.push_str(&format!(
+                    "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
+                    sanitize_path_level(arg_name), sanitize_path_level(arg_name), child_struct_name
+                ));
+            for (parent_arg, _) in &args {
+                code.push_str(&format!("self.{}.clone(), ", parent_arg));
+            }
+            code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
+            code.push_str(&format!("    }}\n"));
+        } else {
+            // If child is not keyed, just hold one instance and return mutable reference
+            // code.push_str(&format!(
+            //     "    pub fn {0}_mut(&mut self) -> &mut {1} {{\n",
+            //     method_name, child_struct_name
+            // ));
+            // code.push_str(&format!(
+            //     "        // You may want a single-instance field for this child\n"
+            // ));
+            // code.push_str(&format!("        unimplemented!()\n"));
+            // code.push_str(&format!("    }}\n"));
+            code.push_str(&format!(
+                "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
+                method_name, child.struct_name
+            ));
+            code.push_str("            socket: self.socket.clone(),\n");
+            for (parent_arg, _typ) in &args {
+                code.push_str(&format!(
+                    "            {}: self.{}.clone(),\n",
+                    parent_arg, parent_arg
+                ));
+            }
+            code.push_str("        }\n    }\n");
+        }
+    }
+    code.push_str("}\n\n");
+}
+
 /// Recursively write struct and impls for each node
 fn write_node(
     code: &mut String,
@@ -287,26 +345,94 @@ fn write_node(
         }
     }
 
-    // Avoid duplicate struct generation
+    // // Avoid duplicate struct generation
+    // if !generated_structs.contains(&node.struct_name) {
+    //     code.push_str(&format!("pub struct {} {{\n", node.struct_name));
+    //     code.push_str("    socket: Arc<UdpSocket>,\n");
+    //     for (_, child) in node.children.iter() {
+    //         code.push_str(&format!(
+    //             "    {}: HashMap<String, {}>,\n",
+    //             sanitize_path_level(child.name.as_str()),
+    //             child.struct_name,
+    //         ));
+    //     }
+    //     if node.leaf.is_some() {
+    //         // Only endpoints need handlers
+    //         // TODO: only need this if we are not read-only
+    //         code.push_str(&format!(
+    //             "    handler: Option<{0}Handler>,\n",
+    //             node.struct_name
+    //         ));
+    //     }
+    //     for (arg, typ) in &args {
+    //         code.push_str(&format!("    pub {}: {},\n", arg, typ));
+    //     }
+    //     code.push_str("}\n\n");
+    //     generated_structs.insert(node.struct_name.clone());
+    // }
+
+    // --- 1. Struct definition ---
     if !generated_structs.contains(&node.struct_name) {
         code.push_str(&format!("pub struct {} {{\n", node.struct_name));
         code.push_str("    socket: Arc<UdpSocket>,\n");
+
+        // Add handler field for leaf endpoints
         if node.leaf.is_some() {
-            // Only endpoints need handlers
-            // TODO: only need this if we are not read-only
             code.push_str(&format!(
                 "    handler: Option<{0}Handler>,\n",
                 node.struct_name
             ));
         }
+
+        // Add fields for path args
         for (arg, typ) in &args {
             code.push_str(&format!("    pub {}: {},\n", arg, typ));
         }
+
+        // Add HashMap storage for each child keyed by arg_name
+        for child in node.children.values() {
+            if let Some(arg_name) = &child.arg_name {
+                let child_struct_name = full_path_struct_name(&[(&child.name, Some(arg_name))]);
+                code.push_str(&format!(
+                    "    pub {0}_map: HashMap<String, {1}>,\n",
+                    sanitize_path_level(arg_name),
+                    child_struct_name
+                ));
+            }
+        }
         code.push_str("}\n\n");
         generated_structs.insert(node.struct_name.clone());
-    }
 
-    write_child_getters(code, node, args, node.struct_name.clone());
+        // --- 2. Constructor ---
+        code.push_str(&format!("impl {} {{\n", node.struct_name));
+        code.push_str("    pub fn new(socket: Arc<UdpSocket>");
+        for (arg, typ) in &args {
+            code.push_str(&format!(", {}: {}", arg, typ));
+        }
+        code.push_str(&format!(") -> {} {{\n", node.struct_name));
+        code.push_str(&format!("        {} {{\n", node.struct_name));
+        code.push_str("            socket,\n");
+        if node.leaf.is_some() {
+            code.push_str("            handler: None,\n");
+        }
+        for (arg, _) in &args {
+            code.push_str(&format!("            {}: {}.clone(),\n", arg, arg));
+        }
+        for child in node.children.values() {
+            if let Some(arg_name) = &child.arg_name {
+                code.push_str(&format!(
+                    "            {0}_map: HashMap::new(),\n",
+                    sanitize_path_level(arg_name)
+                ));
+            }
+        }
+        code.push_str("        }\n    }\n");
+        // code.push_str("        }\n");
+
+        write_child_fluent_api(code, node, args);
+
+        code.push_str("   }\n");
+    }
 
     // If this node is a leaf, implement endpoint traits
     if let Some(leaf) = &node.leaf {
