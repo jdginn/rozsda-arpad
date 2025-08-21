@@ -223,7 +223,7 @@ fn write_child_getters(
     code.push_str(&format!("impl {} {{\n", struct_name));
     for child in node.children.values() {
         let mut child_path = current_path.to_owned();
-        child_path.push((&child.name, child.arg_name.as_ref().map(|s| s.as_str())));
+        child_path.push((&child.name, child.arg_name.as_deref()));
         let child_struct_name = full_path_struct_name(&child_path);
 
         let method_name = if child.name.is_empty() {
@@ -282,7 +282,7 @@ fn write_node(
 ) {
     // Build struct name from path
     let mut current_path = path.to_vec();
-    current_path.push((&node.name, node.arg_name.as_ref().map(|s| s.as_str())));
+    current_path.push((&node.name, node.arg_name.as_deref()));
     let struct_name = full_path_struct_name(&current_path);
 
     // Collect all args in the hierarchy up to this node
@@ -290,7 +290,7 @@ fn write_node(
     for (_seg, arg_opt) in &current_path {
         if let Some(arg) = arg_opt {
             // Always string for guids
-            args.push((sanitize_path_level(arg), "String".to_string())); // TODO: This seems wrong
+            args.push((sanitize_path_level(arg), "String".to_string())); // TODO: This may be too naive
         }
     }
 
@@ -298,7 +298,7 @@ fn write_node(
     if !generated_structs.contains(&struct_name) {
         code.push_str(&format!("pub struct {} {{\n", struct_name));
         code.push_str("    socket: Arc<UdpSocket>,\n");
-        if let Some(leaf) = &node.leaf {
+        if node.leaf.is_some() {
             // Only endpoints need handlers
             // TODO: only need this if we are not read-only
             code.push_str(&format!("    handler: Option<{0}Handler>,\n", struct_name));
@@ -331,13 +331,13 @@ fn write_node(
             generated_structs.insert(endpoint_args_struct.clone());
         }
 
-        // Handler type
+        // -------- Handler type
         code.push_str(&format!(
             "pub type {0}Handler = Box<dyn FnMut({0}Args) + 'static>;\n\n",
             struct_name
         ));
 
-        // Implement Bind trait
+        // -------- Implement Bind trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, _callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
@@ -346,7 +346,7 @@ fn write_node(
         code.push_str("         // store callback for endpoint\n");
         code.push_str("     }\n}\n\n");
 
-        // Implement Set trait
+        // -------- Implement Set trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Set<{0}Args> for {1} {{\n    type Error = OscError;\n    fn set(&mut self, args: {0}Args) -> Result<(), Self::Error> {{\n",
@@ -406,7 +406,7 @@ fn write_node(
         code.push_str("        Ok(())\n");
         code.push_str("    }\n}\n\n");
 
-        // Implement Query trait
+        // -------- Implement Query trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Query for {0} {{\n    type Error = OscError;\n    fn query(&self) -> Result<(), Self::Error> {{\n",
