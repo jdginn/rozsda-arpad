@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 #[derive(Parser)]
 struct Cli {
@@ -288,17 +289,14 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
             code.push_str("    }\n");
         } else {
             code.push_str(&format!(
-                "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
+                "    pub fn {0}(&self) -> {1} {{\n        {1}::new(self.socket.clone(), ",
                 method_name, child.struct_name
             ));
-            code.push_str("            socket: self.socket.clone(),\n");
-            for (parent_arg, _typ) in &node.parent_args {
-                code.push_str(&format!(
-                    "            {}: self.{}.clone(),\n",
-                    parent_arg, parent_arg
-                ));
+            for (parent_arg, _) in &node.parent_args {
+                code.push_str(&format!("            self.{}.clone(),\n", parent_arg));
             }
-            code.push_str("        }\n    }\n");
+            code.push_str("     )\n");
+            code.push_str("        }\n");
         }
     }
     code.push_str("}\n\n");
@@ -308,11 +306,11 @@ fn write_node_bind_trait(code: &mut String, node: &TreeNode) {
     if let Some(leaf) = &node.leaf {
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
-            "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, _callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
+            "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
             node.struct_name, node.struct_name
         ));
-        code.push_str("         // store callback for endpoint\n");
-        code.push_str("     }\n}\n\n");
+        code.push_str("        self.handler = Some(Box::new(callback));\n");
+        code.push_str("    }\n}\n\n");
     }
 }
 
@@ -448,6 +446,27 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
     }
 }
 
+fn format_code(code: &str) -> String {
+    let mut rustfmt = Command::new("rustfmt")
+        .arg("--emit")
+        .arg("stdout")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to start rustfmt");
+
+    let stdin = rustfmt.stdin.as_mut().expect("Failed to open stdin");
+    use std::io::Write;
+    stdin
+        .write_all(code.as_bytes())
+        .expect("Failed to write to rustfmt stdin");
+
+    let output = rustfmt
+        .wait_with_output()
+        .expect("Failed to read rustfmt output");
+    String::from_utf8(output.stdout).expect("rustfmt output not valid UTF-8")
+}
+
 fn main() {
     let cli = Cli::parse();
     let yaml = fs::read_to_string(&cli.spec).expect("Failed to read input YAML");
@@ -456,5 +475,16 @@ fn main() {
     let tree = build_tree(&routes);
     let code = generate_code(&tree);
 
-    fs::write(&cli.out, code).expect("Failed to write output Rust file");
+    let formatted_code = match std::panic::catch_unwind(|| format_code(&code)) {
+        Ok(formatted) => {
+            if formatted.trim().is_empty() {
+                // rustfmt output was empty, fallback to unformatted
+                &code
+            } else {
+                &formatted.clone()
+            }
+        }
+        Err(_) => &code,
+    };
+    fs::write(&cli.out, formatted_code).expect("Failed to write output Rust file");
 }
