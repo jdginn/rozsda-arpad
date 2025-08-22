@@ -42,9 +42,11 @@ struct LeafInfo {
 /// A node in the OSC hierarchy tree
 #[derive(Debug)]
 struct TreeNode {
-    name: String,                        // e.g., "track", "index"
+    name: String,                       // e.g., "track", "index"
     struct_name: String, // unique name for this node that reflects the full path to get to it e.g. "TrackIndex"
-    arg_name: Option<String>, // e.g., "track_guid"
+    parent_args: Vec<(String, String)>, // (arg_name, arg_type) pairs from parent nodes, used to
+    // initialize structs in the fluent API
+    arg_name: Option<String>,            // e.g., "track_guid"
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
 }
@@ -109,6 +111,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
     let mut root = TreeNode {
         name: "Reaper".to_string(),
         struct_name: "Reaper".to_string(),
+        parent_args: Vec::new(),
         arg_name: None,
         children: HashMap::new(),
         leaf: None,
@@ -119,7 +122,11 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         let mut path = Vec::new(); // Reset path for each route
         let parsed = parse_address(&route.osc_address);
         let mut node = &mut root;
+        let mut parent_args = Vec::new();
         for (name, arg_name) in &parsed {
+            if let Some(arg) = arg_name {
+                parent_args.push((sanitize_path_level(arg), "String".to_string()));
+            }
             path.push((name.as_ref(), arg_name.as_deref()));
             let key = format!(
                 "{}{}",
@@ -131,6 +138,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
             node = node.children.entry(key.clone()).or_insert(TreeNode {
                 name: name.clone(),
                 struct_name: full_path_struct_name(path.as_slice()),
+                parent_args: parent_args.clone(),
                 arg_name: arg_name.clone(),
                 children: HashMap::new(),
                 leaf: None,
@@ -142,6 +150,18 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
             .captures_iter(&route.osc_address)
             .map(|cap| cap[1].to_string())
             .collect();
+
+        // {
+        //     // Collect all args in the hierarchy up to this node
+        //     let mut args = Vec::new();
+        //     for (_seg, arg_opt) in &current_path {
+        //         if let Some(arg) = arg_opt {
+        //             // Always string for guids
+        //             args.push((sanitize_path_level(arg), "String".to_string()));
+        //             // TODO: This may be too naive
+        //         }
+        //     }
+        // }
 
         // Filter arguments: only those NOT in path_arg_names
         let endpoint_args: Vec<OscArgument> = route
@@ -200,84 +220,30 @@ fn generate_code(root: &TreeNode) -> String {
     code.push_str("    pub fn new(socket: UdpSocket) -> Result<Self, OscError> {\n");
     code.push_str("        Ok(Reaper { socket: Arc::new(socket) })\n");
     code.push_str("    }\n");
-    // code.push_str("}\n\n");
 
     let mut generated_structs = HashSet::new();
 
-    write_child_fluent_api(&mut code, root, vec![]);
+    write_child_fluent_api(&mut code, root);
 
     // Recurse into children, since we handwrote the root struct above
     for child in root.children.values() {
-        write_node(&mut code, child, &[], &mut generated_structs);
+        write_node(&mut code, child, &mut generated_structs);
     }
     code
 }
 
-fn write_child_getters(code: &mut String, node: &TreeNode, args: Vec<(String, String)>) {
-    // Fluent methods for children
-    code.push_str(&format!("impl {} {{\n", node.struct_name));
-    for child in node.children.values() {
-        let method_name = if child.name.is_empty() {
-            if let Some(arg_name) = &child.arg_name {
-                sanitize_path_level(arg_name)
-            } else {
-                "unnamed_child".to_string()
-            }
-        } else {
-            sanitize_path_level(&child.name)
-        };
-
-        if let Some(arg_name) = &child.arg_name {
-            code.push_str(&format!(
-                "    pub fn {0}(&self, {1}: String) -> {2} {{\n        {2} {{\n",
-                method_name,
-                sanitize_path_level(arg_name),
-                child.struct_name
-            ));
-            code.push_str("            socket: self.socket.clone(),\n");
-            for (parent_arg, _typ) in &args {
-                code.push_str(&format!(
-                    "            {}: self.{}.clone(),\n",
-                    parent_arg, parent_arg
-                ));
-            }
-            code.push_str(&format!(
-                "            {}: {0}.clone(),\n",
-                sanitize_path_level(arg_name)
-            ));
-            code.push_str("        }\n    }\n");
-        } else {
-            code.push_str(&format!(
-                "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
-                method_name, child.struct_name
-            ));
-            code.push_str("            socket: self.socket.clone(),\n");
-            for (parent_arg, _typ) in &args {
-                code.push_str(&format!(
-                    "            {}: self.{}.clone(),\n",
-                    parent_arg, parent_arg
-                ));
-            }
-            code.push_str("        }\n    }\n");
-        }
-    }
-    code.push_str("}\n\n");
-}
-
-fn write_child_fluent_api(code: &mut String, node: &TreeNode, args: Vec<(String, String)>) {
+fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
     // --- 3. Fluent API methods ---
     for child in node.children.values() {
         let method_name = if child.name.is_empty() {
             if let Some(arg_name) = &child.arg_name {
                 sanitize_path_level(arg_name)
             } else {
-                "unnamed_child".to_string()
+                panic!("Anonymous node without arg_name: {:#?}", child);
             }
         } else {
             sanitize_path_level(&child.name)
         };
-
-        let child_struct_name = full_path_struct_name(&[(&child.name, child.arg_name.as_deref())]);
 
         println!("Child: {:#?}", child);
         if let Some(arg_name) = &child.arg_name {
@@ -286,34 +252,25 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode, args: Vec<(String,
                 "    pub fn {0}_mut(&mut self, {1}: String) -> &mut {2} {{\n",
                 method_name,
                 sanitize_path_level(arg_name),
-                child_struct_name
+                child.struct_name,
             ));
             code.push_str(&format!(
                     "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
-                    sanitize_path_level(arg_name), sanitize_path_level(arg_name), child_struct_name
+                    sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
                 ));
-            for (parent_arg, _) in &args {
+            for (parent_arg, _) in &node.parent_args {
                 code.push_str(&format!("self.{}.clone(), ", parent_arg));
             }
             code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
             code.push_str(&format!("    }}\n"));
         } else {
             // If child is not keyed, just hold one instance and return mutable reference
-            // code.push_str(&format!(
-            //     "    pub fn {0}_mut(&mut self) -> &mut {1} {{\n",
-            //     method_name, child_struct_name
-            // ));
-            // code.push_str(&format!(
-            //     "        // You may want a single-instance field for this child\n"
-            // ));
-            // code.push_str(&format!("        unimplemented!()\n"));
-            // code.push_str(&format!("    }}\n"));
             code.push_str(&format!(
                 "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
                 method_name, child.struct_name
             ));
             code.push_str("            socket: self.socket.clone(),\n");
-            for (parent_arg, _typ) in &args {
+            for (parent_arg, _typ) in &node.parent_args {
                 code.push_str(&format!(
                     "            {}: self.{}.clone(),\n",
                     parent_arg, parent_arg
@@ -326,51 +283,7 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode, args: Vec<(String,
 }
 
 /// Recursively write struct and impls for each node
-fn write_node(
-    code: &mut String,
-    node: &TreeNode,
-    path: &[(&str, Option<&str>)],
-    generated_structs: &mut HashSet<String>,
-) {
-    // Build struct name from path
-    let mut current_path = path.to_vec();
-    current_path.push((&node.name, node.arg_name.as_deref()));
-
-    // Collect all args in the hierarchy up to this node
-    let mut args = Vec::new();
-    for (_seg, arg_opt) in &current_path {
-        if let Some(arg) = arg_opt {
-            // Always string for guids
-            args.push((sanitize_path_level(arg), "String".to_string())); // TODO: This may be too naive
-        }
-    }
-
-    // // Avoid duplicate struct generation
-    // if !generated_structs.contains(&node.struct_name) {
-    //     code.push_str(&format!("pub struct {} {{\n", node.struct_name));
-    //     code.push_str("    socket: Arc<UdpSocket>,\n");
-    //     for (_, child) in node.children.iter() {
-    //         code.push_str(&format!(
-    //             "    {}: HashMap<String, {}>,\n",
-    //             sanitize_path_level(child.name.as_str()),
-    //             child.struct_name,
-    //         ));
-    //     }
-    //     if node.leaf.is_some() {
-    //         // Only endpoints need handlers
-    //         // TODO: only need this if we are not read-only
-    //         code.push_str(&format!(
-    //             "    handler: Option<{0}Handler>,\n",
-    //             node.struct_name
-    //         ));
-    //     }
-    //     for (arg, typ) in &args {
-    //         code.push_str(&format!("    pub {}: {},\n", arg, typ));
-    //     }
-    //     code.push_str("}\n\n");
-    //     generated_structs.insert(node.struct_name.clone());
-    // }
-
+fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSet<String>) {
     // --- 1. Struct definition ---
     if !generated_structs.contains(&node.struct_name) {
         code.push_str(&format!("pub struct {} {{\n", node.struct_name));
@@ -385,18 +298,17 @@ fn write_node(
         }
 
         // Add fields for path args
-        for (arg, typ) in &args {
+        for (arg, typ) in &node.parent_args {
             code.push_str(&format!("    pub {}: {},\n", arg, typ));
         }
 
         // Add HashMap storage for each child keyed by arg_name
         for child in node.children.values() {
             if let Some(arg_name) = &child.arg_name {
-                let child_struct_name = full_path_struct_name(&[(&child.name, Some(arg_name))]);
                 code.push_str(&format!(
                     "    pub {0}_map: HashMap<String, {1}>,\n",
                     sanitize_path_level(arg_name),
-                    child_struct_name
+                    child.struct_name,
                 ));
             }
         }
@@ -406,7 +318,7 @@ fn write_node(
         // --- 2. Constructor ---
         code.push_str(&format!("impl {} {{\n", node.struct_name));
         code.push_str("    pub fn new(socket: Arc<UdpSocket>");
-        for (arg, typ) in &args {
+        for (arg, typ) in &node.parent_args {
             code.push_str(&format!(", {}: {}", arg, typ));
         }
         code.push_str(&format!(") -> {} {{\n", node.struct_name));
@@ -415,7 +327,7 @@ fn write_node(
         if node.leaf.is_some() {
             code.push_str("            handler: None,\n");
         }
-        for (arg, _) in &args {
+        for (arg, _) in &node.parent_args {
             code.push_str(&format!("            {}: {}.clone(),\n", arg, arg));
         }
         for child in node.children.values() {
@@ -429,9 +341,9 @@ fn write_node(
         code.push_str("        }\n    }\n");
         // code.push_str("        }\n");
 
-        write_child_fluent_api(code, node, args);
+        write_child_fluent_api(code, node);
 
-        code.push_str("   }\n");
+        // code.push_str("   }\n");
     }
 
     // If this node is a leaf, implement endpoint traits
@@ -478,17 +390,12 @@ fn write_node(
         let re = Regex::new(r"\{[^\}]+\}").unwrap();
         let osc_address_template = re.replace_all(&leaf.osc_address, "{}");
         // Only path arguments (from the struct), not endpoint args (from Args struct)
-        let path_args = path
-            .iter()
-            .filter_map(|(_seg, arg_opt)| arg_opt.as_ref())
-            .map(|arg| sanitize_path_level(arg))
-            .collect::<Vec<_>>();
         code.push_str(&format!(
             "        let osc_address = format!(\"{}\"{});\n",
             osc_address_template,
-            path_args
+            node.parent_args
                 .iter()
-                .map(|arg| format!(", self.{}", arg))
+                .map(|arg| format!(", self.{}", arg.0))
                 .collect::<String>()
         ));
         // Build the OSC message args
@@ -537,18 +444,12 @@ fn write_node(
         // Construct the OSC address by replacing placeholders with struct fields
         let re = Regex::new(r"\{[^\}]+\}").unwrap();
         let osc_address_template = re.replace_all(&leaf.osc_address, "{}");
-        // Only path arguments (from the struct), not endpoint args (from Args struct)
-        let path_args = path
-            .iter()
-            .filter_map(|(_seg, arg_opt)| arg_opt.as_ref())
-            .map(|arg| sanitize_path_level(arg))
-            .collect::<Vec<_>>();
         code.push_str(&format!(
             "        let osc_address = format!(\"{}\"{});\n",
             osc_address_template,
-            path_args
+            node.parent_args
                 .iter()
-                .map(|arg| format!(", self.{}", arg))
+                .map(|arg| format!(", self.{}", arg.0))
                 .collect::<String>()
         ));
         // Build the OSC message args
@@ -565,7 +466,7 @@ fn write_node(
 
     // Recurse into children
     for child in node.children.values() {
-        write_node(code, child, &current_path, generated_structs);
+        write_node(code, child, generated_structs);
     }
 }
 
