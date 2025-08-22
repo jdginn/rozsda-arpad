@@ -151,18 +151,6 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
             .map(|cap| cap[1].to_string())
             .collect();
 
-        // {
-        //     // Collect all args in the hierarchy up to this node
-        //     let mut args = Vec::new();
-        //     for (_seg, arg_opt) in &current_path {
-        //         if let Some(arg) = arg_opt {
-        //             // Always string for guids
-        //             args.push((sanitize_path_level(arg), "String".to_string()));
-        //             // TODO: This may be too naive
-        //         }
-        //     }
-        // }
-
         // Filter arguments: only those NOT in path_arg_names
         let endpoint_args: Vec<OscArgument> = route
             .arguments
@@ -232,8 +220,60 @@ fn generate_code(root: &TreeNode) -> String {
     code
 }
 
+fn write_node_struct_definition(code: &mut String, node: &TreeNode) {
+    code.push_str(&format!("pub struct {} {{\n", node.struct_name));
+    code.push_str("    socket: Arc<UdpSocket>,\n");
+
+    if node.leaf.is_some() {
+        code.push_str(&format!(
+            "    handler: Option<{0}Handler>,\n",
+            node.struct_name
+        ));
+    }
+
+    for (arg, typ) in &node.parent_args {
+        code.push_str(&format!("    pub {}: {},\n", arg, typ));
+    }
+
+    for child in node.children.values() {
+        if let Some(arg_name) = &child.arg_name {
+            code.push_str(&format!(
+                "    pub {0}_map: HashMap<String, {1}>,\n",
+                sanitize_path_level(arg_name),
+                child.struct_name,
+            ));
+        }
+    }
+    code.push_str("}\n\n");
+}
+
+fn write_node_constructor(code: &mut String, node: &TreeNode) {
+    code.push_str(&format!("impl {} {{\n", node.struct_name));
+    code.push_str("    pub fn new(socket: Arc<UdpSocket>");
+    for (arg, typ) in &node.parent_args {
+        code.push_str(&format!(", {}: {}", arg, typ));
+    }
+    code.push_str(&format!(") -> {} {{\n", node.struct_name));
+    code.push_str(&format!("        {} {{\n", node.struct_name));
+    code.push_str("            socket,\n");
+    if node.leaf.is_some() {
+        code.push_str("            handler: None,\n");
+    }
+    for (arg, _) in &node.parent_args {
+        code.push_str(&format!("            {}: {}.clone(),\n", arg, arg));
+    }
+    for child in node.children.values() {
+        if let Some(arg_name) = &child.arg_name {
+            code.push_str(&format!(
+                "            {0}_map: HashMap::new(),\n",
+                sanitize_path_level(arg_name)
+            ));
+        }
+    }
+    code.push_str("        }\n    }\n");
+}
+
 fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
-    // --- 3. Fluent API methods ---
     for child in node.children.values() {
         let method_name = if child.name.is_empty() {
             if let Some(arg_name) = &child.arg_name {
@@ -245,9 +285,7 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
             sanitize_path_level(&child.name)
         };
 
-        println!("Child: {:#?}", child);
         if let Some(arg_name) = &child.arg_name {
-            // If child is keyed by arg_name, return mutable reference from map
             code.push_str(&format!(
                 "    pub fn {0}_mut(&mut self, {1}: String) -> &mut {2} {{\n",
                 method_name,
@@ -255,16 +293,15 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
                 child.struct_name,
             ));
             code.push_str(&format!(
-                    "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
-                    sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
-                ));
+                "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
+                sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
+            ));
             for (parent_arg, _) in &node.parent_args {
                 code.push_str(&format!("self.{}.clone(), ", parent_arg));
             }
             code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
-            code.push_str(&format!("    }}\n"));
+            code.push_str("    }\n");
         } else {
-            // If child is not keyed, just hold one instance and return mutable reference
             code.push_str(&format!(
                 "    pub fn {0}(&self) -> {1} {{\n        {1} {{\n",
                 method_name, child.struct_name
@@ -282,96 +319,26 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
     code.push_str("}\n\n");
 }
 
-/// Recursively write struct and impls for each node
-fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSet<String>) {
-    // --- 1. Struct definition ---
-    if !generated_structs.contains(&node.struct_name) {
-        code.push_str(&format!("pub struct {} {{\n", node.struct_name));
-        code.push_str("    socket: Arc<UdpSocket>,\n");
-
-        // Add handler field for leaf endpoints
-        if node.leaf.is_some() {
+fn write_node_endpoint_traits(code: &mut String, node: &TreeNode) {
+    if let Some(leaf) = &node.leaf {
+        let endpoint_args_struct = format!("{}Args", node.struct_name);
+        code.push_str("#[derive(Debug)]\n");
+        code.push_str(&format!("pub struct {} {{\n", endpoint_args_struct));
+        for arg in &leaf.args {
             code.push_str(&format!(
-                "    handler: Option<{0}Handler>,\n",
-                node.struct_name
+                "    pub {}: {}, // {}\n",
+                sanitize_path_level(&arg.name),
+                rust_type(&arg.typ),
+                arg.description.as_deref().unwrap_or("")
             ));
         }
-
-        // Add fields for path args
-        for (arg, typ) in &node.parent_args {
-            code.push_str(&format!("    pub {}: {},\n", arg, typ));
-        }
-
-        // Add HashMap storage for each child keyed by arg_name
-        for child in node.children.values() {
-            if let Some(arg_name) = &child.arg_name {
-                code.push_str(&format!(
-                    "    pub {0}_map: HashMap<String, {1}>,\n",
-                    sanitize_path_level(arg_name),
-                    child.struct_name,
-                ));
-            }
-        }
         code.push_str("}\n\n");
-        generated_structs.insert(node.struct_name.clone());
 
-        // --- 2. Constructor ---
-        code.push_str(&format!("impl {} {{\n", node.struct_name));
-        code.push_str("    pub fn new(socket: Arc<UdpSocket>");
-        for (arg, typ) in &node.parent_args {
-            code.push_str(&format!(", {}: {}", arg, typ));
-        }
-        code.push_str(&format!(") -> {} {{\n", node.struct_name));
-        code.push_str(&format!("        {} {{\n", node.struct_name));
-        code.push_str("            socket,\n");
-        if node.leaf.is_some() {
-            code.push_str("            handler: None,\n");
-        }
-        for (arg, _) in &node.parent_args {
-            code.push_str(&format!("            {}: {}.clone(),\n", arg, arg));
-        }
-        for child in node.children.values() {
-            if let Some(arg_name) = &child.arg_name {
-                code.push_str(&format!(
-                    "            {0}_map: HashMap::new(),\n",
-                    sanitize_path_level(arg_name)
-                ));
-            }
-        }
-        code.push_str("        }\n    }\n");
-        // code.push_str("        }\n");
-
-        write_child_fluent_api(code, node);
-
-        // code.push_str("   }\n");
-    }
-
-    // If this node is a leaf, implement endpoint traits
-    if let Some(leaf) = &node.leaf {
-        // Args struct for endpoint
-        let endpoint_args_struct = format!("{}Args", node.struct_name);
-        if !generated_structs.contains(&endpoint_args_struct) {
-            code.push_str("#[derive(Debug)]\n");
-            code.push_str(&format!("pub struct {} {{\n", endpoint_args_struct));
-            for arg in &leaf.args {
-                code.push_str(&format!(
-                    "    pub {}: {}, // {}\n",
-                    sanitize_path_level(&arg.name),
-                    rust_type(&arg.typ),
-                    arg.description.as_deref().unwrap_or("")
-                ));
-            }
-            code.push_str("}\n\n");
-            generated_structs.insert(endpoint_args_struct.clone());
-        }
-
-        // -------- Handler type
         code.push_str(&format!(
             "pub type {0}Handler = Box<dyn FnMut({0}Args) + 'static>;\n\n",
             node.struct_name
         ));
 
-        // -------- Implement Bind trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, _callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
@@ -380,16 +347,13 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
         code.push_str("         // store callback for endpoint\n");
         code.push_str("     }\n}\n\n");
 
-        // -------- Implement Set trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Set<{0}Args> for {1} {{\n    type Error = OscError;\n    fn set(&mut self, args: {0}Args) -> Result<(), Self::Error> {{\n",
             node.struct_name, node.struct_name
         ));
-        // Construct the OSC address by replacing placeholders with struct fields
         let re = Regex::new(r"\{[^\}]+\}").unwrap();
         let osc_address_template = re.replace_all(&leaf.osc_address, "{}");
-        // Only path arguments (from the struct), not endpoint args (from Args struct)
         code.push_str(&format!(
             "        let osc_address = format!(\"{}\"{});\n",
             osc_address_template,
@@ -398,7 +362,6 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
                 .map(|arg| format!(", self.{}", arg.0))
                 .collect::<String>()
         ));
-        // Build the OSC message args
         code.push_str("        let osc_msg = rosc::OscMessage {\n");
         code.push_str("            addr: osc_address,\n");
         code.push_str("            args: vec![\n");
@@ -435,14 +398,11 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
         code.push_str("        Ok(())\n");
         code.push_str("    }\n}\n\n");
 
-        // -------- Implement Query trait
         code.push_str(&format!("/// {}\n", leaf.osc_address));
         code.push_str(&format!(
             "impl Query for {0} {{\n    type Error = OscError;\n    fn query(&self) -> Result<(), Self::Error> {{\n",
             node.struct_name
         ));
-        // Construct the OSC address by replacing placeholders with struct fields
-        let re = Regex::new(r"\{[^\}]+\}").unwrap();
         let osc_address_template = re.replace_all(&leaf.osc_address, "{}");
         code.push_str(&format!(
             "        let osc_address = format!(\"{}\"{});\n",
@@ -452,7 +412,6 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
                 .map(|arg| format!(", self.{}", arg.0))
                 .collect::<String>()
         ));
-        // Build the OSC message args
         code.push_str("        let osc_msg = rosc::OscMessage {\n");
         code.push_str("            addr: osc_address,\n");
         code.push_str("            args: vec![],\n");
@@ -463,8 +422,19 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
         code.push_str("        Ok(())\n");
         code.push_str("    }\n}\n\n");
     }
+}
 
-    // Recurse into children
+fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSet<String>) {
+    if generated_structs.contains(&node.struct_name) {
+        return;
+    }
+    generated_structs.insert(node.struct_name.clone());
+
+    write_node_struct_definition(code, node);
+    write_node_constructor(code, node);
+    write_child_fluent_api(code, node);
+    write_node_endpoint_traits(code, node);
+
     for child in node.children.values() {
         write_node(code, child, generated_structs);
     }
