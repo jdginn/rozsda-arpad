@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
 #[derive(Parser)]
 struct Cli {
@@ -154,11 +154,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
                     .as_ref()
                     .map_or(String::new(), |a| format!("${}", a))
             );
-            let method_name = if let Some(arg_name) = &node.arg_name {
-                sanitize_path_level(&format!("{}", name))
-            } else {
-                sanitize_path_level(&format!("{}", name))
-            };
+            let method_name = sanitize_path_level(name);
 
             node = node.children.entry(key.clone()).or_insert(TreeNode {
                 name: name.clone(),
@@ -471,7 +467,6 @@ pub struct EndpointMeta {
     pub path_args: Vec<String>,
     pub osc_args: Vec<(String, String)>,
     pub struct_name: String,
-    pub accessor_name: String,
     pub args_struct_name: String,
     pub path_chain: Vec<PathStep>,
 }
@@ -485,9 +480,6 @@ impl TreeNode {
 
     fn collect_endpoints(&self, endpoints: &mut Vec<EndpointMeta>, mut chain: Vec<PathStep>) {
         // If this node is not the root, add its accessor to the chain
-        println!("Visiting node: {}", self.struct_name);
-        println!("\taccessor: {:?}", self.accessor_name);
-        println!("");
         // println!("\tnode: {:?}\n", self);
         if let Some(accessor_name) = &self.accessor_name {
             chain.push(PathStep {
@@ -510,7 +502,6 @@ impl TreeNode {
                 path_args,
                 osc_args,
                 struct_name: self.struct_name.clone(),
-                accessor_name: self.accessor_name.clone().unwrap_or_default(),
                 args_struct_name: format!("{}Args", self.struct_name),
                 path_chain: chain.clone(),
             });
