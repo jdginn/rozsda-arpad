@@ -28,13 +28,12 @@ fn rust_type(yaml_type: &str) -> &str {
 
 /// Sanitize a path segment to be a valid Rust identifier
 fn sanitize_path_level(s: &str) -> String {
-    let s = s.replace("-", "_");
-    let s = s.replace(" ", "_");
-    let s = s.replace(".", "_");
-    let s = s.replace("/", "_");
-    let s = s.replace("?", "_");
-    let s = s.replace("$", "_");
-    s
+    s.replace("-", "_")
+        .replace(" ", "_")
+        .replace(".", "_")
+        .replace("/", "_")
+        .replace("?", "_")
+        .replace("$", "_")
 }
 
 /// PascalCase a sanitized identifier (for struct names)
@@ -77,31 +76,31 @@ struct LeafInfo {
 }
 
 /// A node in the OSC hierarchy tree
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TreeNode {
-    name: String,                       // e.g., "track", "index"
+    name: String,        // e.g., "track", "index"
     struct_name: String, // unique name for this node that reflects the full path to get to it e.g. "TrackIndex"
-    parent_args: Vec<(String, String)>, // (arg_name, arg_type) pairs from parent nodes, used to
     // initialize structs in the fluent API
     path_arg_name: Option<String>,       // e.g., "track_guid"
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
+    parents: Vec<PathStep>, // For convenience since linked lists are hard in Rust
 }
 
-// Helper to convert "/track/{track_guid}/pan" -> "/track/{}/pan"
-fn to_pattern(address: &str) -> String {
-    let re = regex::Regex::new(r"\{[^{}]+\}").unwrap();
-    re.replace_all(address, "{}").to_string()
+#[derive(Debug, Clone)]
+pub struct ParentArg {
+    pub name: String,
+    pub typ: String,
 }
 
-// Helper to extract ["track_guid"] from "/track/{track_guid}/pan"
-fn extract_path_args(address: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let re = regex::Regex::new(r"\{([^{}]+)\}").unwrap();
-    for cap in re.captures_iter(address) {
-        args.push(cap[1].to_string());
-    }
-    args
+#[derive(Debug, Clone)]
+pub struct PathStep {
+    /// The accessor method name, e.g. "track_mut"
+    pub accessor: String,
+    /// The argument name for this accessor (None for leaf accessor)
+    pub arg: Option<ParentArg>,
+    /// The struct type at this step, e.g. "Track"
+    pub struct_name: String,
 }
 
 /// Parse a single OSC address into a vector of (name, Option<arg_name>) pairs
@@ -128,10 +127,10 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
     let mut root = TreeNode {
         name: "Reaper".to_string(),
         struct_name: "Reaper".to_string(),
-        parent_args: Vec::new(),
         path_arg_name: None,
         children: HashMap::new(),
         leaf: None,
+        parents: Vec::new(),
     };
 
     let re = Regex::new(r"\{([^\}]+)\}").unwrap();
@@ -139,11 +138,17 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         let mut path = Vec::new(); // Reset path for each route
         let parsed = parse_address(&route.osc_address);
         let mut node = &mut root;
-        let mut parent_args = Vec::new();
+        let mut parents = Vec::new();
         for (name, arg_name) in &parsed {
-            if let Some(arg) = arg_name {
-                parent_args.push((sanitize_path_level(arg), "String".to_string()));
-            }
+            let struct_name = full_path_struct_name(path.as_slice());
+            parents.push(PathStep {
+                accessor: name.clone(),
+                arg: arg_name.clone().map(|a| ParentArg {
+                    name: sanitize_path_level(&a),
+                    typ: "String".to_string(),
+                }),
+                struct_name,
+            });
             path.push((name.as_ref(), arg_name.as_deref()));
             let key = format!(
                 "{}{}",
@@ -154,12 +159,12 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
             );
 
             node = node.children.entry(key.clone()).or_insert(TreeNode {
-                name: name.clone(),
+                name: sanitize_path_level(&name.clone()),
                 struct_name: full_path_struct_name(path.as_slice()),
-                parent_args: parent_args.clone(),
                 path_arg_name: arg_name.clone(),
                 children: HashMap::new(),
                 leaf: None,
+                parents: parents.clone(),
             });
         }
 
@@ -218,8 +223,10 @@ fn write_node_struct_definition(code: &mut String, node: &TreeNode) {
         ));
     }
 
-    for (arg, typ) in &node.parent_args {
-        code.push_str(&format!("    pub {}: {},\n", arg, typ));
+    for parent in &node.parents {
+        if let Some(arg) = &parent.arg {
+            code.push_str(&format!("    pub {}: {},\n", arg.name, arg.typ));
+        }
     }
 
     for child in node.children.values() {
@@ -237,8 +244,10 @@ fn write_node_struct_definition(code: &mut String, node: &TreeNode) {
 fn write_node_constructor(code: &mut String, node: &TreeNode) {
     code.push_str(&format!("impl {} {{\n", node.struct_name));
     code.push_str("    pub fn new(socket: Arc<UdpSocket>");
-    for (arg, typ) in &node.parent_args {
-        code.push_str(&format!(", {}: {}", arg, typ));
+    for parent in &node.parents {
+        if let Some(arg) = &parent.arg {
+            code.push_str(&format!(", {}: {}", arg.name, arg.typ));
+        }
     }
     code.push_str(&format!(") -> {} {{\n", node.struct_name));
     code.push_str(&format!("        {} {{\n", node.struct_name));
@@ -246,8 +255,13 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
     if node.leaf.is_some() {
         code.push_str("            handler: None,\n");
     }
-    for (arg, _) in &node.parent_args {
-        code.push_str(&format!("            {}: {}.clone(),\n", arg, arg));
+    for parent in &node.parents {
+        if let Some(arg) = &parent.arg {
+            code.push_str(&format!(
+                "            {}: {}.clone(),\n",
+                arg.name, arg.name
+            ));
+        }
     }
     for child in node.children.values() {
         if let Some(arg_name) = &child.path_arg_name {
@@ -283,8 +297,10 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
                 "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
                 sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
             ));
-            for (parent_arg, _) in &node.parent_args {
-                code.push_str(&format!("self.{}.clone(), ", parent_arg));
+            for parent in &node.parents {
+                if let Some(arg) = &parent.arg {
+                    code.push_str(&format!("self.{}.clone(), ", arg.name));
+                }
             }
             code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
             code.push_str("    }\n");
@@ -293,9 +309,12 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
                 "    pub fn {0}(&self) -> {1} {{\n        {1}::new(self.socket.clone(), ",
                 method_name, child.struct_name
             ));
-            for (parent_arg, _) in &node.parent_args {
-                code.push_str(&format!("            self.{}.clone(),\n", parent_arg));
+            for parent in &node.parents {
+                if let Some(arg) = &parent.arg {
+                    code.push_str(&format!("self.{}.clone(), ", arg.name));
+                }
             }
+
             code.push_str("     )\n");
             code.push_str("        }\n");
         }
@@ -327,9 +346,13 @@ fn write_node_set_trait(code: &mut String, node: &TreeNode) {
         code.push_str(&format!(
             "        let osc_address = format!(\"{}\"{});\n",
             osc_address_template,
-            node.parent_args
+            node.parents
                 .iter()
-                .map(|arg| format!(", self.{}", arg.0))
+                .map(|parent| if let Some(arg) = &parent.arg {
+                    format!(", self.{}", arg.name)
+                } else {
+                    String::new() // TODO: suspicious
+                })
                 .collect::<String>()
         ));
         code.push_str("        let osc_msg = rosc::OscMessage {\n");
@@ -382,9 +405,13 @@ fn write_node_query_trait(code: &mut String, node: &TreeNode) {
         code.push_str(&format!(
             "        let osc_address = format!(\"{}\"{});\n",
             osc_address_template,
-            node.parent_args
+            node.parents
                 .iter()
-                .map(|arg| format!(", self.{}", arg.0))
+                .map(|parent| if let Some(arg) = &parent.arg {
+                    format!(", self.{}", arg.name)
+                } else {
+                    String::new() // TODO: suspicious})
+                })
                 .collect::<String>()
         ));
         code.push_str("        let osc_msg = rosc::OscMessage {\n");
@@ -447,17 +474,6 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
     }
 }
 
-#[derive(Clone)]
-pub struct PathStep {
-    /// The accessor method name, e.g. "track_mut"
-    pub accessor: String,
-    /// The argument name for this accessor (None for leaf accessor)
-    pub arg_name: Option<String>,
-    /// The struct type at this step, e.g. "Track"
-    pub struct_name: String,
-    pub is_mut: bool,
-}
-
 pub struct EndpointMeta {
     pub osc_pattern: String,
     pub path_args: Vec<String>,
@@ -468,40 +484,47 @@ pub struct EndpointMeta {
 }
 
 impl TreeNode {
-    pub fn iter_endpoints(&self) -> Vec<EndpointMeta> {
+    pub fn iter_endpoints(&self) -> Vec<TreeNode> {
         let mut endpoints = Vec::new();
-        self.collect_endpoints(&mut endpoints, Vec::new());
+        self.collect_endpoints(&mut endpoints);
         endpoints
     }
 
-    fn collect_endpoints(&self, endpoints: &mut Vec<EndpointMeta>, mut chain: Vec<PathStep>) {
-        // If this node is not the root, add its accessor to the chain
-        // println!("\tnode: {:?}\n", self);
-        chain.push(PathStep {
-            accessor: self.name.clone(),
-            arg_name: self.path_arg_name.clone(),
-            struct_name: self.struct_name.clone(),
-            is_mut: true, // TODO
-        });
-        if let Some(leaf) = &self.leaf {
-            // Determine path args by finding {name} in osc_address
-            let path_args = extract_path_args(&leaf.osc_address);
-            let osc_args = leaf
-                .args
-                .iter()
-                .map(|a| (a.name.clone(), a.typ.clone()))
-                .collect();
-            endpoints.push(EndpointMeta {
-                osc_pattern: to_pattern(&leaf.osc_address), // e.g. "/track/{}/pan"
-                path_args,
-                osc_args,
-                struct_name: self.struct_name.clone(),
-                args_struct_name: format!("{}Args", self.struct_name),
-                path_chain: chain.clone(),
-            });
+    fn collect_endpoints(&self, endpoints: &mut Vec<TreeNode>) {
+        // // If this node is not the root, add its accessor to the chain
+        // // println!("\tnode: {:?}\n", self);
+        // chain.push(PathStep {
+        //     accessor: self.name.clone(),
+        //     arg_name: self.path_arg_name.clone(),
+        //     struct_name: self.struct_name.clone(),
+        //     is_mut: true, // TODO
+        // });
+        // if let Some(leaf) = &self.leaf {
+        //     // Determine path args by finding {name} in osc_address
+        //     let path_args = extract_path_args(&leaf.osc_address);
+        //     let osc_args = leaf
+        //         .args
+        //         .iter()
+        //         .map(|a| (a.name.clone(), a.typ.clone()))
+        //         .collect();
+        //     endpoints.push(EndpointMeta {
+        //         osc_pattern: to_pattern(&leaf.osc_address), // e.g. "/track/{}/pan"
+        //         path_args,
+        //         osc_args,
+        //         struct_name: self.struct_name.clone(),
+        //         args_struct_name: format!("{}Args", self.struct_name),
+        //         path_chain: chain.clone(),
+        //     });
+        // }
+        // for child in self.children.values() {
+        //     child.collect_endpoints(endpoints, chain.clone());
+        // }
+
+        if self.leaf.is_some() {
+            endpoints.push(self.clone());
         }
         for child in self.children.values() {
-            child.collect_endpoints(endpoints, chain.clone());
+            child.collect_endpoints(endpoints);
         }
     }
 }
@@ -536,93 +559,77 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
     code.push_str("    let addr = msg.addr.as_str();\n");
 
     // Emit match arms for each endpoint
-    for endpoint in api_tree.iter_endpoints() {
-        let osc_addr_pattern = endpoint.osc_pattern; // e.g. "/track/{}/pan"
-        let path_arg_names = endpoint.path_args; // e.g. vec!["track_guid"]
-        let osc_arg_types = endpoint.osc_args; // e.g. vec![("pan", "Float")]
-
+    for node in api_tree.iter_endpoints() {
         // Begin arm
         code.push_str(&format!(
             "    if let Some(args) = match_addr(addr, \"{}\") {{\n",
-            osc_addr_pattern
+            &node.leaf.clone().unwrap().osc_address,
         ));
 
         // Extract path args
-        for (i, name) in path_arg_names.iter().enumerate() {
-            code.push_str(&format!("        let {} = &args[{}];\n", name, i));
+        for (i, parent) in node.parents.iter().rev().enumerate() {
+            if let Some(arg) = &parent.arg {
+                code.push_str(&format!("        let {} = &args[{}];\n", arg.name, i));
+            }
         }
 
         let mut cursor = "reaper".to_string();
-        for path_step in &endpoint.path_chain[..endpoint.path_chain.len() - 1] {
-            if path_step.is_mut {
+        for parent in node.parents.iter() {
+            if let Some(arg) = &parent.arg {
                 code.push_str(&format!(
                     "        let {} = {}.{}({}.clone());\n",
-                    path_step.accessor.trim_end_matches("_mut"),
+                    parent.accessor.trim_end_matches("_mut"),
                     cursor,
-                    path_step.accessor,
-                    path_step.arg_name.clone().unwrap(),
+                    parent.accessor,
+                    arg.name,
                 ));
-                cursor = path_step.accessor.trim_end_matches("_mut").to_string();
-            } else {
-                // code.push_str(&format!(
-                //     "        let {} = {}.{}();\n",
-                //     path_step.accessor, cursor, path_step.accessor
-                // ));
-                // cursor = path_step.accessor.to_string();
+                cursor = parent.accessor.trim_end_matches("_mut").to_string();
             }
         }
         // Last accessor is the endpoint
-        let last = endpoint.path_chain.last().unwrap();
         code.push_str(&format!(
             "        let mut endpoint = {}.{}();\n",
-            cursor, last.accessor
+            cursor, node.name,
         ));
 
         // Handler check
         code.push_str("        if let Some(handler) = &mut endpoint.handler {\n");
 
         // OSC arg decoding
-        for (j, (osc_arg, osc_type)) in osc_arg_types.iter().enumerate() {
-            let rust_type = match osc_type.as_str() {
-                "Float" => "f32",
-                "Int" => "i32",
-                "String" => "String",
-                "Bool" => "bool",
-                _ => "UNKNOWN",
-            };
+        for (j, osc_arg) in node.leaf.clone().unwrap().args.iter().enumerate() {
             code.push_str(&format!(
                 "            if let Some({}) = msg.args.get({}) {{\n",
-                osc_arg, j
+                osc_arg.name, j
             ));
-            match osc_type.as_str() {
+            match osc_arg.typ.as_str() {
                 "int" => {
                     code.push_str(&format!(
                         "                handler({}Args {{ {}: {}.clone().int().unwrap() as i32 }});\n",
-                        endpoint.struct_name, osc_arg, osc_arg
+                        node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 "float" => {
                     code.push_str(&format!(
                         "                handler({}Args {{ {}: {}.clone().float().unwrap() as f32 }});\n",
-                        endpoint.struct_name, osc_arg, osc_arg
+                        node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 "bool" => {
                     code.push_str(&format!(
                         "                handler({}Args {{ {}: {}.clone().bool().unwrap() }});\n",
-                        endpoint.struct_name, osc_arg, osc_arg
+                        node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 "string" => {
                     code.push_str(&format!(
                         "                handler({}Args {{ {}: {}.clone().string().unwrap().clone() }});\n",
-                        endpoint.struct_name, osc_arg, osc_arg
+                        node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 _ => {
                     code.push_str(&format!(
                         "                // Unsupported arg type: {}\n",
-                        osc_type
+                        osc_arg.typ
                     ));
                 }
             }
