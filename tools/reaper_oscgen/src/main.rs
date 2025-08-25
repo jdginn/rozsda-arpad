@@ -83,7 +83,7 @@ struct TreeNode {
     struct_name: String, // unique name for this node that reflects the full path to get to it e.g. "TrackIndex"
     parent_args: Vec<(String, String)>, // (arg_name, arg_type) pairs from parent nodes, used to
     // initialize structs in the fluent API
-    arg_name: Option<String>,            // e.g., "track_guid"
+    path_arg_name: Option<String>,       // e.g., "track_guid"
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
 }
@@ -129,7 +129,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         name: "Reaper".to_string(),
         struct_name: "Reaper".to_string(),
         parent_args: Vec::new(),
-        arg_name: None,
+        path_arg_name: None,
         children: HashMap::new(),
         leaf: None,
     };
@@ -157,7 +157,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
                 name: name.clone(),
                 struct_name: full_path_struct_name(path.as_slice()),
                 parent_args: parent_args.clone(),
-                arg_name: arg_name.clone(),
+                path_arg_name: arg_name.clone(),
                 children: HashMap::new(),
                 leaf: None,
             });
@@ -223,7 +223,7 @@ fn write_node_struct_definition(code: &mut String, node: &TreeNode) {
     }
 
     for child in node.children.values() {
-        if let Some(arg_name) = &child.arg_name {
+        if let Some(arg_name) = &child.path_arg_name {
             code.push_str(&format!(
                 "    pub {0}_map: HashMap<String, {1}>,\n",
                 sanitize_path_level(arg_name),
@@ -250,7 +250,7 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
         code.push_str(&format!("            {}: {}.clone(),\n", arg, arg));
     }
     for child in node.children.values() {
-        if let Some(arg_name) = &child.arg_name {
+        if let Some(arg_name) = &child.path_arg_name {
             code.push_str(&format!(
                 "            {0}_map: HashMap::new(),\n",
                 sanitize_path_level(arg_name)
@@ -263,7 +263,7 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
 fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
     for child in node.children.values() {
         let method_name = if child.name.is_empty() {
-            if let Some(arg_name) = &child.arg_name {
+            if let Some(arg_name) = &child.path_arg_name {
                 sanitize_path_level(arg_name)
             } else {
                 panic!("Anonymous node without arg_name: {:#?}", child);
@@ -272,7 +272,7 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
             sanitize_path_level(&child.name)
         };
 
-        if let Some(arg_name) = &child.arg_name {
+        if let Some(arg_name) = &child.path_arg_name {
             code.push_str(&format!(
                 "    pub fn {0}(&mut self, {1}: String) -> &mut {2} {{\n",
                 method_name,
@@ -479,7 +479,7 @@ impl TreeNode {
         // println!("\tnode: {:?}\n", self);
         chain.push(PathStep {
             accessor: self.name.clone(),
-            arg_name: self.arg_name.clone(),
+            arg_name: self.path_arg_name.clone(),
             struct_name: self.struct_name.clone(),
             is_mut: true, // TODO
         });
