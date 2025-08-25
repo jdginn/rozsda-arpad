@@ -83,8 +83,7 @@ struct TreeNode {
     struct_name: String, // unique name for this node that reflects the full path to get to it e.g. "TrackIndex"
     parent_args: Vec<(String, String)>, // (arg_name, arg_type) pairs from parent nodes, used to
     // initialize structs in the fluent API
-    accessor_name: Option<String>, // name of the method that accesses this node, e.g. "track_mut"
-    arg_name: Option<String>,      // e.g., "track_guid"
+    arg_name: Option<String>,            // e.g., "track_guid"
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
 }
@@ -130,7 +129,6 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         name: "Reaper".to_string(),
         struct_name: "Reaper".to_string(),
         parent_args: Vec::new(),
-        accessor_name: None,
         arg_name: None,
         children: HashMap::new(),
         leaf: None,
@@ -154,13 +152,11 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
                     .as_ref()
                     .map_or(String::new(), |a| format!("${}", a))
             );
-            let method_name = sanitize_path_level(name);
 
             node = node.children.entry(key.clone()).or_insert(TreeNode {
                 name: name.clone(),
                 struct_name: full_path_struct_name(path.as_slice()),
                 parent_args: parent_args.clone(),
-                accessor_name: Some(method_name),
                 arg_name: arg_name.clone(),
                 children: HashMap::new(),
                 leaf: None,
@@ -481,14 +477,12 @@ impl TreeNode {
     fn collect_endpoints(&self, endpoints: &mut Vec<EndpointMeta>, mut chain: Vec<PathStep>) {
         // If this node is not the root, add its accessor to the chain
         // println!("\tnode: {:?}\n", self);
-        if let Some(accessor_name) = &self.accessor_name {
-            chain.push(PathStep {
-                accessor: accessor_name.clone(),
-                arg_name: self.arg_name.clone(),
-                struct_name: self.struct_name.clone(),
-                is_mut: true, // TODO
-            });
-        }
+        chain.push(PathStep {
+            accessor: self.name.clone(),
+            arg_name: self.arg_name.clone(),
+            struct_name: self.struct_name.clone(),
+            is_mut: true, // TODO
+        });
         if let Some(leaf) = &self.leaf {
             // Determine path args by finding {name} in osc_address
             let path_args = extract_path_args(&leaf.osc_address);
