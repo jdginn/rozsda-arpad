@@ -491,35 +491,6 @@ impl TreeNode {
     }
 
     fn collect_endpoints(&self, endpoints: &mut Vec<TreeNode>) {
-        // // If this node is not the root, add its accessor to the chain
-        // // println!("\tnode: {:?}\n", self);
-        // chain.push(PathStep {
-        //     accessor: self.name.clone(),
-        //     arg_name: self.path_arg_name.clone(),
-        //     struct_name: self.struct_name.clone(),
-        //     is_mut: true, // TODO
-        // });
-        // if let Some(leaf) = &self.leaf {
-        //     // Determine path args by finding {name} in osc_address
-        //     let path_args = extract_path_args(&leaf.osc_address);
-        //     let osc_args = leaf
-        //         .args
-        //         .iter()
-        //         .map(|a| (a.name.clone(), a.typ.clone()))
-        //         .collect();
-        //     endpoints.push(EndpointMeta {
-        //         osc_pattern: to_pattern(&leaf.osc_address), // e.g. "/track/{}/pan"
-        //         path_args,
-        //         osc_args,
-        //         struct_name: self.struct_name.clone(),
-        //         args_struct_name: format!("{}Args", self.struct_name),
-        //         path_chain: chain.clone(),
-        //     });
-        // }
-        // for child in self.children.values() {
-        //     child.collect_endpoints(endpoints, chain.clone());
-        // }
-
         if self.leaf.is_some() {
             endpoints.push(self.clone());
         }
