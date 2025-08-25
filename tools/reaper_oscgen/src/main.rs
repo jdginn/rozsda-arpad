@@ -78,10 +78,13 @@ struct LeafInfo {
 /// A node in the OSC hierarchy tree
 #[derive(Debug, Clone)]
 struct TreeNode {
-    name: String,        // e.g., "track", "index"
-    struct_name: String, // unique name for this node that reflects the full path to get to it e.g. "TrackIndex"
-    // initialize structs in the fluent API
-    path_arg_name: Option<String>,       // e.g., "track_guid"
+    // how to access this node in the fluent API
+    accessor_name: String,
+    // type name in the generated source
+    // NOTE: must represent its whole hierarchy to avoid name
+    // collisions (e.g. "Pan" is not ennough because we may have both TrackPan" vs "TrackSendPan")
+    struct_name: String,
+    path_arg: Option<String>,            // e.g., "track_guid"
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
     parents: Vec<PathStep>, // For convenience since linked lists are hard in Rust
@@ -125,9 +128,9 @@ fn parse_address(address: &str) -> Vec<(String, Option<String>)> {
 /// Build hierarchy tree from all routes
 fn build_tree(routes: &[OscRoute]) -> TreeNode {
     let mut root = TreeNode {
-        name: "Reaper".to_string(),
+        accessor_name: "Reaper".to_string(),
         struct_name: "Reaper".to_string(),
-        path_arg_name: None,
+        path_arg: None,
         children: HashMap::new(),
         leaf: None,
         parents: Vec::new(),
@@ -159,9 +162,9 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
             );
 
             node = node.children.entry(key.clone()).or_insert(TreeNode {
-                name: sanitize_path_level(&name.clone()),
+                accessor_name: sanitize_path_level(&name.clone()),
                 struct_name: full_path_struct_name(path.as_slice()),
-                path_arg_name: arg_name.clone(),
+                path_arg: arg_name.clone(),
                 children: HashMap::new(),
                 leaf: None,
                 parents: parents.clone(),
@@ -230,7 +233,7 @@ fn write_node_struct_definition(code: &mut String, node: &TreeNode) {
     }
 
     for child in node.children.values() {
-        if let Some(arg_name) = &child.path_arg_name {
+        if let Some(arg_name) = &child.path_arg {
             code.push_str(&format!(
                 "    pub {0}_map: HashMap<String, {1}>,\n",
                 sanitize_path_level(arg_name),
@@ -264,7 +267,7 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
         }
     }
     for child in node.children.values() {
-        if let Some(arg_name) = &child.path_arg_name {
+        if let Some(arg_name) = &child.path_arg {
             code.push_str(&format!(
                 "            {0}_map: HashMap::new(),\n",
                 sanitize_path_level(arg_name)
@@ -276,17 +279,17 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
 
 fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
     for child in node.children.values() {
-        let method_name = if child.name.is_empty() {
-            if let Some(arg_name) = &child.path_arg_name {
+        let method_name = if child.accessor_name.is_empty() {
+            if let Some(arg_name) = &child.path_arg {
                 sanitize_path_level(arg_name)
             } else {
                 panic!("Anonymous node without arg_name: {:#?}", child);
             }
         } else {
-            sanitize_path_level(&child.name)
+            sanitize_path_level(&child.accessor_name)
         };
 
-        if let Some(arg_name) = &child.path_arg_name {
+        if let Some(arg_name) = &child.path_arg {
             code.push_str(&format!(
                 "    pub fn {0}(&mut self, {1}: String) -> &mut {2} {{\n",
                 method_name,
@@ -474,15 +477,6 @@ fn write_node(code: &mut String, node: &TreeNode, generated_structs: &mut HashSe
     }
 }
 
-pub struct EndpointMeta {
-    pub osc_pattern: String,
-    pub path_args: Vec<String>,
-    pub osc_args: Vec<(String, String)>,
-    pub struct_name: String,
-    pub args_struct_name: String,
-    pub path_chain: Vec<PathStep>,
-}
-
 impl TreeNode {
     pub fn iter_endpoints(&self) -> Vec<TreeNode> {
         let mut endpoints = Vec::new();
@@ -560,7 +554,7 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
         // Last accessor is the endpoint
         code.push_str(&format!(
             "        let mut endpoint = {}.{}();\n",
-            cursor, node.name,
+            cursor, node.accessor_name,
         ));
 
         // Handler check
@@ -575,25 +569,25 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
             match osc_arg.typ.as_str() {
                 "int" => {
                     code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().int().unwrap() as i32 }});\n",
+                        "                handler({}Args {{ {}: {}.clone().int().unwrap()}});\n",
                         node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 "float" => {
                     code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().float().unwrap() as f32 }});\n",
+                        "                handler({}Args {{ {}: {}.clone().float().unwrap()}});\n",
                         node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 "bool" => {
                     code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().bool().unwrap() }});\n",
+                        "                handler({}Args {{ {}: {}.clone().bool().unwrap()}});\n",
                         node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
                 "string" => {
                     code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().string().unwrap().clone() }});\n",
+                        "                handler({}Args {{ {}: {}.clone().string().unwrap().clone()}});\n",
                         node.struct_name, osc_arg.name, osc_arg.name
                     ));
                 }
