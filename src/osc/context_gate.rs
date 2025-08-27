@@ -4,7 +4,16 @@ use rosc::{OscMessage, OscPacket};
 
 use crate::osc::generated_osc::{OscContext, OscContextKind};
 
+/// ContextGate manages all messages whose address is relevant to some particular OscContext, where
+/// an OscContext defines some specific entity whose messages we either want to gate or propagate
+/// depending on some initialization condition.
+///
+/// Each ContextGate handles any number of OscContexts with the same "shape", that is any number of
+/// entities that live at the same layer of the hierarchy, encode the same set of identifiers into
+/// their address, and depend on the same initialization criteria. Each concrete context is handled
+/// individually.
 struct ContextGate {
+    // The shape of the OscContext that this layer is responsible for
     parameter_sequence: OscContextKind,
     // the OSC address that "unlocks" this layer
     // E.g. for TrackGUID, this might be "/track/{track_guid}/index"
@@ -12,11 +21,13 @@ struct ContextGate {
     // We buffer messages if this is false. When it's true, we pass messages through.
     // At the moment we set it true, we also flush the buffer.
     initialized: HashMap<OscContext, bool>,
-    on_initialized: Option<Box<dyn Fn(OscContext)>>, // called when a guid is initialized
+    // Called when a specific context is initialized
+    on_initialized: Option<Box<dyn Fn(OscContext)>>,
     buffer: HashMap<OscContext, VecDeque<OscMessage>>,
 }
 
 impl ContextGate {
+    /// Mark a specific concrete OscContext as initialized
     pub fn initialize(&mut self, values: OscContext) {
         if let Some(callback) = &self.on_initialized {
             callback(values.clone());
@@ -25,6 +36,10 @@ impl ContextGate {
     }
 }
 
+/// Returns true if the OSC address matches a pattern expressed as a pattern.
+///
+/// E.g. for "/track/{track_guid}/index", this will match "/track/1234567890/index" but not
+/// "/track/1234567890/
 fn matches_key_pattern(osc_addr: &str, key_route: &str) -> bool {
     let osc_parts: Vec<&str> = osc_addr.split('/').filter(|s| !s.is_empty()).collect();
     let key_parts: Vec<&str> = key_route.split('/').filter(|s| !s.is_empty()).collect();
@@ -45,6 +60,16 @@ fn matches_key_pattern(osc_addr: &str, key_route: &str) -> bool {
     true
 }
 
+/// OscGatedRouter allows gating a set of OSC messages until certain conditions are met.
+///
+/// Specifically, our messages encode various IDs into the OSC address that tie a message to some
+/// specific entity. In situatitions where we need to know certain information about that entity
+/// before we can process messages pertaining to it, ContextGate will buffer all messages until we
+/// have received a "key" message, which provides us the information we need to successfully
+/// process the rest of the messages. This is important if we have no guarantee tha the "key"
+/// message will arrive before the others.
+///
+/// Once the gate's initialization condition is met, all messages will be passed through.
 pub struct OscGatedRouter {
     // Each layer represents some field in the OSC address we may need to filter on
     layers: Vec<ContextGate>,
@@ -59,8 +84,9 @@ impl OscGatedRouter {
         }
     }
 
-    /// dispatcher is just another dispatcher
-    pub fn dispatch_osc<L>(&mut self, packet: OscPacket, log_unknown: L)
+    /// dispatch_osc gates messages until their initialization condition is met and then passes
+    /// messages through to self.dispatcher.
+    pub fn dispatch_osc<L>(&mut self, packet: OscPacket)
     where
         L: Fn(&str),
     {
@@ -69,38 +95,22 @@ impl OscGatedRouter {
             _ => return,
         };
 
-        // Pseudocode:
-        // - Iterate on layers
-        // - For each layer, check whether this message's address matches the regex for that layer
-        // - If so, extract the guid from the address
-        // - Check whether the guid is initialized for the layer. If so, call self.dispatcher(msg)
-        // and return.
-        // - If not, check whether the message is the "key" message for this filter <- TODO: still
-        // need to define how this works.
-        //      - If so, mark the guid as initialized
-        //      - flush the buffer by calling self.dispatcher(msg) for each message
-        //      - call self.dispatcher(msg) for this message
-        //      - Possibly, also call an arbitrary callback that fires on initialization? <- TODO
-        // - If this is not the key message, buffer it and return.
         self.layers.iter_mut().for_each(|layer| {
             if let Some(value_sequence) = layer.parameter_sequence.parse(&msg.addr) {
+                // If this message is relevant to this layer...
                 match layer.initialized.get(&value_sequence) {
                     Some(true) => {
-                        // already initialized, just dispatch
+                        // context is already initialized, just dispatch
                         (self.dispatcher)(msg.to_owned());
                     }
-                    Some(false) => {
-                        // not initialized, buffer the message
-                        let buffer = layer
-                            .buffer
-                            .entry(value_sequence.clone())
-                            .or_insert_with(VecDeque::new);
-                        buffer.push_back(msg.clone());
-                    }
-                    None => {
-                        // Not seen before, check if this is the key message
+                    Some(false) | None => {
+                        // Check if this is the key message
                         if matches_key_pattern(&msg.addr, &layer.key_route) {
                             // This is the key message, initialize
+                            //
+                            // TODO: if this IS the key message, the on_initialized callback probably
+                            // needs to know its value. How do we allow that? Especially in the case
+                            // that we have multiple key messages and we need all of their values?
                             layer.initialize(value_sequence.clone());
                             // Dispatch the buffered messages
                             if let Some(buffer) = layer.buffer.get_mut(&value_sequence) {
@@ -111,11 +121,8 @@ impl OscGatedRouter {
                             // Dispatch this message
                             (self.dispatcher)(msg.clone());
                         } else {
-                            // Not the key message, buffer it
-                            let buffer = layer
-                                .buffer
-                                .entry(value_sequence.clone())
-                                .or_insert_with(VecDeque::new);
+                            // Not the key message; buffer it
+                            let buffer = layer.buffer.entry(value_sequence.clone()).or_default();
                             buffer.push_back(msg.clone());
                         }
                     }
