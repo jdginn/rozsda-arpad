@@ -87,8 +87,10 @@ dependencies = [
 name = "arpad-rust"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "helgoboss-midi",
  "midir",
+ "regex",
  "rosc",
 ]
 

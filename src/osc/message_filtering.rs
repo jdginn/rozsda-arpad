@@ -52,38 +52,45 @@ impl FilterLayer {
     }
 }
 
-struct MessageFilter {
+fn matches_key_route(osc_addr: &str, key_route: &str) -> bool {
+    let osc_parts: Vec<&str> = osc_addr.split('/').filter(|s| !s.is_empty()).collect();
+    let key_parts: Vec<&str> = key_route.split('/').filter(|s| !s.is_empty()).collect();
+
+    if osc_parts.len() != key_parts.len() {
+        return false;
+    }
+
+    for (osc, key) in osc_parts.iter().zip(key_parts.iter()) {
+        if key.starts_with('{') && key.ends_with('}') {
+            // Wildcard segment, always matches
+            continue;
+        }
+        if osc != key {
+            return false;
+        }
+    }
+    true
+}
+
+pub struct MessageFilter {
     // Each layer represents some field in the OSC address we may need to filter on
     layers: Vec<FilterLayer>,
     dispatcher: Box<dyn Fn(OscMessage)>,
 }
 
 impl MessageFilter {
+    pub fn new(dispatcher: Box<dyn Fn(OscMessage)>) -> Self {
+        Self {
+            layers: vec![],
+            dispatcher,
+        }
+    }
+
     /// dispatcher is just another dispatcher
     pub fn dispatch_osc<L>(&mut self, packet: OscPacket, log_unknown: L)
     where
         L: Fn(&str),
     {
-        fn matches_key_route(osc_addr: &str, key_route: &str) -> bool {
-            let osc_parts: Vec<&str> = osc_addr.split('/').filter(|s| !s.is_empty()).collect();
-            let key_parts: Vec<&str> = key_route.split('/').filter(|s| !s.is_empty()).collect();
-
-            if osc_parts.len() != key_parts.len() {
-                return false;
-            }
-
-            for (osc, key) in osc_parts.iter().zip(key_parts.iter()) {
-                if key.starts_with('{') && key.ends_with('}') {
-                    // Wildcard segment, always matches
-                    continue;
-                }
-                if osc != key {
-                    return false;
-                }
-            }
-            true
-        }
-
         let msg = match &packet {
             OscPacket::Message(msg) => msg,
             _ => return,
