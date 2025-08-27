@@ -172,12 +172,28 @@ fn parse_address(address: &str) -> Vec<(String, Option<String>)> {
 //
 //  Write all of this generated code to the source file buffer
 
+#[derive(Debug)]
+struct ContextParam {
+    name: String,
+    typ: String,
+}
+
 // Helper to extract wildcard path segments as context keys
-fn extract_context_params(osc_address: &str) -> Vec<String> {
+fn extract_context_params(route: &OscRoute) -> Vec<ContextParam> {
     let mut keys = Vec::new();
     let re = Regex::new(r"\{([^}]+)\}").unwrap();
-    for cap in re.captures_iter(osc_address) {
-        keys.push(cap[1].to_string());
+    for cap in re.captures_iter(&route.osc_address) {
+        let name = cap[1].to_string();
+        let ty = route
+            .arguments
+            .iter()
+            .find(|a| a.name == *name)
+            .map(|a| rust_type(a.typ.as_str()))
+            .unwrap_or("String");
+        keys.push(ContextParam {
+            name,
+            typ: ty.to_string(),
+        });
     }
     keys
 }
@@ -198,45 +214,27 @@ fn build_context_name(osc_address: &str) -> String {
     name
 }
 
-// Helper to build struct field list for context
-fn build_struct_fields(context_keys: &[String], args: &[OscArgument]) -> String {
-    let mut fields = String::new();
-    for key in context_keys {
-        // Find corresponding argument type if present, else default to String
-        let ty = args
-            .iter()
-            .find(|a| a.name == *key)
-            .map(|a| rust_type(a.typ.as_str()))
-            .unwrap_or("String");
-        writeln!(&mut fields, "    pub {}: {},", key, ty).unwrap();
-    }
-    fields
-}
-
-// Main codegen function
-pub fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
-    use std::collections::{BTreeMap, BTreeSet};
+fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
+    use std::collections::BTreeMap;
 
     // Step 1: Gather all unique contexts with their keys and arguments
     #[derive(Debug)]
     struct ContextInfo {
         name: String,
-        keys: Vec<String>,
-        args: Vec<OscArgument>,
+        parameters: Vec<ContextParam>,
     }
     let mut contexts: BTreeMap<String, ContextInfo> = BTreeMap::new();
 
     for route in routes {
-        let keys = extract_context_params(&route.osc_address); // TODO: make this
-                                                               // return an option
+        let keys = extract_context_params(route); // TODO: make this
+                                                  // return an option
         if keys.is_empty() {
             continue; // No context, skip
         }
         let name = build_context_name(&route.osc_address);
         contexts.entry(name.clone()).or_insert(ContextInfo {
             name,
-            keys,
-            args: route.arguments.clone(),
+            parameters: keys,
         });
     }
 
@@ -244,8 +242,9 @@ pub fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     for ctx in contexts.values() {
         writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
         writeln!(code, "pub struct {}Context {{", ctx.name).unwrap();
-        let fields = build_struct_fields(&ctx.keys, &ctx.args);
-        write!(code, "{}", fields).unwrap();
+        for param in &ctx.parameters {
+            writeln!(code, "    pub {}: {},", param.name, param.typ).unwrap();
+        }
         writeln!(code, "}}\n").unwrap();
     }
 
@@ -284,14 +283,36 @@ pub fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
             }
         }
         // For each key, expect /([^/]+)
-        for _ in &ctx.keys {
+        for _ in &ctx.parameters {
             regex.push_str("/([^/]+)");
         }
 
         // Compose capture logic
         let mut capture_fields = String::new();
-        for (i, key) in ctx.keys.iter().enumerate() {
-            capture_fields.push_str(&format!("{}: caps[{}].to_string(), ", key, i + 1));
+        println!("Context parameters: {:?}", ctx.parameters);
+        for (i, param) in ctx.parameters.iter().enumerate() {
+            match param.typ.as_str() {
+                "i32" => capture_fields.push_str(&format!(
+                    "{}: caps[{}].parse().unwrap(), ",
+                    param.name,
+                    i + 1
+                )),
+                "f32" => capture_fields.push_str(&format!(
+                    "{}: caps[{}].parse().ok()?, ",
+                    param.name,
+                    i + 1
+                )),
+                "bool" => capture_fields.push_str(&format!(
+                    "{}: caps[{}] == \"true\", ",
+                    param.name,
+                    i + 1
+                )),
+                _ => capture_fields.push_str(&format!(
+                    "{}: caps[{}].to_string(), ",
+                    param.name,
+                    i + 1
+                )),
+            }
         }
 
         writeln!(code, "            OscContextKind::{} => {{", ctx.name).unwrap();
@@ -299,7 +320,7 @@ pub fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
             code,
             "                let re = Regex::new(r\"{}{}\").unwrap();",
             regex,
-            if ctx.keys.is_empty() { "" } else { "" } // No extra required
+            if ctx.parameters.is_empty() { "" } else { "" } // No extra required
         )
         .unwrap();
         writeln!(
