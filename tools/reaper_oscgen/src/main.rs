@@ -2,6 +2,7 @@ use clap::Parser;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -123,6 +124,196 @@ fn parse_address(address: &str) -> Vec<(String, Option<String>)> {
             }
             acc
         })
+}
+
+// For each route, identify the set of contexts, where a context is a unique chain of wildcarded
+// path arguments. E.g. "/track/{track_guid}/pan" has context "Track{track_guid}"
+//
+// Then, for each context, generate a Rust struct with fields for each argument. E.g. "Track{track_guid}"
+// becomes:
+// ```rust
+// pub struct TrackContext {
+//     pub track_guid: String,
+// }// ```
+//
+// All of these structs should also be members in an enum `OscContext`. E.g.
+// ```rust
+// #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+// pub enum OscContext {
+//    Track(TrackContext),
+//    TrackSend(TrackSendContext),
+// }
+// ```
+//
+// Finally, also create OscContextKind enum to identify the different context types and provide
+// rules for parsing an address into the appropriate OscContext variant.
+// E.g.
+// ```rust
+// pub enum OscContextKind {
+//    Track,
+//    TrackSend,
+//  }
+//
+//  impl OscContextKind {
+//    fn parse(&self, osc_address: &str) -> Option<OscContext> { ... }
+//      match self {
+//          // Matches: /track/{track_guid}/... (extracts track_guid)
+//          OscContextKind::Track => {
+//              let re = Regex::new(r"^/track/([^/]+)").unwrap();
+//              re.captures(osc_address).map(|caps| {
+//                  OscContext::Track(TrackContext {
+//                      track_guid: caps[1].to_string(),
+//                  })
+//              })
+//          }
+//          _ => None,
+//      }
+//  }```
+//
+//  Write all of this generated code to the source file buffer
+
+// Helper to extract wildcard path segments as context keys
+fn extract_context_params(osc_address: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let re = Regex::new(r"\{([^}]+)\}").unwrap();
+    for cap in re.captures_iter(osc_address) {
+        keys.push(cap[1].to_string());
+    }
+    keys
+}
+
+// Helper to build a context name from the path, e.g. "/track/{track_guid}/send/{send_guid}" -> "TrackSend"
+fn build_context_name(osc_address: &str) -> String {
+    let mut name = String::new();
+    for part in osc_address.split('/') {
+        if part.starts_with('{') && part.ends_with('}') {
+            continue;
+        }
+        if !part.is_empty() {
+            // Capitalize each path segment
+            name.push_str(&part[..1].to_uppercase());
+            name.push_str(&part[1..]);
+        }
+    }
+    name
+}
+
+// Helper to build struct field list for context
+fn build_struct_fields(context_keys: &[String], args: &[OscArgument]) -> String {
+    let mut fields = String::new();
+    for key in context_keys {
+        // Find corresponding argument type if present, else default to String
+        let ty = args
+            .iter()
+            .find(|a| a.name == *key)
+            .map(|a| rust_type(a.typ.as_str()))
+            .unwrap_or("String");
+        writeln!(&mut fields, "    pub {}: {},", key, ty).unwrap();
+    }
+    fields
+}
+
+// Main codegen function
+pub fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    // Step 1: Gather all unique contexts with their keys and arguments
+    #[derive(Debug)]
+    struct ContextInfo {
+        name: String,
+        keys: Vec<String>,
+        args: Vec<OscArgument>,
+    }
+    let mut contexts: BTreeMap<String, ContextInfo> = BTreeMap::new();
+
+    for route in routes {
+        let keys = extract_context_params(&route.osc_address); // TODO: make this
+                                                               // return an option
+        if keys.is_empty() {
+            continue; // No context, skip
+        }
+        let name = build_context_name(&route.osc_address);
+        contexts.entry(name.clone()).or_insert(ContextInfo {
+            name,
+            keys,
+            args: route.arguments.clone(),
+        });
+    }
+
+    // Step 2: Generate context structs
+    for ctx in contexts.values() {
+        writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
+        writeln!(code, "pub struct {}Context {{", ctx.name).unwrap();
+        let fields = build_struct_fields(&ctx.keys, &ctx.args);
+        write!(code, "{}", fields).unwrap();
+        writeln!(code, "}}\n").unwrap();
+    }
+
+    // Step 3: Generate OscContext enum
+    writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
+    writeln!(code, "pub enum OscContext {{").unwrap();
+    for ctx in contexts.values() {
+        writeln!(code, "    {}({}Context),", ctx.name, ctx.name).unwrap();
+    }
+    writeln!(code, "}}\n").unwrap();
+
+    // Step 4: Generate OscContextKind enum
+    writeln!(code, "pub enum OscContextKind {{").unwrap();
+    for ctx in contexts.values() {
+        writeln!(code, "    {},", ctx.name).unwrap();
+    }
+    writeln!(code, "}}\n").unwrap();
+
+    // Step 5: Generate parsing implementation for OscContextKind
+    writeln!(code, "impl OscContextKind {{").unwrap();
+    writeln!(
+        code,
+        "    pub fn parse(&self, osc_address: &str) -> Option<OscContext> {{"
+    )
+    .unwrap();
+    writeln!(code, "        match self {{").unwrap();
+
+    for ctx in contexts.values() {
+        // Build regex for context
+        let mut regex = String::from("^");
+        let mut key_idx = 1;
+        for part in ctx.name.split(|c: char| c.is_uppercase() && c != 'T') {
+            if !part.is_empty() {
+                regex.push_str("/");
+                regex.push_str(&part.to_lowercase());
+            }
+        }
+        // For each key, expect /([^/]+)
+        for _ in &ctx.keys {
+            regex.push_str("/([^/]+)");
+        }
+
+        // Compose capture logic
+        let mut capture_fields = String::new();
+        for (i, key) in ctx.keys.iter().enumerate() {
+            capture_fields.push_str(&format!("{}: caps[{}].to_string(), ", key, i + 1));
+        }
+
+        writeln!(code, "            OscContextKind::{} => {{", ctx.name).unwrap();
+        writeln!(
+            code,
+            "                let re = Regex::new(r\"{}{}\").unwrap();",
+            regex,
+            if ctx.keys.is_empty() { "" } else { "" } // No extra required
+        )
+        .unwrap();
+        writeln!(
+            code,
+            "                re.captures(osc_address).map(|caps| OscContext::{}({}Context {{ {} }}))",
+            ctx.name, ctx.name, capture_fields
+        ).unwrap();
+        writeln!(code, "            }}").unwrap();
+    }
+
+    writeln!(code, "            _ => None,").unwrap();
+    writeln!(code, "        }}").unwrap();
+    writeln!(code, "    }}").unwrap();
+    writeln!(code, "}}\n\n").unwrap();
 }
 
 /// Build hierarchy tree from all routes
@@ -609,22 +800,15 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
     // Add match_addr helper here
 }
 
-/// Generate the code from the tree
-fn generate_code(root: &TreeNode) -> String {
-    let mut code = String::new();
+fn write_imports(code: &mut String, root: &TreeNode) {
     code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
     code.push_str("use std::net::UdpSocket;\n");
     code.push_str("use std::collections::HashMap;\n");
     code.push_str("use std::sync::Arc;\n\n");
+    code.push_str("use regex::Regex;\n\n");
 
     code.push_str("#[derive(Debug)]\npub struct OscError;\n\n");
     code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
-
-    write_node(&mut code, root, &mut HashSet::new());
-
-    write_dispatcher(&mut code, root);
-
-    code
 }
 
 fn format_code(code: &str) -> String {
@@ -654,7 +838,11 @@ fn main() {
     let routes: Vec<OscRoute> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
 
     let tree = build_tree(&routes);
-    let code = generate_code(&tree);
+    let mut code = String::new();
+    write_imports(&mut code, &tree);
+    write_context_struct_types(&mut code, &routes);
+    write_node(&mut code, &tree, &mut HashSet::new());
+    write_dispatcher(&mut code, &tree);
 
     let formatted_code = match std::panic::catch_unwind(|| format_code(&code)) {
         Ok(formatted) => {

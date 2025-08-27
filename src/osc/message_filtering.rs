@@ -44,8 +44,8 @@ pub struct TrackFxParamContext {
 // These should also be auto-generated from the spec. Each variant's parse() method can use a
 // regex to extract the relevant parameters from the OSC address.
 pub enum OscContextKind {
-    TrackGUID,
-    TrackSendGUID,
+    Track,
+    TrackSend,
 }
 
 impl OscContextKind {
@@ -53,7 +53,7 @@ impl OscContextKind {
     fn parse(&self, osc_address: &str) -> Option<OscContext> {
         match self {
             // Matches: /track/{track_guid}/... (extracts track_guid)
-            OscContextKind::TrackGUID => {
+            OscContextKind::Track => {
                 let re = Regex::new(r"^/track/([^/]+)").unwrap();
                 re.captures(osc_address).map(|caps| {
                     OscContext::Track(TrackContext {
