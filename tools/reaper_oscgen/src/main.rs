@@ -214,6 +214,31 @@ fn build_context_name(osc_address: &str) -> String {
     name
 }
 
+/// Generates a regex string for an OSC address template.
+/// E.g. "/track/{track_guid}/index" -> r"^/track/([^/]+)/index$"
+pub fn osc_address_template_to_regex(osc_address: &str) -> String {
+    let mut regex = String::from("^");
+    let mut chars = osc_address.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' => {
+                // Skip until closing brace
+                for c2 in chars.by_ref() {
+                    if c2 == '}' {
+                        break;
+                    }
+                }
+                regex.push_str("([^/]+)");
+            }
+            _ => {
+                regex.push(c);
+            }
+        }
+    }
+    regex.push('$');
+    regex
+}
+
 fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     use std::collections::BTreeMap;
 
@@ -222,6 +247,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     struct ContextInfo {
         name: String,
         parameters: Vec<ContextParam>,
+        regex: Regex,
     }
     let mut contexts: BTreeMap<String, ContextInfo> = BTreeMap::new();
 
@@ -232,9 +258,11 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
             continue; // No context, skip
         }
         let name = build_context_name(&route.osc_address);
+        let regex = osc_address_template_to_regex(&route.osc_address);
         contexts.entry(name.clone()).or_insert(ContextInfo {
             name,
             parameters: keys,
+            regex: Regex::new(&regex).unwrap(),
         });
     }
 
@@ -273,20 +301,6 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     writeln!(code, "        match self {{").unwrap();
 
     for ctx in contexts.values() {
-        // Build regex for context
-        let mut regex = String::from("^");
-        let mut key_idx = 1;
-        for part in ctx.name.split(|c: char| c.is_uppercase() && c != 'T') {
-            if !part.is_empty() {
-                regex.push_str("/");
-                regex.push_str(&part.to_lowercase());
-            }
-        }
-        // For each key, expect /([^/]+)
-        for _ in &ctx.parameters {
-            regex.push_str("/([^/]+)");
-        }
-
         // Compose capture logic
         let mut capture_fields = String::new();
         println!("Context parameters: {:?}", ctx.parameters);
@@ -319,7 +333,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
         writeln!(
             code,
             "                let re = Regex::new(r\"{}{}\").unwrap();",
-            regex,
+            ctx.regex,
             if ctx.parameters.is_empty() { "" } else { "" } // No extra required
         )
         .unwrap();
@@ -821,7 +835,7 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
     // Add match_addr helper here
 }
 
-fn write_imports(code: &mut String, root: &TreeNode) {
+fn write_imports(code: &mut String) {
     code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
     code.push_str("use std::net::UdpSocket;\n");
     code.push_str("use std::collections::HashMap;\n");
@@ -860,7 +874,7 @@ fn main() {
 
     let tree = build_tree(&routes);
     let mut code = String::new();
-    write_imports(&mut code, &tree);
+    write_imports(&mut code);
     write_context_struct_types(&mut code, &routes);
     write_node(&mut code, &tree, &mut HashSet::new());
     write_dispatcher(&mut code, &tree);
@@ -877,4 +891,44 @@ fn main() {
         Err(_) => &code,
     };
     fs::write(&cli.out, formatted_code).expect("Failed to write output Rust file");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_track_index() {
+        let regex_str = osc_address_template_to_regex("/track/{track_guid}/index");
+        let re = regex::Regex::new(&regex_str).unwrap();
+        let caps = re.captures("/track/1234/index").unwrap();
+        assert_eq!(&caps[1], "1234");
+    }
+
+    #[test]
+    fn test_track_selected() {
+        let regex_str = osc_address_template_to_regex("/track/{track_guid}/selected");
+        let re = regex::Regex::new(&regex_str).unwrap();
+        let caps = re.captures("/track/abcd/selected").unwrap();
+        assert_eq!(&caps[1], "abcd");
+    }
+
+    #[test]
+    fn test_track_send_guid() {
+        let regex_str = osc_address_template_to_regex("/track/{track_guid}/send/{send_index}/guid");
+        let re = regex::Regex::new(&regex_str).unwrap();
+        let caps = re.captures("/track/abcd/send/5/guid").unwrap();
+        assert_eq!(&caps[1], "abcd");
+        assert_eq!(&caps[2], "5");
+    }
+
+    #[test]
+    fn test_track_send_volume() {
+        let regex_str =
+            osc_address_template_to_regex("/track/{track_guid}/send/{send_index}/volume");
+        let re = regex::Regex::new(&regex_str).unwrap();
+        let caps = re.captures("/track/abcd/send/3/volume").unwrap();
+        assert_eq!(&caps[1], "abcd");
+        assert_eq!(&caps[2], "3");
+    }
 }
