@@ -242,20 +242,6 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
             writeln!(code, "    pub {}: {},", param.name, param.typ).unwrap();
         }
         writeln!(code, "}}\n\n").unwrap();
-        // writeln!(code, "impl ContextTrait for {}Context {{}}", ctx.name).unwrap();
-        // writeln!(code, "    fn parameter_values(&self) -> Vec<String> {{").unwrap();
-        // writeln!(
-        //     code,
-        //     "        vec![{}]",
-        //     ctx.parameters
-        //         .iter()
-        //         .map(|p| format!("self.{}.clone()", p.name))
-        //         .collect::<Vec<_>>()
-        //         .join(", ")
-        // )
-        // .unwrap();
-        // writeln!(code, "    }}\n}}\n\n").unwrap();
-        // writeln!(code, "    }}\n}}\n\n").unwrap();
     }
 
     // Step 3: Generate OscContext enum
@@ -266,18 +252,6 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     }
     writeln!(code, "}}\n\n").unwrap();
     writeln!(code, "impl ContextTrait for OscContext {{}}\n\n").unwrap();
-    // writeln!(code, "impl ContextTrait for OscContext {{").unwrap();
-    // writeln!(code, "    fn parameter_values(&self) -> Vec<String> {{").unwrap();
-    // writeln!(code, "        match self {{").unwrap();
-    // for ctx in contexts.values() {
-    //     writeln!(
-    //         code,
-    //         "            OscContext::{}(c) => c.parameter_values(),",
-    //         ctx.name
-    //     )
-    //     .unwrap();
-    // }
-    // writeln!(code, "        }}\n    }}\n}}\n\n").unwrap();
 
     // Step 4: Generate OscContextKind enum and parsing implementation
     writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
