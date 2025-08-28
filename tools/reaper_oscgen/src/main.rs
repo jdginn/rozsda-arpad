@@ -166,18 +166,26 @@ fn extract_context_params(route: &OscRoute) -> Vec<ContextParam> {
     keys
 }
 
-// Helper to build a context name from the path, e.g. "/track/{track_guid}/send/{send_guid}" -> "TrackSend"
+/// Helper to build a context name from the OSC path, e.g.
+/// "/track/{track_guid}/send/{send_index}/guid" -> "TrackSend"
+/// "/track/{track_guid}/index" -> "Track"
+/// "/track/{track_guid}/send/{send_index}/volume" -> "TrackSend"
 fn build_context_name(osc_address: &str) -> String {
     let mut name = String::new();
-    for part in osc_address.split('/') {
-        if part.starts_with('{') && part.ends_with('}') {
-            continue;
-        }
-        if !part.is_empty() {
-            // Capitalize each path segment
+    let parts: Vec<_> = osc_address.split('/').filter(|s| !s.is_empty()).collect();
+    let mut i = 0;
+    while i < parts.len() {
+        let part = parts[i];
+        // If this segment is not a wildcard, and the next segment exists and is a wildcard, include it
+        let next_is_wildcard = parts
+            .get(i + 1)
+            .map(|p| p.starts_with('{') && p.ends_with('}'))
+            .unwrap_or(false);
+        if !part.starts_with('{') && !part.ends_with('}') && next_is_wildcard {
             name.push_str(&part[..1].to_uppercase());
             name.push_str(&part[1..]);
         }
+        i += 1;
     }
     name
 }
@@ -867,7 +875,7 @@ fn main() {
 }
 
 #[cfg(test)]
-mod tests {
+mod test_osc_address_template_to_regex {
     use super::*;
 
     #[test]
@@ -903,5 +911,52 @@ mod tests {
         let caps = re.captures("/track/abcd/send/3/volume").unwrap();
         assert_eq!(&caps[1], "abcd");
         assert_eq!(&caps[2], "3");
+    }
+}
+
+#[cfg(test)]
+mod test_build_context_name {
+    use super::*;
+
+    #[test]
+    fn test_track_index() {
+        assert_eq!(build_context_name("/track/{track_guid}/index"), "Track");
+    }
+
+    #[test]
+    fn test_track_selected() {
+        assert_eq!(build_context_name("/track/{track_guid}/selected"), "Track");
+    }
+
+    #[test]
+    fn test_track_send_guid() {
+        assert_eq!(
+            build_context_name("/track/{track_guid}/send/{send_index}/guid"),
+            "TrackSend"
+        );
+    }
+
+    #[test]
+    fn test_track_send_volume() {
+        assert_eq!(
+            build_context_name("/track/{track_guid}/send/{send_index}/volume"),
+            "TrackSend"
+        );
+    }
+
+    #[test]
+    fn test_nested_example() {
+        assert_eq!(
+            build_context_name("/track/{track_guid}/fx/{fx_guid}/param/{param_guid}/value"),
+            "TrackFxParam"
+        );
+    }
+
+    #[test]
+    fn test_single_path() {
+        assert_eq!(
+            build_context_name("/project/{project_guid}/name"),
+            "Project"
+        );
     }
 }
