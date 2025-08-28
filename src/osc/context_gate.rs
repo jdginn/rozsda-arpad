@@ -1,8 +1,27 @@
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Debug;
 
 use rosc::{OscMessage, OscPacket};
 
-use crate::osc::generated_osc::{OscContext, OscContextKind};
+/// Trait representing a specific OSC address context, such as a track or send instance.
+/// Implementors should provide identity, cloning, and a way to extract parameter values.
+pub trait ContextTrait: Debug + Eq + Clone + std::hash::Hash {
+    /// Returns a vector of the parameter values that define this context.
+    fn parameter_values(&self) -> Vec<String>;
+}
+
+/// Trait representing a shape for an OSC address context, such as a track or send.
+/// Implementors should provide parsing, identity, and cloning.
+pub trait ContextKindTrait<T: ContextTrait>: Debug + Eq + Clone + std::hash::Hash {
+    /// Attempt to parse this context from the given OSC address.
+    /// Returns Some(context instance) if matched, else None.
+    fn parse(&self, osc_address: &str) -> Option<T>
+    where
+        Self: Sized;
+
+    /// Returns a human-readable name for this context (for logging, debugging).
+    fn context_name(&self) -> &'static str;
+}
 
 /// ContextGate manages all messages whose address is relevant to some particular OscContext, where
 /// an OscContext defines some specific entity whose messages we either want to gate or propagate
@@ -12,23 +31,23 @@ use crate::osc::generated_osc::{OscContext, OscContextKind};
 /// entities that live at the same layer of the hierarchy, encode the same set of identifiers into
 /// their address, and depend on the same initialization criteria. Each concrete context is handled
 /// individually.
-struct ContextGate {
+struct ContextGate<T: ContextTrait, K: ContextKindTrait<T>> {
     // The shape of the OscContext that this layer is responsible for
-    parameter_sequence: OscContextKind,
+    parameter_sequence: K,
     // the OSC address that "unlocks" this layer
     // E.g. for TrackGUID, this might be "/track/{track_guid}/index"
     key_route: String, // TODO: consider supporting multiple
     // We buffer messages if this is false. When it's true, we pass messages through.
     // At the moment we set it true, we also flush the buffer.
-    initialized: HashMap<OscContext, bool>,
+    initialized: HashMap<T, bool>,
     // Called when a specific context is initialized
-    on_initialized: Option<Box<dyn Fn(OscContext)>>,
-    buffer: HashMap<OscContext, VecDeque<OscMessage>>,
+    on_initialized: Option<Box<dyn Fn(T)>>,
+    buffer: HashMap<T, VecDeque<OscMessage>>,
 }
 
-impl ContextGate {
+impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGate<T, K> {
     /// Mark a specific concrete OscContext as initialized
-    pub fn initialize(&mut self, values: OscContext) {
+    pub fn initialize(&mut self, values: T) {
         if let Some(callback) = &self.on_initialized {
             callback(values.clone());
         }
@@ -70,13 +89,13 @@ fn matches_key_pattern(osc_addr: &str, key_route: &str) -> bool {
 /// message will arrive before the others.
 ///
 /// Once the gate's initialization condition is met, all messages will be passed through.
-pub struct OscGatedRouter {
+pub struct OscGatedRouter<T: ContextTrait, K: ContextKindTrait<T>> {
     // Each layer represents some field in the OSC address we may need to filter on
-    layers: Vec<ContextGate>,
+    layers: Vec<ContextGate<T, K>>,
     dispatcher: Box<dyn Fn(OscMessage)>,
 }
 
-impl OscGatedRouter {
+impl<T: ContextTrait, K: ContextKindTrait<T>> OscGatedRouter<T, K> {
     pub fn new(dispatcher: Box<dyn Fn(OscMessage)>) -> Self {
         Self {
             layers: vec![],
@@ -86,10 +105,7 @@ impl OscGatedRouter {
 
     /// dispatch_osc gates messages until their initialization condition is met and then passes
     /// messages through to self.dispatcher.
-    pub fn dispatch_osc<L>(&mut self, packet: OscPacket)
-    where
-        L: Fn(&str),
-    {
+    pub fn dispatch_osc(&mut self, packet: OscPacket) {
         let msg = match &packet {
             OscPacket::Message(msg) => msg,
             _ => return,
