@@ -126,52 +126,6 @@ fn parse_address(address: &str) -> Vec<(String, Option<String>)> {
         })
 }
 
-// For each route, identify the set of contexts, where a context is a unique chain of wildcarded
-// path arguments. E.g. "/track/{track_guid}/pan" has context "Track{track_guid}"
-//
-// Then, for each context, generate a Rust struct with fields for each argument. E.g. "Track{track_guid}"
-// becomes:
-// ```rust
-// pub struct TrackContext {
-//     pub track_guid: String,
-// }// ```
-//
-// All of these structs should also be members in an enum `OscContext`. E.g.
-// ```rust
-// #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-// pub enum OscContext {
-//    Track(TrackContext),
-//    TrackSend(TrackSendContext),
-// }
-// ```
-//
-// Finally, also create OscContextKind enum to identify the different context types and provide
-// rules for parsing an address into the appropriate OscContext variant.
-// E.g.
-// ```rust
-// pub enum OscContextKind {
-//    Track,
-//    TrackSend,
-//  }
-//
-//  impl OscContextKind {
-//    fn parse(&self, osc_address: &str) -> Option<OscContext> { ... }
-//      match self {
-//          // Matches: /track/{track_guid}/... (extracts track_guid)
-//          OscContextKind::Track => {
-//              let re = Regex::new(r"^/track/([^/]+)").unwrap();
-//              re.captures(osc_address).map(|caps| {
-//                  OscContext::Track(TrackContext {
-//                      track_guid: caps[1].to_string(),
-//                  })
-//              })
-//          }
-//          _ => None,
-//      }
-//  }```
-//
-//  Write all of this generated code to the source file buffer
-
 #[derive(Debug)]
 struct ContextParam {
     name: String,
