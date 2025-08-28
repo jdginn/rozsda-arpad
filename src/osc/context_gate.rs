@@ -5,10 +5,7 @@ use rosc::{OscMessage, OscPacket};
 
 /// Trait representing a specific OSC address context, such as a track or send instance.
 /// Implementors should provide identity, cloning, and a way to extract parameter values.
-pub trait ContextTrait: Debug + Eq + Clone + std::hash::Hash {
-    /// Returns a vector of the parameter values that define this context.
-    fn parameter_values(&self) -> Vec<String>;
-}
+pub trait ContextTrait: Debug + Eq + Clone + std::hash::Hash {}
 
 /// Trait representing a shape for an OSC address context, such as a track or send.
 /// Implementors should provide parsing, identity, and cloning.

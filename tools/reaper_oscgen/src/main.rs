@@ -132,6 +132,20 @@ struct ContextParam {
     typ: String,
 }
 
+fn write_imports(code: &mut String) {
+    code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
+    code.push_str("use std::net::UdpSocket;\n");
+    code.push_str("use std::collections::HashMap;\n");
+    code.push_str("use std::sync::Arc;\n\n");
+    code.push_str("use regex::Regex;\n\n");
+
+    code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
+
+    code.push_str("use crate::osc::context_gate::{ContextKindTrait, ContextTrait};\n\n");
+
+    code.push_str("#[derive(Debug)]\npub struct OscError;\n\n");
+}
+
 // Helper to extract wildcard path segments as context keys
 fn extract_context_params(route: &OscRoute) -> Vec<ContextParam> {
     let mut keys = Vec::new();
@@ -227,7 +241,21 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
         for param in &ctx.parameters {
             writeln!(code, "    pub {}: {},", param.name, param.typ).unwrap();
         }
-        writeln!(code, "}}\n").unwrap();
+        writeln!(code, "}}\n\n").unwrap();
+        // writeln!(code, "impl ContextTrait for {}Context {{}}", ctx.name).unwrap();
+        // writeln!(code, "    fn parameter_values(&self) -> Vec<String> {{").unwrap();
+        // writeln!(
+        //     code,
+        //     "        vec![{}]",
+        //     ctx.parameters
+        //         .iter()
+        //         .map(|p| format!("self.{}.clone()", p.name))
+        //         .collect::<Vec<_>>()
+        //         .join(", ")
+        // )
+        // .unwrap();
+        // writeln!(code, "    }}\n}}\n\n").unwrap();
+        // writeln!(code, "    }}\n}}\n\n").unwrap();
     }
 
     // Step 3: Generate OscContext enum
@@ -236,20 +264,48 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     for ctx in contexts.values() {
         writeln!(code, "    {}({}Context),", ctx.name, ctx.name).unwrap();
     }
-    writeln!(code, "}}\n").unwrap();
+    writeln!(code, "}}\n\n").unwrap();
+    writeln!(code, "impl ContextTrait for OscContext {{}}\n\n").unwrap();
+    // writeln!(code, "impl ContextTrait for OscContext {{").unwrap();
+    // writeln!(code, "    fn parameter_values(&self) -> Vec<String> {{").unwrap();
+    // writeln!(code, "        match self {{").unwrap();
+    // for ctx in contexts.values() {
+    //     writeln!(
+    //         code,
+    //         "            OscContext::{}(c) => c.parameter_values(),",
+    //         ctx.name
+    //     )
+    //     .unwrap();
+    // }
+    // writeln!(code, "        }}\n    }}\n}}\n\n").unwrap();
 
-    // Step 4: Generate OscContextKind enum
+    // Step 4: Generate OscContextKind enum and parsing implementation
+    writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
     writeln!(code, "pub enum OscContextKind {{").unwrap();
     for ctx in contexts.values() {
         writeln!(code, "    {},", ctx.name).unwrap();
     }
-    writeln!(code, "}}\n").unwrap();
-
-    // Step 5: Generate parsing implementation for OscContextKind
-    writeln!(code, "impl OscContextKind {{").unwrap();
+    writeln!(code, "}}\n\n").unwrap();
     writeln!(
         code,
-        "    pub fn parse(&self, osc_address: &str) -> Option<OscContext> {{"
+        "impl ContextKindTrait<OscContext> for OscContextKind {{"
+    )
+    .unwrap();
+    writeln!(code, "    fn context_name(&self) -> &'static str {{").unwrap();
+    writeln!(code, "        match self {{").unwrap();
+    for ctx in contexts.values() {
+        writeln!(
+            code,
+            "            OscContextKind::{} => \"{}\",",
+            ctx.name, ctx.name
+        )
+        .unwrap();
+    }
+    writeln!(code, "        }}\n    }}\n\n").unwrap();
+
+    writeln!(
+        code,
+        "    fn parse(&self, osc_address: &str) -> Option<OscContext> {{"
     )
     .unwrap();
     writeln!(code, "        match self {{").unwrap();
@@ -787,17 +843,6 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
     code.push_str("    log_unknown(addr);\n}\n");
 
     // Add match_addr helper here
-}
-
-fn write_imports(code: &mut String) {
-    code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
-    code.push_str("use std::net::UdpSocket;\n");
-    code.push_str("use std::collections::HashMap;\n");
-    code.push_str("use std::sync::Arc;\n\n");
-    code.push_str("use regex::Regex;\n\n");
-
-    code.push_str("#[derive(Debug)]\npub struct OscError;\n\n");
-    code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
 }
 
 fn format_code(code: &str) -> String {
