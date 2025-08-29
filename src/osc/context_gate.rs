@@ -73,6 +73,9 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
 trait ContextualDispatcher {
     fn dispatch_osc(&mut self, msg: OscMessage, dispatcher: &mut dyn FnMut(OscMessage));
     fn purge_stale_buffers(&mut self, timeout: Duration);
+
+    #[cfg(test)]
+    fn test_info(&self, ctx_str: &str) -> HashMap<String, usize>;
 }
 
 /// ContextGate manages all messages whose address is relevant to some particular OscContext, where
@@ -202,6 +205,28 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
             }
         }
     }
+
+    #[cfg(test)]
+    fn test_info(&self, ctx_str: &str) -> HashMap<String, usize> {
+        let mut info = HashMap::new();
+
+        // Find the context with the matching string representation
+        for (ctx, initialized) in &self.initialized {
+            if format!("{:?}", ctx) == ctx_str {
+                info.insert("initialized".to_string(), if *initialized { 1 } else { 0 });
+                break;
+            }
+        }
+
+        for (ctx, buffer) in &self.buffer {
+            if format!("{:?}", ctx) == ctx_str {
+                info.insert("buffered_count".to_string(), buffer.len());
+                break;
+            }
+        }
+
+        info
+    }
 }
 
 // Main builder for the router
@@ -326,6 +351,38 @@ impl OscGatedRouter {
         self.layers.iter_mut().for_each(|layer| {
             layer.dispatch_osc(msg.to_owned(), &mut *self.dispatcher);
         });
+    }
+
+    #[cfg(test)]
+    pub fn test_context(&self, ctx: impl Debug) -> HashMap<String, usize> {
+        let ctx_str = format!("{:?}", ctx);
+        let mut merged_info = HashMap::new();
+
+        for layer in &self.layers {
+            let info = layer.test_info(&ctx_str);
+            for (k, v) in info {
+                merged_info.insert(k, v);
+            }
+        }
+
+        merged_info
+    }
+
+    #[cfg(test)]
+    pub fn is_context_initialized(&self, ctx: impl Debug) -> bool {
+        self.test_context(ctx)
+            .get("initialized")
+            .copied()
+            .unwrap_or(0)
+            > 0
+    }
+
+    #[cfg(test)]
+    pub fn get_buffered_messages_count(&self, ctx: impl Debug) -> usize {
+        self.test_context(ctx)
+            .get("buffered_count")
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -454,8 +511,8 @@ mod tests {
 
         // No messages should be received yet
         assert_eq!(received.borrow().len(), 0);
-        // assert_eq!(router.get_buffered_messages_count(&context), 1);
-        // assert!(!router.is_context_initialized(&context));
+        assert_eq!(router.get_buffered_messages_count(&context), 1);
+        assert!(!router.is_context_initialized(&context));
 
         // Send the key message (should unlock processing)
         router.dispatch_osc(create_test_message(
@@ -469,8 +526,8 @@ mod tests {
         assert_eq!(received.borrow()[1].addr, "/track/12345/index");
 
         // Buffer should be empty and context initialized
-        // assert_eq!(router.get_buffered_messages_count(&context), 0);
-        // assert!(router.is_context_initialized(&context));
+        assert_eq!(router.get_buffered_messages_count(&context), 0);
+        assert!(router.is_context_initialized(&context));
     }
 
     // Table-driven testing for multiple scenarios
@@ -540,12 +597,12 @@ mod tests {
                 scenario.name
             );
 
-            // assert_eq!(
-            //     router.is_context_initialized(&context),
-            //     scenario.expected_initialized,
-            //     "Scenario '{}' initialization status mismatch",
-            //     scenario.name
-            // );
+            assert_eq!(
+                router.is_context_initialized(&context),
+                scenario.expected_initialized,
+                "Scenario '{}' initialization status mismatch",
+                scenario.name
+            );
         }
     }
 
@@ -585,7 +642,7 @@ mod tests {
         router.purge_stale_buffers();
 
         // // Buffer should be empty
-        // assert_eq!(router.get_buffered_messages_count(&context), 0);
+        assert_eq!(router.get_buffered_messages_count(&context), 0);
     }
 
     #[test]
@@ -602,8 +659,8 @@ mod tests {
         ));
 
         // // Check that context is NOT yet initialized
-        // assert!(!router.is_context_initialized(&context));
-        // assert_eq!(received.borrow().len(), 0);
+        assert!(!router.is_context_initialized(&context));
+        assert_eq!(received.borrow().len(), 0);
 
         // Send second key route
         router.dispatch_osc(create_test_message(
@@ -612,8 +669,8 @@ mod tests {
         ));
 
         // // Now context should be initialized and both messages processed
-        // assert!(router.is_context_initialized(&context));
-        // assert_eq!(received.borrow().len(), 2);
+        assert!(router.is_context_initialized(&context));
+        assert_eq!(received.borrow().len(), 2);
     }
 
     fn create_test_router_with_multiple_keys() -> (OscGatedRouter, Rc<RefCell<Vec<OscMessage>>>) {
@@ -661,12 +718,12 @@ mod tests {
 
         // Only track1's messages should be processed
         assert_eq!(received.borrow().len(), 2);
-        // assert!(router.is_context_initialized(&TrackContext {
-        //     track_guid: "track1".to_string()
-        // }));
-        // assert!(!router.is_context_initialized(&TrackContext {
-        //     track_guid: "track2".to_string()
-        // }));
+        assert!(router.is_context_initialized(&TrackContext {
+            track_guid: "track1".to_string()
+        }));
+        assert!(!router.is_context_initialized(&TrackContext {
+            track_guid: "track2".to_string()
+        }));
 
         // Initialize track2
         router.dispatch_osc(create_test_message(
@@ -676,9 +733,9 @@ mod tests {
 
         // Now track2's messages should also be processed
         assert_eq!(received.borrow().len(), 4);
-        // assert!(router.is_context_initialized(&TrackContext {
-        //     track_guid: "track2".to_string()
-        // }));
+        assert!(router.is_context_initialized(&TrackContext {
+            track_guid: "track2".to_string()
+        }));
     }
 
     #[test]
@@ -800,7 +857,7 @@ mod tests {
             }
 
             // Context should be initialized regardless of order
-            // assert!(router.is_context_initialized(&context));
+            assert!(router.is_context_initialized(&context));
             assert_eq!(received.borrow().len(), 2);
         }
     }
@@ -882,7 +939,7 @@ mod tests {
         router.purge_stale_buffers();
 
         // Buffer should be empty
-        // assert_eq!(router.get_buffered_messages_count(&context), 0);
+        assert_eq!(router.get_buffered_messages_count(&context), 0);
 
         // Now send messages again for the same context
         router.dispatch_osc(create_test_message(
@@ -897,7 +954,7 @@ mod tests {
 
         // Should process both messages
         assert_eq!(received_messages_clone.borrow().len(), 2);
-        // assert!(router.is_context_initialized(&context));
+        assert!(router.is_context_initialized(&context));
     }
 
     #[test]
@@ -996,23 +1053,23 @@ mod tests {
         }
 
         // // Verify buffers are populated
-        // assert!(
-        //     router.get_buffered_messages_count(&TrackContext {
-        //         track_guid: "resource0".to_string()
-        //     }) > 0
-        // );
+        assert!(
+            router.get_buffered_messages_count(&TrackContext {
+                track_guid: "resource0".to_string()
+            }) > 0
+        );
 
         // Wait and purge
         sleep(Duration::from_millis(100));
         router.purge_stale_buffers();
 
         // // Verify buffers are cleared
-        // assert_eq!(
-        //     router.get_buffered_messages_count(&TrackContext {
-        //         track_guid: "resource0".to_string()
-        //     }),
-        //     0
-        // );
+        assert_eq!(
+            router.get_buffered_messages_count(&TrackContext {
+                track_guid: "resource0".to_string()
+            }),
+            0
+        );
 
         // Memory usage should now be minimal
         // Note: In real tests you might want to use a memory profiler here
