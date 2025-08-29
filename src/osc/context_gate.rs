@@ -136,7 +136,6 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
     }
     fn dispatch_osc(&mut self, msg: OscMessage, dispatcher: &mut dyn FnMut(OscMessage)) {
         if let Some(context) = self.parameter_sequence.parse(&msg.addr) {
-            println!("Message {:?} matched context: {:?}", msg.addr, context);
             // Update timestamp for this context
             self.buffer_timestamps
                 .insert(context.clone(), Instant::now());
@@ -159,15 +158,7 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
                         }
                     }
 
-                    println!(
-                        "Context {:?} initialized: {:?}, is_key_message: {}",
-                        context,
-                        self.initialized.get(&context),
-                        is_key_message
-                    );
-
                     if is_key_message {
-                        println!("Received key message for context {:?}: {:?}", context, msg);
                         // Store the key message
                         let key_msgs = self.key_messages.entry(context.clone()).or_default();
                         key_msgs.insert(matched_key_route.clone(), msg.to_owned());
@@ -185,10 +176,6 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
                             // Process buffered messages
                             if let Some(buffer) = self.buffer.get_mut(&context) {
                                 while let Some(buffered_msg) = buffer.pop_front() {
-                                    println!(
-                                        "Dispatching buffered message for context {:?}: {:?}",
-                                        context, buffered_msg
-                                    );
                                     (dispatcher)(buffered_msg);
                                 }
                             }
@@ -197,7 +184,6 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
                         }
                     } else {
                         // Not the key message; buffer it
-                        println!("Buffering message for context {:?}: {:?}", context, msg);
                         let buffer = self.buffer.entry(context.clone()).or_default();
                         buffer.push_back(msg.clone());
                     }
@@ -345,8 +331,6 @@ impl OscGatedRouter {
             OscPacket::Message(msg) => msg,
             _ => return,
         };
-
-        println!("Dispatching OSC message: {:?}", msg);
 
         self.layers.iter_mut().for_each(|layer| {
             layer.dispatch_osc(msg.to_owned(), &mut *self.dispatcher);
