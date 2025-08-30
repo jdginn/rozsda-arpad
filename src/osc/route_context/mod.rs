@@ -2,4 +2,5 @@ pub mod context_gate;
 
 pub use context_gate::{ContextGateBuilder, ContextKindTrait, ContextTrait, OscGatedRouterBuilder};
 
-mod tests;
+#[cfg(test)]
+mod context_gate_tests;

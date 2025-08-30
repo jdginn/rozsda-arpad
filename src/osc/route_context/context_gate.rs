@@ -71,7 +71,11 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
 }
 
 trait ContextualDispatcher {
-    fn dispatch_osc(&mut self, msg: OscMessage, dispatcher: &mut dyn FnMut(OscMessage));
+    fn dispatch_osc(
+        &mut self,
+        msg: OscMessage,
+        dispatcher: &mut dyn FnMut(OscMessage),
+    ) -> Option<()>;
     fn purge_stale_buffers(&mut self, timeout: Duration);
 
     #[cfg(test)]
@@ -134,58 +138,80 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
             self.key_messages.remove(&ctx);
         }
     }
-    fn dispatch_osc(&mut self, msg: OscMessage, dispatcher: &mut dyn FnMut(OscMessage)) {
-        if let Some(context) = self.parameter_sequence.parse(&msg.addr) {
-            // Update timestamp for this context
-            self.buffer_timestamps
-                .insert(context.clone(), Instant::now());
+    fn dispatch_osc(
+        &mut self,
+        msg: OscMessage,
+        dispatcher: &mut dyn FnMut(OscMessage),
+    ) -> Option<()> {
+        match self.parameter_sequence.parse(&msg.addr) {
+            None => None,
+            Some(context) => {
+                // Update timestamp for this context
+                self.buffer_timestamps
+                    .insert(context.clone(), Instant::now());
 
-            // If this message is relevant to this layer...
-            match self.initialized.get(&context) {
-                Some(true) => {
-                    // context is already initialized, just dispatch
-                    (dispatcher)(msg.to_owned());
-                }
-                Some(false) | None => {
-                    // Check if this is the key message
-                    let mut is_key_message = false;
-                    let mut matched_key_route = String::new();
-                    for key_route in &self.key_routes {
-                        if matches_key_pattern(&msg.addr, key_route) {
-                            is_key_message = true;
-                            matched_key_route = key_route.clone();
-                            break;
-                        }
+                // If this message is relevant to this layer...
+                match self.initialized.get(&context) {
+                    Some(true) => {
+                        // context is already initialized, just dispatch
+                        (dispatcher)(msg.to_owned());
+                        Some(())
                     }
-
-                    if is_key_message {
-                        // Store the key message
-                        let key_msgs = self.key_messages.entry(context.clone()).or_default();
-                        key_msgs.insert(matched_key_route.clone(), msg.to_owned());
-
-                        // Check if we have all required key messages
-                        let has_all_key_messages = self
-                            .key_routes
-                            .iter()
-                            .all(|route| key_msgs.contains_key(route));
-
-                        if has_all_key_messages {
-                            // Initialize the context
-                            self.initialize(context.clone());
-
-                            // Process buffered messages
-                            if let Some(buffer) = self.buffer.get_mut(&context) {
-                                while let Some(buffered_msg) = buffer.pop_front() {
-                                    (dispatcher)(buffered_msg);
-                                }
+                    Some(false) | None => {
+                        // Check if this is the key message
+                        let mut is_key_message = false;
+                        let mut matched_key_route = String::new();
+                        for key_route in &self.key_routes {
+                            if matches_key_pattern(&msg.addr, key_route) {
+                                is_key_message = true;
+                                matched_key_route = key_route.clone();
+                                break;
                             }
-                            // Dispatch this message
-                            (dispatcher)(msg.clone());
                         }
-                    } else {
-                        // Not the key message; buffer it
-                        let buffer = self.buffer.entry(context.clone()).or_default();
-                        buffer.push_back(msg.clone());
+
+                        if is_key_message {
+                            // Store the key message
+                            let key_msgs = self.key_messages.entry(context.clone()).or_default();
+                            key_msgs.insert(matched_key_route.clone(), msg.to_owned());
+
+                            // Check if we have all required key messages
+                            let has_all_key_messages = self
+                                .key_routes
+                                .iter()
+                                .all(|route| key_msgs.contains_key(route));
+
+                            println!(
+                                "ContextGate: Received key message for context {:?} on route {}. Has all key messages: {}, Key messages: {:?}",
+                                context,
+                                matched_key_route,
+                                has_all_key_messages,
+                                key_msgs.keys().collect::<Vec<_>>()
+                            );
+                            if has_all_key_messages {
+                                // Initialize the context
+                                self.initialize(context.clone());
+
+                                // Process buffered messages
+                                if let Some(buffer) = self.buffer.get_mut(&context) {
+                                    while let Some(buffered_msg) = buffer.pop_front() {
+                                        (dispatcher)(buffered_msg);
+                                    }
+                                }
+                                // Dispatch this message
+                                (dispatcher)(msg.clone());
+                                Some(())
+                            } else {
+                                // Not all key messages received yet; buffer this one
+                                let buffer = self.buffer.entry(context.clone()).or_default();
+                                buffer.push_back(msg.clone());
+                                Some(())
+                            }
+                        } else {
+                            // Not the key message; buffer it
+                            let buffer = self.buffer.entry(context.clone()).or_default();
+                            buffer.push_back(msg.clone());
+                            Some(())
+                        }
                     }
                 }
             }
@@ -333,7 +359,13 @@ impl OscGatedRouter {
         };
 
         self.layers.iter_mut().for_each(|layer| {
-            layer.dispatch_osc(msg.to_owned(), &mut *self.dispatcher);
+            if layer
+                .dispatch_osc(msg.to_owned(), &mut *self.dispatcher)
+                .is_some()
+            {
+                // Message was handled by this layer, stop processing
+                return;
+            };
         });
     }
 

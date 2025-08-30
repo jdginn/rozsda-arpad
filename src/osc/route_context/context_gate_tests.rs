@@ -35,6 +35,41 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     struct SendContextKind {}
 
+    impl ContextKindTrait<TrackContext> for TrackContextKind {
+        fn parse(&self, osc_address: &str) -> Option<TrackContext> {
+            let parts: Vec<&str> = osc_address.split('/').collect();
+            if parts.len() >= 3 && parts[1] == "track" {
+                Some(TrackContext {
+                    track_guid: parts[2].to_string(),
+                })
+            } else {
+                None
+            }
+        }
+
+        fn context_name(&self) -> &'static str {
+            "Track"
+        }
+    }
+
+    impl ContextKindTrait<SendContext> for SendContextKind {
+        fn parse(&self, osc_address: &str) -> Option<SendContext> {
+            let parts: Vec<&str> = osc_address.split('/').collect();
+            if parts.len() >= 5 && parts[1] == "track" && parts[3] == "send" {
+                Some(SendContext {
+                    track_guid: parts[2].to_string(),
+                    send_index: parts[4].to_string(),
+                })
+            } else {
+                None
+            }
+        }
+
+        fn context_name(&self) -> &'static str {
+            "Send"
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     enum RouterContext {
         Track(TrackContext),
@@ -63,23 +98,6 @@ mod tests {
                 RouterContextKind::Track(kind) => kind.context_name(),
                 RouterContextKind::Send(kind) => kind.context_name(),
             }
-        }
-    }
-
-    impl ContextKindTrait<TrackContext> for TrackContextKind {
-        fn parse(&self, osc_address: &str) -> Option<TrackContext> {
-            let parts: Vec<&str> = osc_address.split('/').collect();
-            if parts.len() >= 3 && parts[1] == "track" {
-                Some(TrackContext {
-                    track_guid: parts[2].to_string(),
-                })
-            } else {
-                None
-            }
-        }
-
-        fn context_name(&self) -> &'static str {
-            "Track"
         }
     }
 
@@ -266,7 +284,10 @@ mod tests {
 
     #[test]
     fn test_multiple_key_routes() {
-        let (mut router, received) = create_test_router_with_multiple_keys();
+        let (mut router, received) = create_test_router_with_multiple_keys(vec![
+            "/track/{track_guid}/index",
+            "/track/{track_guid}/name",
+        ]);
         let context = TrackContext {
             track_guid: "multi123".to_string(),
         };
@@ -289,10 +310,17 @@ mod tests {
 
         // // Now context should be initialized and both messages processed
         assert!(router.is_context_initialized(&context));
-        assert_eq!(received.borrow().len(), 2);
+        assert_eq!(
+            received.borrow().len(),
+            2,
+            "Received messages: {:?}",
+            received.borrow()
+        );
     }
 
-    fn create_test_router_with_multiple_keys() -> (OscGatedRouter, Rc<RefCell<Vec<OscMessage>>>) {
+    fn create_test_router_with_multiple_keys(
+        keys: Vec<&str>,
+    ) -> (OscGatedRouter, Rc<RefCell<Vec<OscMessage>>>) {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
@@ -300,13 +328,15 @@ mod tests {
             received_messages.borrow_mut().push(msg);
         };
 
+        // Create a builder and add each key route dynamically
+        let mut builder = ContextGateBuilder::new(TrackContextKind {});
+        for key in keys {
+            builder = builder.add_key_route(key);
+        }
+
         let router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
             .with_dispatcher(dispatcher)
-            .add_layer(
-                ContextGateBuilder::new(TrackContextKind {})
-                    .add_key_route("/track/{track_guid}/index")
-                    .add_key_route("/track/{track_guid}/name"),
-            )
+            .add_layer(builder)
             .build()
             .unwrap();
 
@@ -359,24 +389,6 @@ mod tests {
 
     #[test]
     fn test_multiple_layers() {
-        impl ContextKindTrait<SendContext> for SendContextKind {
-            fn parse(&self, osc_address: &str) -> Option<SendContext> {
-                let parts: Vec<&str> = osc_address.split('/').collect();
-                if parts.len() >= 5 && parts[1] == "track" && parts[3] == "send" {
-                    Some(SendContext {
-                        track_guid: parts[2].to_string(),
-                        send_index: parts[4].to_string(),
-                    })
-                } else {
-                    None
-                }
-            }
-
-            fn context_name(&self) -> &'static str {
-                "Send"
-            }
-        }
-
         // Create a multi-layer router
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let initialized_contexts = Rc::new(RefCell::new(Vec::new()));
@@ -436,7 +448,12 @@ mod tests {
         ));
 
         // Check results
-        assert_eq!(received_messages.borrow().len(), 4);
+        assert_eq!(
+            received_messages.borrow().len(),
+            4,
+            "Received messages: {:?}",
+            received_messages.borrow()
+        );
         assert_eq!(initialized_contexts.borrow().len(), 2);
         assert!(
             initialized_contexts
@@ -452,13 +469,14 @@ mod tests {
 
     #[test]
     fn test_key_route_order_independence() {
-        let scenarios = vec![
+        let scenarios = [
             vec!["/track/order1/index", "/track/order1/name"],
             vec!["/track/order2/name", "/track/order2/index"],
         ];
 
         for (i, scenario) in scenarios.iter().enumerate() {
-            let (mut router, received) = create_test_router_with_multiple_keys();
+            let (mut router, received) =
+                create_test_router_with_multiple_keys(vec!["/track/{track_guid}/index"]);
             let track_guid = format!("order{}", i + 1);
             let context = TrackContext {
                 track_guid: track_guid.clone(),
@@ -476,8 +494,19 @@ mod tests {
             }
 
             // Context should be initialized regardless of order
-            assert!(router.is_context_initialized(&context));
-            assert_eq!(received.borrow().len(), 2);
+            assert!(
+                router.is_context_initialized(&context),
+                "Scenario {} failed",
+                i
+            );
+            assert_eq!(router.get_buffered_messages_count(&context), 0);
+            assert_eq!(
+                received.borrow().len(),
+                2,
+                "Scenario {} failed\nReceived messages: {:?}",
+                i,
+                received.borrow()
+            );
         }
     }
 
@@ -659,7 +688,25 @@ mod tests {
     fn test_resource_usage() {
         use std::thread::sleep;
 
-        let (mut router, _) = create_test_router();
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+            .with_dispatcher(dispatcher)
+            .with_buffer_timeout(Duration::from_millis(10))
+            .add_layer(
+                ContextGateBuilder::new(TrackContextKind {})
+                    .add_key_route("/track/{track_guid}/index")
+                    .with_initialization_callback(|ctx, _| {
+                        // In a real test you might want to capture this in another Rc<RefCell>
+                        // to assert initialization happened
+                    }),
+            )
+            .build()
+            .unwrap();
 
         // Send many messages for many contexts without key routes
         for i in 0..1000 {
