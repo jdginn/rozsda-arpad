@@ -117,16 +117,16 @@ mod tests {
             received_messages.borrow_mut().push(msg);
         };
 
-        let router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+        let router = OscGatedRouterBuilder::new()
             .with_dispatcher(dispatcher)
-            .add_layer(
+            .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(|ctx, _| {
                         // In a real test you might want to capture this in another Rc<RefCell>
                         // to assert initialization happened
                     }),
-            )
+            ))
             .build()
             .unwrap();
 
@@ -148,7 +148,7 @@ mod tests {
 
         // No messages should be received yet
         assert_eq!(received.borrow().len(), 0);
-        assert_eq!(router.get_buffered_messages_count(&context), 1);
+        assert_eq!(router.get_buffered_messages_count(vec![&context]), 1);
         assert!(!router.is_context_initialized(&context));
 
         // Send the key message (should unlock processing)
@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(received.borrow()[1].addr, "/track/12345/index");
 
         // Buffer should be empty and context initialized
-        assert_eq!(router.get_buffered_messages_count(&context), 0);
+        assert_eq!(router.get_buffered_messages_count(vec![&context]), 0);
         assert!(router.is_context_initialized(&context));
     }
 
@@ -249,15 +249,15 @@ mod tests {
 
         // Create router with short timeout
         let received_messages = Rc::new(RefCell::new(Vec::new()));
-        let router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+        let router = OscGatedRouterBuilder::new()
             .with_dispatcher(move |msg| {
                 received_messages.borrow_mut().push(msg);
             })
             .with_buffer_timeout(Duration::from_millis(10))
-            .add_layer(
+            .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index"),
-            )
+            ))
             .build()
             .unwrap();
 
@@ -279,7 +279,7 @@ mod tests {
         router.purge_stale_buffers();
 
         // // Buffer should be empty
-        assert_eq!(router.get_buffered_messages_count(&context), 0);
+        assert_eq!(router.get_buffered_messages_count(vec![&context]), 0);
     }
 
     #[test]
@@ -334,9 +334,9 @@ mod tests {
             builder = builder.add_key_route(key);
         }
 
-        let router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+        let router = OscGatedRouterBuilder::new()
             .with_dispatcher(dispatcher)
-            .add_layer(builder)
+            .add_layer(Box::new(builder))
             .build()
             .unwrap();
 
@@ -402,27 +402,32 @@ mod tests {
             .with_dispatcher(dispatcher)
             .add_layer({
                 let contexts = initialized_contexts.clone();
-                ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
-                    .add_key_route("/track/{track_guid}/index")
-                    .with_initialization_callback(move |ctx, _| {
-                        if let RouterContext::Track(t_ctx) = ctx {
-                            contexts
-                                .borrow_mut()
-                                .push(format!("Track:{}", t_ctx.track_guid));
-                        }
-                    })
+                Box::new(
+                    ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
+                        .add_key_route("/track/{track_guid}/index")
+                        .with_initialization_callback(move |ctx, _| {
+                            if let RouterContext::Track(t_ctx) = ctx {
+                                contexts
+                                    .borrow_mut()
+                                    .push(format!("Track:{}", t_ctx.track_guid));
+                            }
+                        }),
+                )
             })
             .add_layer({
                 let contexts = initialized_contexts.clone();
-                ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
-                    .add_key_route("/track/{track_guid}/send/{send_index}/guid")
-                    .with_initialization_callback(move |ctx, _| {
-                        if let RouterContext::Send(s_ctx) = ctx {
-                            contexts
-                                .borrow_mut()
-                                .push(format!("Send:{}:{}", s_ctx.track_guid, s_ctx.send_index));
-                        }
-                    })
+                Box::new(
+                    ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
+                        .add_key_route("/track/{track_guid}/send/{send_index}/guid")
+                        .with_initialization_callback(move |ctx, _| {
+                            if let RouterContext::Send(s_ctx) = ctx {
+                                contexts.borrow_mut().push(format!(
+                                    "Send:{}:{}",
+                                    s_ctx.track_guid, s_ctx.send_index
+                                ));
+                            }
+                        }),
+                )
             })
             .build()
             .unwrap();
@@ -499,7 +504,7 @@ mod tests {
                 "Scenario {} failed",
                 i
             );
-            assert_eq!(router.get_buffered_messages_count(&context), 0);
+            assert_eq!(router.get_buffered_messages_count(vec![&context]), 0);
             assert_eq!(
                 received.borrow().len(),
                 2,
@@ -521,9 +526,9 @@ mod tests {
             received_messages.borrow_mut().push(msg);
         };
 
-        let mut router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+        let mut router = OscGatedRouterBuilder::new()
             .with_dispatcher(dispatcher)
-            .add_layer(
+            .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(move |ctx, key_msgs| {
@@ -536,7 +541,7 @@ mod tests {
                             }
                         }
                     }),
-            )
+            ))
             .build()
             .unwrap();
 
@@ -558,15 +563,15 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let mut router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+        let mut router = OscGatedRouterBuilder::new()
             .with_dispatcher(move |msg| {
                 received_messages.borrow_mut().push(msg);
             })
             .with_buffer_timeout(Duration::from_millis(10))
-            .add_layer(
+            .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index"),
-            )
+            ))
             .build()
             .unwrap();
 
@@ -587,7 +592,7 @@ mod tests {
         router.purge_stale_buffers();
 
         // Buffer should be empty
-        assert_eq!(router.get_buffered_messages_count(&context), 0);
+        assert_eq!(router.get_buffered_messages_count(vec![&context]), 0);
 
         // Now send messages again for the same context
         router.dispatch_osc(create_test_message(
@@ -694,17 +699,17 @@ mod tests {
             received_messages.borrow_mut().push(msg);
         };
 
-        let mut router = OscGatedRouterBuilder::<TrackContext, TrackContextKind>::new()
+        let mut router = OscGatedRouterBuilder::new()
             .with_dispatcher(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
-            .add_layer(
+            .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(|ctx, _| {
                         // In a real test you might want to capture this in another Rc<RefCell>
                         // to assert initialization happened
                     }),
-            )
+            ))
             .build()
             .unwrap();
 
@@ -720,9 +725,9 @@ mod tests {
 
         // // Verify buffers are populated
         assert!(
-            router.get_buffered_messages_count(&TrackContext {
+            router.get_buffered_messages_count(vec![&TrackContext {
                 track_guid: "resource0".to_string()
-            }) > 0
+            }]) > 0
         );
 
         // Wait and purge
@@ -731,13 +736,680 @@ mod tests {
 
         // // Verify buffers are cleared
         assert_eq!(
-            router.get_buffered_messages_count(&TrackContext {
+            router.get_buffered_messages_count(vec![&TrackContext {
                 track_guid: "resource0".to_string()
-            }),
+            }]),
             0
         );
 
         // Memory usage should now be minimal
         // Note: In real tests you might want to use a memory profiler here
+    }
+
+    // Hierarchical Context Interaction Tests
+
+    #[test]
+    fn test_hierarchical_message_gating() {
+        // Create a router with both track and send contexts
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .add_layer(Box::new(
+                ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
+                    .add_key_route("/track/{track_guid}/index"),
+            ))
+            .add_layer(Box::new(
+                ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
+                    .add_key_route("/track/{track_guid}/send/{send_index}/guid"),
+            ))
+            .build()
+            .unwrap();
+
+        // Send a message that requires both contexts to be initialized
+        router.dispatch_osc(create_test_message(
+            "/track/123/send/0/volume",
+            vec![OscType::Float(0.75)],
+        ));
+
+        // Verify message is buffered, not dispatched
+        assert_eq!(received_messages.borrow().len(), 0);
+
+        // Initialize only track context
+        router.dispatch_osc(create_test_message(
+            "/track/123/index",
+            vec![OscType::Int(42)],
+        ));
+
+        // Message should still be buffered (send context not initialized)
+        assert_eq!(received_messages.borrow().len(), 1); // Only track init message
+        assert_eq!(received_messages.borrow()[0].addr, "/track/123/index");
+
+        // Initialize send context
+        router.dispatch_osc(create_test_message(
+            "/track/123/send/0/guid",
+            vec![OscType::String("send-guid".to_string())],
+        ));
+
+        // Now all messages should be dispatched
+        assert_eq!(received_messages.borrow().len(), 3);
+
+        // Check message order - buffered message should be sent first
+        assert_eq!(received_messages.borrow()[0].addr, "/track/123/index");
+        assert_eq!(
+            received_messages.borrow()[1].addr,
+            "/track/123/send/0/volume"
+        );
+        assert_eq!(received_messages.borrow()[2].addr, "/track/123/send/0/guid");
+    }
+
+    #[test]
+    fn test_no_duplicate_dispatch() {
+        // Create a special context type that could match the same message in multiple layers
+
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct SpecialContext {
+            id: String,
+        }
+
+        impl ContextTrait for SpecialContext {}
+
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct SpecialContextKind1 {}
+
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct SpecialContextKind2 {}
+
+        impl ContextKindTrait<SpecialContext> for SpecialContextKind1 {
+            fn parse(&self, osc_address: &str) -> Option<SpecialContext> {
+                if osc_address.starts_with("/track/") && osc_address.contains("/special") {
+                    let parts: Vec<&str> = osc_address.split('/').collect();
+                    if parts.len() >= 3 {
+                        return Some(SpecialContext {
+                            id: parts[2].to_string(),
+                        });
+                    }
+                }
+                None
+            }
+
+            fn context_name(&self) -> &'static str {
+                "Special1"
+            }
+        }
+
+        impl ContextKindTrait<SpecialContext> for SpecialContextKind2 {
+            fn parse(&self, osc_address: &str) -> Option<SpecialContext> {
+                if osc_address.starts_with("/track/") && osc_address.contains("/special") {
+                    let parts: Vec<&str> = osc_address.split('/').collect();
+                    if parts.len() >= 3 {
+                        return Some(SpecialContext {
+                            id: parts[2].to_string(),
+                        });
+                    }
+                }
+                None
+            }
+
+            fn context_name(&self) -> &'static str {
+                "Special2"
+            }
+        }
+
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            println!("Dispatched: {}", msg.addr);
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        // Create a router with both special contexts
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .add_layer(Box::new(
+                ContextGateBuilder::new(SpecialContextKind1 {})
+                    .add_key_route("/track/{id}/special/init1"),
+            ))
+            .add_layer(Box::new(
+                ContextGateBuilder::new(SpecialContextKind2 {})
+                    .add_key_route("/track/{id}/special/init2"),
+            ))
+            .build()
+            .unwrap();
+
+        // Send a message that would match both context patterns
+        router.dispatch_osc(create_test_message(
+            "/track/123/special/value",
+            vec![OscType::Float(0.5)],
+        ));
+
+        // Initialize both contexts
+        router.dispatch_osc(create_test_message(
+            "/track/123/special/init1",
+            vec![OscType::Int(1)],
+        ));
+
+        router.dispatch_osc(create_test_message(
+            "/track/123/special/init2",
+            vec![OscType::Int(2)],
+        ));
+
+        // Message should be dispatched exactly once
+        assert_eq!(received_messages.borrow().len(), 3);
+
+        // Check that special/value appears only once
+        let value_messages = received_messages
+            .borrow()
+            .iter()
+            .filter(|msg| msg.addr == "/track/123/special/value")
+            .count();
+
+        assert_eq!(
+            value_messages, 1,
+            "The message should only be dispatched once"
+        );
+    }
+
+    #[test]
+    fn test_parent_purge_affects_child() {
+        use std::thread::sleep;
+
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .with_buffer_timeout(Duration::from_millis(10))
+            .add_layer(Box::new(
+                ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
+                    .add_key_route("/track/{track_guid}/index"),
+            ))
+            .add_layer(Box::new(
+                ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
+                    .add_key_route("/track/{track_guid}/send/{send_index}/guid"),
+            ))
+            .build()
+            .unwrap();
+
+        // Send track-level message
+        router.dispatch_osc(create_test_message(
+            "/track/parent/volume",
+            vec![OscType::Float(0.5)],
+        ));
+
+        // Send send-level message
+        router.dispatch_osc(create_test_message(
+            "/track/parent/send/0/volume",
+            vec![OscType::Float(0.75)],
+        ));
+
+        // Wait for timeout
+        sleep(Duration::from_millis(20));
+
+        // Purge stale buffers
+        router.purge_stale_buffers();
+
+        // Initialize track context
+        router.dispatch_osc(create_test_message(
+            "/track/parent/index",
+            vec![OscType::Int(1)],
+        ));
+
+        // Initialize send context
+        router.dispatch_osc(create_test_message(
+            "/track/parent/send/0/guid",
+            vec![OscType::String("guid".to_string())],
+        ));
+
+        // Only initialization messages should be dispatched, not the stale buffered ones
+        assert_eq!(received_messages.borrow().len(), 2);
+        assert_eq!(received_messages.borrow()[0].addr, "/track/parent/index");
+        assert_eq!(
+            received_messages.borrow()[1].addr,
+            "/track/parent/send/0/guid"
+        );
+
+        // Send new messages after initialization - these should pass through
+        router.dispatch_osc(create_test_message(
+            "/track/parent/volume",
+            vec![OscType::Float(0.6)],
+        ));
+
+        router.dispatch_osc(create_test_message(
+            "/track/parent/send/0/volume",
+            vec![OscType::Float(0.8)],
+        ));
+
+        // These new messages should be dispatched immediately
+        assert_eq!(received_messages.borrow().len(), 4);
+    }
+
+    // State Management Tests
+
+    #[test]
+    fn test_context_reinitialization() {
+        let callback_count = Rc::new(RefCell::new(0));
+        let callback_count_clone = callback_count.clone();
+
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .add_layer(Box::new(
+                ContextGateBuilder::new(TrackContextKind {})
+                    .add_key_route("/track/{track_guid}/index")
+                    .with_initialization_callback(move |_, _| {
+                        *callback_count.borrow_mut() += 1;
+                    }),
+            ))
+            .build()
+            .unwrap();
+
+        // Initialize track context
+        router.dispatch_osc(create_test_message(
+            "/track/reinit/index",
+            vec![OscType::Int(1)],
+        ));
+
+        // Send a message to the initialized context
+        router.dispatch_osc(create_test_message(
+            "/track/reinit/volume",
+            vec![OscType::Float(0.5)],
+        ));
+
+        // Re-send the initialization message with different args
+        router.dispatch_osc(create_test_message(
+            "/track/reinit/index",
+            vec![OscType::Int(2)],
+        ));
+
+        // Send another volume message
+        router.dispatch_osc(create_test_message(
+            "/track/reinit/volume",
+            vec![OscType::Float(0.6)],
+        ));
+
+        // All messages should be dispatched
+        assert_eq!(received_messages.borrow().len(), 4);
+
+        // Initialization callback should only be called once
+        assert_eq!(*callback_count_clone.borrow(), 1);
+    }
+
+    #[test]
+    fn test_multiple_init_purge_cycles() {
+        use std::thread::sleep;
+
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .with_buffer_timeout(Duration::from_millis(10))
+            .add_layer(Box::new(
+                ContextGateBuilder::new(TrackContextKind {})
+                    .add_key_route("/track/{track_guid}/index"),
+            ))
+            .build()
+            .unwrap();
+
+        // Run through multiple init-purge cycles
+        for cycle in 0..3 {
+            let context = TrackContext {
+                track_guid: format!("cycle{}", cycle),
+            };
+
+            // Send non-key messages
+            router.dispatch_osc(create_test_message(
+                &format!("/track/cycle{}/volume", cycle),
+                vec![OscType::Float(0.5)],
+            ));
+
+            router.dispatch_osc(create_test_message(
+                &format!("/track/cycle{}/pan", cycle),
+                vec![OscType::Float(0.5)],
+            ));
+
+            // Initialize the context
+            router.dispatch_osc(create_test_message(
+                &format!("/track/cycle{}/index", cycle),
+                vec![OscType::Int(cycle)],
+            ));
+
+            // Should have dispatched 3 messages per cycle
+            assert_eq!(received_messages.borrow().len(), (cycle as usize + 1) * 3);
+
+            // Wait for timeout
+            sleep(Duration::from_millis(20));
+
+            // Purge stale buffers
+            router.purge_stale_buffers();
+        }
+
+        // Total message count should be 9 (3 cycles × 3 messages each)
+        assert_eq!(received_messages.borrow().len(), 9);
+    }
+
+    #[test]
+    fn test_key_message_order_handling() {
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        // Define multiple key routes
+        let key_routes = vec![
+            "/track/{track_guid}/index",
+            "/track/{track_guid}/name",
+            "/track/{track_guid}/type",
+        ];
+
+        // Test with different permutations of key message order
+        let permutations = vec![
+            vec![0, 1, 2],
+            vec![0, 2, 1],
+            vec![1, 0, 2],
+            vec![1, 2, 0],
+            vec![2, 0, 1],
+            vec![2, 1, 0],
+        ];
+
+        for (i, perm) in permutations.iter().enumerate() {
+            // Create a new router for each permutation
+            let mut builder = ContextGateBuilder::new(TrackContextKind {});
+            for key in &key_routes {
+                builder = builder.add_key_route(*key);
+            }
+
+            let mut router = OscGatedRouterBuilder::new()
+                .with_dispatcher({
+                    let received_messages_clone = received_messages.clone();
+                    move |msg| {
+                        received_messages_clone.borrow_mut().push(msg);
+                    }
+                })
+                .add_layer(Box::new(builder))
+                .build()
+                .unwrap();
+
+            let track_guid = format!("order{}", i);
+            let context = TrackContext {
+                track_guid: track_guid.clone(),
+            };
+
+            // Send a non-key message first
+            router.dispatch_osc(create_test_message(
+                &format!("/track/{}/volume", track_guid),
+                vec![OscType::Float(0.5)],
+            ));
+
+            // Should be buffered
+            assert_eq!(router.get_buffered_messages_count(vec![&context]), 1);
+
+            // Send key messages in the order specified by this permutation
+            let key_values = vec![
+                vec![OscType::Int(42)],
+                vec![OscType::String("Track Name".to_string())],
+                vec![OscType::String("Audio".to_string())],
+            ];
+
+            // Send the first two key messages
+            let route1 = key_routes[perm[0]].replace("{track_guid}", &track_guid);
+            router.dispatch_osc(create_test_message(&route1, key_values[perm[0]].clone()));
+
+            let route2 = key_routes[perm[1]].replace("{track_guid}", &track_guid);
+            router.dispatch_osc(create_test_message(&route2, key_values[perm[1]].clone()));
+
+            // Context should not be initialized yet
+            assert!(!router.is_context_initialized(&context));
+
+            // Send the final key message
+            let route3 = key_routes[perm[2]].replace("{track_guid}", &track_guid);
+            router.dispatch_osc(create_test_message(&route3, key_values[perm[2]].clone()));
+
+            // Context should now be initialized
+            assert!(router.is_context_initialized(&context));
+
+            // Buffer should be empty
+            assert_eq!(router.get_buffered_messages_count(vec![&context]), 0);
+        }
+    }
+
+    // Corner Case Tests
+
+    #[test]
+    fn test_empty_messages() {
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .add_layer(Box::new(
+                ContextGateBuilder::new(TrackContextKind {})
+                    .add_key_route("/track/{track_guid}/index"),
+            ))
+            .build()
+            .unwrap();
+
+        // 1. Send a message with empty address string - should be ignored
+        router.dispatch_osc(create_test_message("", vec![OscType::Float(0.5)]));
+
+        // 2. Send a message with valid address but empty arguments
+        router.dispatch_osc(create_test_message("/track/abcd/volume", vec![]));
+
+        // 3. Send a key message with empty arguments
+        router.dispatch_osc(create_test_message("/track/abcd/index", vec![]));
+
+        // Key message with empty arguments should still initialize the context
+        assert!(router.is_context_initialized(&TrackContext {
+            track_guid: "abcd".to_string(),
+        }));
+
+        assert_eq!(received_messages.borrow().len(), 3);
+
+        // Send a new message to the initialized context
+        router.dispatch_osc(create_test_message(
+            "/track/abcd/pan",
+            vec![OscType::Float(0.5)],
+        ));
+
+        // Should be dispatched immediately
+        assert_eq!(received_messages.borrow().len(), 4);
+    }
+
+    #[test]
+    fn test_multi_context_message_match() {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct OverlappingContext {
+            id: String,
+        }
+
+        impl ContextTrait for OverlappingContext {}
+
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct OverlappingContextKind1 {}
+
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        struct OverlappingContextKind2 {}
+
+        impl ContextKindTrait<OverlappingContext> for OverlappingContextKind1 {
+            fn parse(&self, osc_address: &str) -> Option<OverlappingContext> {
+                if osc_address.starts_with("/overlap/") {
+                    let parts: Vec<&str> = osc_address.split('/').collect();
+                    if parts.len() >= 3 {
+                        return Some(OverlappingContext {
+                            id: parts[2].to_string(),
+                        });
+                    }
+                }
+                None
+            }
+
+            fn context_name(&self) -> &'static str {
+                "Overlap1"
+            }
+        }
+
+        impl ContextKindTrait<OverlappingContext> for OverlappingContextKind2 {
+            fn parse(&self, osc_address: &str) -> Option<OverlappingContext> {
+                if osc_address.starts_with("/overlap/") {
+                    let parts: Vec<&str> = osc_address.split('/').collect();
+                    if parts.len() >= 3 {
+                        return Some(OverlappingContext {
+                            id: parts[2].to_string(),
+                        });
+                    }
+                }
+                None
+            }
+
+            fn context_name(&self) -> &'static str {
+                "Overlap2"
+            }
+        }
+
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .add_layer(Box::new(
+                ContextGateBuilder::new(OverlappingContextKind1 {})
+                    .add_key_route("/overlap/{id}/init1"),
+            ))
+            .add_layer(Box::new(
+                ContextGateBuilder::new(OverlappingContextKind2 {})
+                    .add_key_route("/overlap/{id}/init2"),
+            ))
+            .build()
+            .unwrap();
+
+        // Send a message that would match both context kinds
+        router.dispatch_osc(create_test_message(
+            "/overlap/123/value",
+            vec![OscType::Float(0.5)],
+        ));
+
+        // No messages should be dispatched yet
+        assert_eq!(received_messages.borrow().len(), 0);
+
+        // Initialize the first context
+        router.dispatch_osc(create_test_message(
+            "/overlap/123/init1",
+            vec![OscType::Int(1)],
+        ));
+
+        // No messages should be dispatched until both key messages are received
+        assert_eq!(received_messages.borrow().len(), 0);
+
+        // Initialize the second context
+        router.dispatch_osc(create_test_message(
+            "/overlap/123/init2",
+            vec![OscType::Int(2)],
+        ));
+
+        // Now all messages should be dispatched
+        assert_eq!(received_messages.borrow().len(), 3);
+
+        // Check the overlapping message appears exactly once
+        let value_messages = received_messages
+            .borrow()
+            .iter()
+            .filter(|msg| msg.addr == "/overlap/123/value")
+            .count();
+
+        assert_eq!(value_messages, 1);
+    }
+
+    #[test]
+    fn test_duplicate_key_messages() {
+        let received_messages = Rc::new(RefCell::new(Vec::new()));
+        let callback_count = Rc::new(RefCell::new(0));
+
+        let callback_count_clone = callback_count.clone();
+        let received_messages_clone = received_messages.clone();
+
+        let dispatcher = move |msg: OscMessage| {
+            received_messages_clone.borrow_mut().push(msg);
+        };
+
+        let mut router = OscGatedRouterBuilder::new()
+            .with_dispatcher(dispatcher)
+            .add_layer(Box::new(
+                ContextGateBuilder::new(TrackContextKind {})
+                    .add_key_route("/track/{track_guid}/index")
+                    .with_initialization_callback(move |_, _| {
+                        *callback_count.borrow_mut() += 1;
+                    }),
+            ))
+            .build()
+            .unwrap();
+
+        let context = TrackContext {
+            track_guid: "duplicate".to_string(),
+        };
+
+        // Send a non-key message to buffer
+        router.dispatch_osc(create_test_message(
+            "/track/duplicate/volume",
+            vec![OscType::Float(0.5)],
+        ));
+
+        // Send the key message
+        router.dispatch_osc(create_test_message(
+            "/track/duplicate/index",
+            vec![OscType::Int(1)],
+        ));
+
+        // Context should be initialized
+        assert!(router.is_context_initialized(&context));
+        assert_eq!(*callback_count_clone.borrow(), 1);
+
+        // Send the same key message again with the same arguments
+        router.dispatch_osc(create_test_message(
+            "/track/duplicate/index",
+            vec![OscType::Int(1)],
+        ));
+
+        // Send the key message again with different arguments
+        router.dispatch_osc(create_test_message(
+            "/track/duplicate/index",
+            vec![OscType::Int(2)],
+        ));
+
+        // Should have dispatched all messages
+        assert_eq!(received_messages.borrow().len(), 4);
+
+        // Initialization callback should still only be called once
+        assert_eq!(*callback_count_clone.borrow(), 1);
     }
 }

@@ -1,8 +1,15 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::{Duration, Instant};
 
 use rosc::{OscMessage, OscPacket};
+
+fn hash_to_u64<T: std::hash::Hash>(hashable: T) -> u64 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    hashable.hash(&mut hasher);
+    hasher.finish()
+}
 
 /// Trait representing a specific OSC address context, such as a track or send instance.
 /// Implementors should provide identity, cloning, and a way to extract parameter values.
@@ -19,6 +26,10 @@ pub trait ContextKindTrait<T: ContextTrait>: Debug + Eq + Clone + std::hash::Has
 
     /// Returns a human-readable name for this context (for logging, debugging).
     fn context_name(&self) -> &'static str;
+}
+
+pub trait ContextGateBuilderTrait {
+    fn build_boxed(self: Box<Self>) -> Box<dyn ContextualDispatcher>;
 }
 
 // Builder for a single context gate layer
@@ -63,20 +74,30 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
             key_routes: self.key_routes,
             initialized: HashMap::new(),
             on_initialized: self.on_initialized,
-            buffer: HashMap::new(),
-            buffer_timestamps: HashMap::new(),
             key_messages: HashMap::new(),
         }
     }
 }
 
+impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextGateBuilderTrait
+    for ContextGateBuilder<T, K>
+{
+    fn build_boxed(self: Box<Self>) -> Box<dyn ContextualDispatcher> {
+        Box::new(ContextGateBuilder::build(*self))
+    }
+}
+
+enum InitializationState {
+    Uninitialized,
+    AlreadyInitialized,
+    NewlyInitialized,
+}
+
 trait ContextualDispatcher {
-    fn dispatch_osc(
+    fn initialization_state(
         &mut self,
-        msg: OscMessage,
-        dispatcher: &mut dyn FnMut(OscMessage),
-    ) -> Option<()>;
-    fn purge_stale_buffers(&mut self, timeout: Duration);
+        msg: &OscMessage,
+    ) -> Option<(InitializationState, Option<u64>)>;
 
     #[cfg(test)]
     fn test_info(&self, ctx_str: &str) -> HashMap<String, usize>;
@@ -101,8 +122,6 @@ struct ContextGate<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> 
     initialized: HashMap<T, bool>,
     // Called when a specific context is initialized
     on_initialized: Option<Box<dyn Fn(T, &HashMap<String, OscMessage>)>>,
-    buffer: HashMap<T, VecDeque<OscMessage>>,
-    buffer_timestamps: HashMap<T, Instant>,
     key_messages: HashMap<T, HashMap<String, OscMessage>>,
 }
 
@@ -121,41 +140,21 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGate<T, K> {
 impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDispatcher
     for ContextGate<T, K>
 {
-    fn purge_stale_buffers(&mut self, timeout: Duration) {
-        let now = Instant::now();
-        let stale_contexts: Vec<T> = self
-            .buffer_timestamps
-            .iter()
-            .filter(|(ctx, timestamp)| {
-                now.duration_since(**timestamp) > timeout && !self.initialized.contains_key(ctx)
-            })
-            .map(|(ctx, _)| ctx.clone())
-            .collect();
-
-        for ctx in stale_contexts {
-            self.buffer.remove(&ctx);
-            self.buffer_timestamps.remove(&ctx);
-            self.key_messages.remove(&ctx);
-        }
-    }
-    fn dispatch_osc(
+    fn initialization_state(
         &mut self,
-        msg: OscMessage,
-        dispatcher: &mut dyn FnMut(OscMessage),
-    ) -> Option<()> {
+        msg: &OscMessage,
+    ) -> Option<(InitializationState, Option<u64>)> {
         match self.parameter_sequence.parse(&msg.addr) {
             None => None,
             Some(context) => {
-                // Update timestamp for this context
-                self.buffer_timestamps
-                    .insert(context.clone(), Instant::now());
-
                 // If this message is relevant to this layer...
                 match self.initialized.get(&context) {
                     Some(true) => {
                         // context is already initialized, just dispatch
-                        (dispatcher)(msg.to_owned());
-                        Some(())
+                        Some((
+                            InitializationState::AlreadyInitialized,
+                            Some(hash_to_u64(&context)),
+                        ))
                     }
                     Some(false) | None => {
                         // Check if this is the key message
@@ -180,37 +179,24 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
                                 .iter()
                                 .all(|route| key_msgs.contains_key(route));
 
-                            println!(
-                                "ContextGate: Received key message for context {:?} on route {}. Has all key messages: {}, Key messages: {:?}",
-                                context,
-                                matched_key_route,
-                                has_all_key_messages,
-                                key_msgs.keys().collect::<Vec<_>>()
-                            );
                             if has_all_key_messages {
                                 // Initialize the context
                                 self.initialize(context.clone());
-
-                                // Process buffered messages
-                                if let Some(buffer) = self.buffer.get_mut(&context) {
-                                    while let Some(buffered_msg) = buffer.pop_front() {
-                                        (dispatcher)(buffered_msg);
-                                    }
-                                }
-                                // Dispatch this message
-                                (dispatcher)(msg.clone());
-                                Some(())
+                                Some((
+                                    InitializationState::NewlyInitialized,
+                                    Some(hash_to_u64(&context)),
+                                ))
                             } else {
-                                // Not all key messages received yet; buffer this one
-                                let buffer = self.buffer.entry(context.clone()).or_default();
-                                buffer.push_back(msg.clone());
-                                Some(())
+                                Some((
+                                    InitializationState::Uninitialized,
+                                    Some(hash_to_u64(&context)),
+                                ))
                             }
                         } else {
-                            // Not the key message; buffer it
-                            let buffer = self.buffer.entry(context.clone()).or_default();
-                            buffer.push_back(msg.clone());
-                            Some(())
+                            Some((
+                                InitializationState::Uninitialized,
+                                Some(hash_to_u64(&context)),
+                            ))
                         }
                     }
                 }
@@ -230,25 +216,18 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
             }
         }
 
-        for (ctx, buffer) in &self.buffer {
-            if format!("{:?}", ctx) == ctx_str {
-                info.insert("buffered_count".to_string(), buffer.len());
-                break;
-            }
-        }
-
         info
     }
 }
 
 // Main builder for the router
-pub struct OscGatedRouterBuilder<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> {
-    layers: Vec<ContextGateBuilder<T, K>>,
+pub struct OscGatedRouterBuilder {
+    layers: Vec<Box<dyn ContextGateBuilderTrait>>,
     dispatcher: Option<Box<dyn FnMut(OscMessage)>>,
     buffer_timeout: Duration,
 }
 
-impl<T: ContextTrait, K: ContextKindTrait<T>> OscGatedRouterBuilder<T, K> {
+impl OscGatedRouterBuilder {
     pub fn new() -> Self {
         Self {
             layers: Vec::new(),
@@ -270,7 +249,7 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> OscGatedRouterBuilder<T, K> {
         self
     }
 
-    pub fn add_layer(mut self, layer: ContextGateBuilder<T, K>) -> Self {
+    pub fn add_layer(mut self, layer: Box<dyn ContextGateBuilderTrait>) -> Self {
         self.layers.push(layer);
         self
     }
@@ -285,14 +264,15 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> OscGatedRouterBuilder<T, K> {
 
         for layer_builder in self.layers {
             // Explicitly cast each built layer as a Box<dyn ContextualDispatcher>
-            let layer: Box<dyn ContextualDispatcher> = Box::new(layer_builder.build());
-            layers.push(layer);
+            // let layer: Box<dyn ContextualDispatcher> = Box::new(layer_builder.build());
+            layers.push(layer_builder.build_boxed());
         }
 
         Ok(OscGatedRouter {
             layers,
             dispatcher,
             buffer_timeout: self.buffer_timeout,
+            buffer: HashMap::new(),
         })
     }
 }
@@ -341,12 +321,16 @@ pub struct OscGatedRouter {
     layers: Vec<Box<dyn ContextualDispatcher>>,
     dispatcher: Box<dyn FnMut(OscMessage)>,
     buffer_timeout: Duration,
+    buffer: HashMap<u64, VecDeque<(OscMessage, Instant)>>,
 }
 
 impl OscGatedRouter {
     pub fn purge_stale_buffers(&mut self) {
-        for layer in &mut self.layers {
-            layer.purge_stale_buffers(self.buffer_timeout);
+        let now = Instant::now();
+        // TODO: this needs to take timestamps on the keys in buffer and update those when
+        // messages get buffered inside dispatch_osc
+        for (_, messages) in self.buffer.iter_mut() {
+            messages.retain(|(_, timestamp)| now.duration_since(*timestamp) <= self.buffer_timeout);
         }
     }
 
@@ -358,15 +342,36 @@ impl OscGatedRouter {
             _ => return,
         };
 
+        let mut hasher = DefaultHasher::new();
+        let mut gated = false;
         self.layers.iter_mut().for_each(|layer| {
-            if layer
-                .dispatch_osc(msg.to_owned(), &mut *self.dispatcher)
-                .is_some()
-            {
-                // Message was handled by this layer, stop processing
-                return;
-            };
+            if let Some(res) = layer.initialization_state(msg) {
+                if let Some(hash) = res.1 {
+                    hash.hash(&mut hasher)
+                }
+                match res.0 {
+                    InitializationState::Uninitialized => gated = true,
+                    InitializationState::AlreadyInitialized => {}
+                    InitializationState::NewlyInitialized => {}
+                }
+            }
         });
+        let hash = hasher.finish();
+        if gated {
+            // Buffer the message
+            let buffer = self.buffer.entry(hash).or_default();
+            buffer.push_back((msg.to_owned(), Instant::now()));
+        } else {
+            // First, flush any buffered messages for this hash to preserve ordering
+            if let Some(buffered_messages) = self.buffer.get(&hash) {
+                for (buffered_msg, _) in buffered_messages {
+                    (self.dispatcher)(buffered_msg.to_owned());
+                }
+                self.buffer.remove(&hash);
+            }
+            // Then, dispatch the current message
+            (self.dispatcher)(msg.to_owned());
+        }
     }
 
     #[cfg(test)]
@@ -394,10 +399,14 @@ impl OscGatedRouter {
     }
 
     #[cfg(test)]
-    pub fn get_buffered_messages_count(&self, ctx: impl Debug) -> usize {
-        self.test_context(ctx)
-            .get("buffered_count")
-            .copied()
-            .unwrap_or(0)
+    pub fn get_buffered_messages_count(&self, ctxs: Vec<impl std::hash::Hash>) -> usize {
+        let mut hasher = DefaultHasher::new();
+        let mut hashed_once = 0;
+        for ctx in ctxs {
+            hashed_once = hash_to_u64(ctx);
+            hashed_once.hash(&mut hasher);
+        }
+        let hash = hasher.finish();
+        self.buffer.get(&hash).map_or(0, |buf| buf.len())
     }
 }
