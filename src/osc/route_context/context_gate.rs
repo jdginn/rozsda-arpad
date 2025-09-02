@@ -18,10 +18,11 @@ pub trait ContextTrait: Debug + Eq + Clone + std::hash::Hash {}
 
 /// Trait representing a shape for an OSC address context, such as a track or send.
 /// Implementors should provide parsing, identity, and cloning.
-pub trait ContextKindTrait<T: ContextTrait>: Debug + Eq + Clone + std::hash::Hash {
+pub trait ContextKindTrait: Debug + Eq + Clone + std::hash::Hash {
+    type Context: ContextTrait + 'static;
     /// Attempt to parse this context from the given OSC address.
     /// Returns Some(context instance) if matched, else None.
-    fn parse(osc_address: &str) -> Option<T>
+    fn parse(osc_address: &str) -> Option<Self::Context>
     where
         Self: Sized;
 
@@ -34,14 +35,14 @@ pub trait ContextGateBuilderTrait {
 }
 
 // Builder for a single context gate layer
-pub struct ContextGateBuilder<T: ContextTrait, K: ContextKindTrait<T>> {
+pub struct ContextGateBuilder<K: ContextKindTrait> {
     key_routes: Vec<String>,
-    on_initialized: Option<Box<dyn Fn(T, &HashMap<String, OscMessage>)>>,
+    on_initialized: Option<Box<dyn Fn(K::Context, &HashMap<String, OscMessage>)>>,
 
     _marker: PhantomData<K>,
 }
 
-impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
+impl<K: ContextKindTrait> ContextGateBuilder<K> {
     pub fn new() -> Self {
         Self {
             key_routes: Vec::new(),
@@ -64,13 +65,13 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
 
     pub fn with_initialization_callback<F>(mut self, callback: F) -> Self
     where
-        F: Fn(T, &HashMap<String, OscMessage>) + 'static,
+        F: Fn(K::Context, &HashMap<String, OscMessage>) + 'static,
     {
         self.on_initialized = Some(Box::new(callback));
         self
     }
 
-    fn build(self) -> ContextGate<T, K> {
+    fn build(self) -> ContextGate<K> {
         ContextGate {
             key_routes: self.key_routes,
             initialized: HashMap::new(),
@@ -81,9 +82,7 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
     }
 }
 
-impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextGateBuilderTrait
-    for ContextGateBuilder<T, K>
-{
+impl<K: ContextKindTrait + 'static> ContextGateBuilderTrait for ContextGateBuilder<K> {
     fn build_boxed(self: Box<Self>) -> Box<dyn ContextualDispatcher> {
         Box::new(ContextGateBuilder::build(*self))
     }
@@ -113,23 +112,23 @@ trait ContextualDispatcher {
 /// entities that live at the same layer of the hierarchy, encode the same set of identifiers into
 /// their address, and depend on the same initialization criteria. Each concrete context is handled
 /// individually.
-struct ContextGate<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> {
+struct ContextGate<K: ContextKindTrait + 'static> {
     // the OSC address that "unlocks" this layer
     // E.g. for TrackGUID, this might be "/track/{track_guid}/index"
     key_routes: Vec<String>,
     // We buffer messages if this is false. When it's true, we pass messages through.
     // At the moment we set it true, we also flush the buffer.
-    initialized: HashMap<T, bool>,
+    initialized: HashMap<K::Context, bool>,
     // Called when a specific context is initialized
-    on_initialized: Option<Box<dyn Fn(T, &HashMap<String, OscMessage>)>>,
-    key_messages: HashMap<T, HashMap<String, OscMessage>>,
+    on_initialized: Option<Box<dyn Fn(K::Context, &HashMap<String, OscMessage>)>>,
+    key_messages: HashMap<K::Context, HashMap<String, OscMessage>>,
 
     _marker: PhantomData<K>,
 }
 
-impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGate<T, K> {
+impl<K: ContextKindTrait> ContextGate<K> {
     /// Mark a specific concrete OscContext as initialized
-    pub fn initialize(&mut self, context: T) {
+    pub fn initialize(&mut self, context: K::Context) {
         let key_messages = self.key_messages.get(&context).unwrap();
 
         if let Some(callback) = &self.on_initialized {
@@ -139,9 +138,7 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGate<T, K> {
     }
 }
 
-impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDispatcher
-    for ContextGate<T, K>
-{
+impl<K: ContextKindTrait + 'static> ContextualDispatcher for ContextGate<K> {
     fn initialization_state(
         &mut self,
         msg: &OscMessage,

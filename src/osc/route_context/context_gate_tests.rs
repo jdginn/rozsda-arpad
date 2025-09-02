@@ -35,7 +35,8 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     struct SendContextKind {}
 
-    impl ContextKindTrait<TrackContext> for TrackContextKind {
+    impl ContextKindTrait for TrackContextKind {
+        type Context = TrackContext;
         fn parse(osc_address: &str) -> Option<TrackContext> {
             let parts: Vec<&str> = osc_address.split('/').collect();
             if parts.len() >= 3 && parts[1] == "track" {
@@ -52,7 +53,8 @@ mod tests {
         }
     }
 
-    impl ContextKindTrait<SendContext> for SendContextKind {
+    impl ContextKindTrait for SendContextKind {
+        type Context = SendContext;
         fn parse(osc_address: &str) -> Option<SendContext> {
             let parts: Vec<&str> = osc_address.split('/').collect();
             if parts.len() >= 5 && parts[1] == "track" && parts[3] == "send" {
@@ -88,7 +90,7 @@ mod tests {
 
         let router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(|ctx, _| {
                         // In a real test you might want to capture this in another Rc<RefCell>
@@ -222,7 +224,8 @@ mod tests {
         }))
         .with_buffer_timeout(Duration::from_millis(10))
         .add_layer(Box::new(
-            ContextGateBuilder::new(TrackContextKind {}).add_key_route("/track/{track_guid}/index"),
+            ContextGateBuilder::<TrackContextKind>::new()
+                .add_key_route("/track/{track_guid}/index"),
         ))
         .build()
         .unwrap();
@@ -295,7 +298,7 @@ mod tests {
         });
 
         // Create a builder and add each key route dynamically
-        let mut builder = ContextGateBuilder::new(TrackContextKind {});
+        let mut builder = ContextGateBuilder::<TrackContextKind>::new();
         for key in keys {
             builder = builder.add_key_route(key);
         }
@@ -367,7 +370,7 @@ mod tests {
             .add_layer({
                 let contexts = initialized_contexts.clone();
                 Box::new(
-                    ContextGateBuilder::new(TrackContextKind {})
+                    ContextGateBuilder::<TrackContextKind>::new()
                         .add_key_route("/track/{track_guid}/index")
                         .with_initialization_callback(move |ctx, _| {
                             contexts
@@ -379,7 +382,7 @@ mod tests {
             .add_layer({
                 let contexts = initialized_contexts.clone();
                 Box::new(
-                    ContextGateBuilder::new(SendContextKind {})
+                    ContextGateBuilder::<SendContextKind>::new()
                         .add_key_route("/track/{track_guid}/send/{send_index}/guid")
                         .with_initialization_callback(move |ctx, _| {
                             contexts
@@ -487,7 +490,7 @@ mod tests {
 
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(move |ctx, key_msgs| {
                         // Extract the index value from the key message
@@ -526,7 +529,8 @@ mod tests {
         }))
         .with_buffer_timeout(Duration::from_millis(10))
         .add_layer(Box::new(
-            ContextGateBuilder::new(TrackContextKind {}).add_key_route("/track/{track_guid}/index"),
+            ContextGateBuilder::<TrackContextKind>::new()
+                .add_key_route("/track/{track_guid}/index"),
         ))
         .build()
         .unwrap();
@@ -658,7 +662,7 @@ mod tests {
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(|ctx, _| {
                         // In a real test you might want to capture this in another Rc<RefCell>
@@ -715,11 +719,11 @@ mod tests {
 
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index"),
             ))
             .add_layer(Box::new(
-                ContextGateBuilder::new(SendContextKind {})
+                ContextGateBuilder::<SendContextKind>::new()
                     .add_key_route("/track/{track_guid}/send/{send_index}/guid"),
             ))
             .build()
@@ -779,7 +783,8 @@ mod tests {
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         struct SpecialContextKind2 {}
 
-        impl ContextKindTrait<SpecialContext> for SpecialContextKind1 {
+        impl ContextKindTrait for SpecialContextKind1 {
+            type Context = SpecialContext;
             fn parse(osc_address: &str) -> Option<SpecialContext> {
                 if osc_address.starts_with("/track/") && osc_address.contains("/special") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
@@ -797,7 +802,8 @@ mod tests {
             }
         }
 
-        impl ContextKindTrait<SpecialContext> for SpecialContextKind2 {
+        impl ContextKindTrait for SpecialContextKind2 {
+            type Context = SpecialContext;
             fn parse(osc_address: &str) -> Option<SpecialContext> {
                 if osc_address.starts_with("/track/") && osc_address.contains("/special") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
@@ -826,11 +832,11 @@ mod tests {
         // Create a router with both special contexts
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(SpecialContextKind1 {})
+                ContextGateBuilder::<SpecialContextKind1>::new()
                     .add_key_route("/track/{id}/special/init1"),
             ))
             .add_layer(Box::new(
-                ContextGateBuilder::new(SpecialContextKind2 {})
+                ContextGateBuilder::<SpecialContextKind2>::new()
                     .add_key_route("/track/{id}/special/init2"),
             ))
             .build()
@@ -883,10 +889,11 @@ mod tests {
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
             .add_layer(Box::new(
-                ContextGateBuilder::new().add_key_route("/track/{track_guid}/index"),
+                ContextGateBuilder::<TrackContextKind>::new()
+                    .add_key_route("/track/{track_guid}/index"),
             ))
             .add_layer(Box::new(
-                ContextGateBuilder::new(SendContextKind {})
+                ContextGateBuilder::<SendContextKind>::new()
                     .add_key_route("/track/{track_guid}/send/{send_index}/guid"),
             ))
             .build()
@@ -961,7 +968,7 @@ mod tests {
 
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(move |_, _| {
                         *callback_count.borrow_mut() += 1;
@@ -1015,7 +1022,7 @@ mod tests {
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index"),
             ))
             .build()
@@ -1086,7 +1093,7 @@ mod tests {
 
         for (i, perm) in permutations.iter().enumerate() {
             // Create a new router for each permutation
-            let mut builder = ContextGateBuilder::new(TrackContextKind {});
+            let mut builder = ContextGateBuilder::<TrackContextKind>::new();
             for key in &key_routes {
                 builder = builder.add_key_route(*key);
             }
@@ -1157,7 +1164,7 @@ mod tests {
 
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index"),
             ))
             .build()
@@ -1204,7 +1211,8 @@ mod tests {
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]
         struct OverlappingContextKind2 {}
 
-        impl ContextKindTrait<OverlappingContext> for OverlappingContextKind1 {
+        impl ContextKindTrait for OverlappingContextKind1 {
+            type Context = OverlappingContext;
             fn parse(osc_address: &str) -> Option<OverlappingContext> {
                 if osc_address.starts_with("/overlap/") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
@@ -1222,7 +1230,8 @@ mod tests {
             }
         }
 
-        impl ContextKindTrait<OverlappingContext> for OverlappingContextKind2 {
+        impl ContextKindTrait for OverlappingContextKind2 {
+            type Context = OverlappingContext;
             fn parse(osc_address: &str) -> Option<OverlappingContext> {
                 if osc_address.starts_with("/overlap/") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
@@ -1249,11 +1258,11 @@ mod tests {
 
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(OverlappingContextKind1 {})
+                ContextGateBuilder::<OverlappingContextKind1>::new()
                     .add_key_route("/overlap/{id}/init1"),
             ))
             .add_layer(Box::new(
-                ContextGateBuilder::new(OverlappingContextKind2 {})
+                ContextGateBuilder::<OverlappingContextKind2>::new()
                     .add_key_route("/overlap/{id}/init2"),
             ))
             .build()
@@ -1310,7 +1319,7 @@ mod tests {
 
         let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
+                ContextGateBuilder::<TrackContextKind>::new()
                     .add_key_route("/track/{track_guid}/index")
                     .with_initialization_callback(move |_, _| {
                         *callback_count.borrow_mut() += 1;

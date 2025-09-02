@@ -39,7 +39,8 @@ pub mod context_kind {
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Track {}
 
-    impl ContextKindTrait<context::Track> for Track {
+    impl ContextKindTrait for Track {
+        type Context = context::Track;
         fn context_name() -> &'static str {
             "Track"
         }
@@ -55,7 +56,8 @@ pub mod context_kind {
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct TrackSend {}
 
-    impl ContextKindTrait<context::TrackSend> for TrackSend {
+    impl ContextKindTrait for TrackSend {
+        type Context = context::TrackSend;
         fn context_name() -> &'static str {
             "TrackSend"
         }
