@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 
 use rosc::{OscMessage, OscPacket};
@@ -20,12 +21,12 @@ pub trait ContextTrait: Debug + Eq + Clone + std::hash::Hash {}
 pub trait ContextKindTrait<T: ContextTrait>: Debug + Eq + Clone + std::hash::Hash {
     /// Attempt to parse this context from the given OSC address.
     /// Returns Some(context instance) if matched, else None.
-    fn parse(&self, osc_address: &str) -> Option<T>
+    fn parse(osc_address: &str) -> Option<T>
     where
         Self: Sized;
 
     /// Returns a human-readable name for this context (for logging, debugging).
-    fn context_name(&self) -> &'static str;
+    fn context_name() -> &'static str;
 }
 
 pub trait ContextGateBuilderTrait {
@@ -34,17 +35,18 @@ pub trait ContextGateBuilderTrait {
 
 // Builder for a single context gate layer
 pub struct ContextGateBuilder<T: ContextTrait, K: ContextKindTrait<T>> {
-    parameter_sequence: K,
     key_routes: Vec<String>,
     on_initialized: Option<Box<dyn Fn(T, &HashMap<String, OscMessage>)>>,
+
+    _marker: PhantomData<K>,
 }
 
 impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
-    pub fn new(context_kind: K) -> Self {
+    pub fn new() -> Self {
         Self {
-            parameter_sequence: context_kind,
             key_routes: Vec::new(),
             on_initialized: None,
+            _marker: PhantomData,
         }
     }
 
@@ -70,11 +72,11 @@ impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGateBuilder<T, K> {
 
     fn build(self) -> ContextGate<T, K> {
         ContextGate {
-            parameter_sequence: self.parameter_sequence,
             key_routes: self.key_routes,
             initialized: HashMap::new(),
             on_initialized: self.on_initialized,
             key_messages: HashMap::new(),
+            _marker: PhantomData,
         }
     }
 }
@@ -112,8 +114,6 @@ trait ContextualDispatcher {
 /// their address, and depend on the same initialization criteria. Each concrete context is handled
 /// individually.
 struct ContextGate<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> {
-    // The shape of the OscContext that this layer is responsible for
-    parameter_sequence: K,
     // the OSC address that "unlocks" this layer
     // E.g. for TrackGUID, this might be "/track/{track_guid}/index"
     key_routes: Vec<String>,
@@ -123,6 +123,8 @@ struct ContextGate<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> 
     // Called when a specific context is initialized
     on_initialized: Option<Box<dyn Fn(T, &HashMap<String, OscMessage>)>>,
     key_messages: HashMap<T, HashMap<String, OscMessage>>,
+
+    _marker: PhantomData<K>,
 }
 
 impl<T: ContextTrait, K: ContextKindTrait<T>> ContextGate<T, K> {
@@ -144,7 +146,7 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
         &mut self,
         msg: &OscMessage,
     ) -> Option<(InitializationState, Option<u64>)> {
-        match self.parameter_sequence.parse(&msg.addr) {
+        match K::parse(&msg.addr) {
             None => None,
             Some(context) => {
                 // If this message is relevant to this layer...
@@ -220,28 +222,25 @@ impl<T: ContextTrait + 'static, K: ContextKindTrait<T> + 'static> ContextualDisp
     }
 }
 
+pub type Dispatcher = Box<dyn FnMut(OscMessage)>;
+
 // Main builder for the router
 pub struct OscGatedRouterBuilder {
     layers: Vec<Box<dyn ContextGateBuilderTrait>>,
-    dispatcher: Option<Box<dyn FnMut(OscMessage)>>,
+    dispatcher: Dispatcher,
     buffer_timeout: Duration,
 }
 
 impl OscGatedRouterBuilder {
-    pub fn new() -> Self {
-        Self {
-            layers: Vec::new(),
-            dispatcher: None,
-            buffer_timeout: Duration::from_secs(60), // Default 1 minute timeout
-        }
-    }
-
-    pub fn with_dispatcher<F>(mut self, dispatcher: F) -> Self
+    pub fn new<F>(dispatcher: F) -> Self
     where
         F: FnMut(OscMessage) + 'static,
     {
-        self.dispatcher = Some(Box::new(dispatcher));
-        self
+        Self {
+            layers: Vec::new(),
+            dispatcher: Box::new(dispatcher),
+            buffer_timeout: Duration::from_secs(60), // Default 1 minute timeout
+        }
     }
 
     pub fn with_buffer_timeout(mut self, timeout: Duration) -> Self {
@@ -255,10 +254,6 @@ impl OscGatedRouterBuilder {
     }
 
     pub fn build(self) -> Result<OscGatedRouter, RouterBuildError> {
-        let dispatcher = self
-            .dispatcher
-            .ok_or(RouterBuildError::NoDispatcherProvided)?;
-
         // Instead of collecting directly, create the vector and push each element
         let mut layers: Vec<Box<dyn ContextualDispatcher>> = Vec::with_capacity(self.layers.len());
 
@@ -270,7 +265,7 @@ impl OscGatedRouterBuilder {
 
         Ok(OscGatedRouter {
             layers,
-            dispatcher,
+            dispatcher: self.dispatcher,
             buffer_timeout: self.buffer_timeout,
             buffer: HashMap::new(),
         })

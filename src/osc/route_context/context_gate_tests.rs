@@ -36,7 +36,7 @@ mod tests {
     struct SendContextKind {}
 
     impl ContextKindTrait<TrackContext> for TrackContextKind {
-        fn parse(&self, osc_address: &str) -> Option<TrackContext> {
+        fn parse(osc_address: &str) -> Option<TrackContext> {
             let parts: Vec<&str> = osc_address.split('/').collect();
             if parts.len() >= 3 && parts[1] == "track" {
                 Some(TrackContext {
@@ -47,13 +47,13 @@ mod tests {
             }
         }
 
-        fn context_name(&self) -> &'static str {
+        fn context_name() -> &'static str {
             "Track"
         }
     }
 
     impl ContextKindTrait<SendContext> for SendContextKind {
-        fn parse(&self, osc_address: &str) -> Option<SendContext> {
+        fn parse(osc_address: &str) -> Option<SendContext> {
             let parts: Vec<&str> = osc_address.split('/').collect();
             if parts.len() >= 5 && parts[1] == "track" && parts[3] == "send" {
                 Some(SendContext {
@@ -65,39 +65,8 @@ mod tests {
             }
         }
 
-        fn context_name(&self) -> &'static str {
+        fn context_name() -> &'static str {
             "Send"
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    enum RouterContext {
-        Track(TrackContext),
-        Send(SendContext),
-        // Add more context types as needed
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    enum RouterContextKind {
-        Track(TrackContextKind),
-        Send(SendContextKind),
-    }
-
-    impl ContextTrait for RouterContext {}
-
-    impl ContextKindTrait<RouterContext> for RouterContextKind {
-        fn parse(&self, osc_address: &str) -> Option<RouterContext> {
-            match self {
-                RouterContextKind::Track(kind) => kind.parse(osc_address).map(RouterContext::Track),
-                RouterContextKind::Send(kind) => kind.parse(osc_address).map(RouterContext::Send),
-            }
-        }
-
-        fn context_name(&self) -> &'static str {
-            match self {
-                RouterContextKind::Track(kind) => kind.context_name(),
-                RouterContextKind::Send(kind) => kind.context_name(),
-            }
         }
     }
 
@@ -113,12 +82,11 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages.borrow_mut().push(msg);
-        };
+        });
 
-        let router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
@@ -249,17 +217,15 @@ mod tests {
 
         // Create router with short timeout
         let received_messages = Rc::new(RefCell::new(Vec::new()));
-        let router = OscGatedRouterBuilder::new()
-            .with_dispatcher(move |msg| {
-                received_messages.borrow_mut().push(msg);
-            })
-            .with_buffer_timeout(Duration::from_millis(10))
-            .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
-                    .add_key_route("/track/{track_guid}/index"),
-            ))
-            .build()
-            .unwrap();
+        let router = OscGatedRouterBuilder::new(Box::new(move |msg| {
+            received_messages.borrow_mut().push(msg);
+        }))
+        .with_buffer_timeout(Duration::from_millis(10))
+        .add_layer(Box::new(
+            ContextGateBuilder::new(TrackContextKind {}).add_key_route("/track/{track_guid}/index"),
+        ))
+        .build()
+        .unwrap();
 
         let mut router = router;
         let context = TrackContext {
@@ -324,9 +290,9 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages.borrow_mut().push(msg);
-        };
+        });
 
         // Create a builder and add each key route dynamically
         let mut builder = ContextGateBuilder::new(TrackContextKind {});
@@ -334,8 +300,7 @@ mod tests {
             builder = builder.add_key_route(key);
         }
 
-        let router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(builder))
             .build()
             .unwrap();
@@ -394,38 +359,32 @@ mod tests {
         let initialized_contexts = Rc::new(RefCell::new(Vec::new()));
 
         let received_messages_clone = received_messages.clone();
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages_clone.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer({
                 let contexts = initialized_contexts.clone();
                 Box::new(
-                    ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
+                    ContextGateBuilder::new(TrackContextKind {})
                         .add_key_route("/track/{track_guid}/index")
                         .with_initialization_callback(move |ctx, _| {
-                            if let RouterContext::Track(t_ctx) = ctx {
-                                contexts
-                                    .borrow_mut()
-                                    .push(format!("Track:{}", t_ctx.track_guid));
-                            }
+                            contexts
+                                .borrow_mut()
+                                .push(format!("Track:{}", ctx.track_guid));
                         }),
                 )
             })
             .add_layer({
                 let contexts = initialized_contexts.clone();
                 Box::new(
-                    ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
+                    ContextGateBuilder::new(SendContextKind {})
                         .add_key_route("/track/{track_guid}/send/{send_index}/guid")
                         .with_initialization_callback(move |ctx, _| {
-                            if let RouterContext::Send(s_ctx) = ctx {
-                                contexts.borrow_mut().push(format!(
-                                    "Send:{}:{}",
-                                    s_ctx.track_guid, s_ctx.send_index
-                                ));
-                            }
+                            contexts
+                                .borrow_mut()
+                                .push(format!("Send:{}:{}", ctx.track_guid, ctx.send_index));
                         }),
                 )
             })
@@ -522,12 +481,11 @@ mod tests {
 
         let received_messages = Rc::new(RefCell::new(Vec::new()));
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
@@ -563,17 +521,15 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(move |msg| {
-                received_messages.borrow_mut().push(msg);
-            })
-            .with_buffer_timeout(Duration::from_millis(10))
-            .add_layer(Box::new(
-                ContextGateBuilder::new(TrackContextKind {})
-                    .add_key_route("/track/{track_guid}/index"),
-            ))
-            .build()
-            .unwrap();
+        let mut router = OscGatedRouterBuilder::new(Box::new(move |msg| {
+            received_messages.borrow_mut().push(msg);
+        }))
+        .with_buffer_timeout(Duration::from_millis(10))
+        .add_layer(Box::new(
+            ContextGateBuilder::new(TrackContextKind {}).add_key_route("/track/{track_guid}/index"),
+        ))
+        .build()
+        .unwrap();
 
         let context = TrackContext {
             track_guid: "recovery".to_string(),
@@ -695,12 +651,11 @@ mod tests {
 
         let received_messages = Rc::new(RefCell::new(Vec::new()));
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
@@ -754,18 +709,17 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages_clone.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
-                ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
+                ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index"),
             ))
             .add_layer(Box::new(
-                ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
+                ContextGateBuilder::new(SendContextKind {})
                     .add_key_route("/track/{track_guid}/send/{send_index}/guid"),
             ))
             .build()
@@ -826,7 +780,7 @@ mod tests {
         struct SpecialContextKind2 {}
 
         impl ContextKindTrait<SpecialContext> for SpecialContextKind1 {
-            fn parse(&self, osc_address: &str) -> Option<SpecialContext> {
+            fn parse(osc_address: &str) -> Option<SpecialContext> {
                 if osc_address.starts_with("/track/") && osc_address.contains("/special") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
                     if parts.len() >= 3 {
@@ -838,13 +792,13 @@ mod tests {
                 None
             }
 
-            fn context_name(&self) -> &'static str {
+            fn context_name() -> &'static str {
                 "Special1"
             }
         }
 
         impl ContextKindTrait<SpecialContext> for SpecialContextKind2 {
-            fn parse(&self, osc_address: &str) -> Option<SpecialContext> {
+            fn parse(osc_address: &str) -> Option<SpecialContext> {
                 if osc_address.starts_with("/track/") && osc_address.contains("/special") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
                     if parts.len() >= 3 {
@@ -856,7 +810,7 @@ mod tests {
                 None
             }
 
-            fn context_name(&self) -> &'static str {
+            fn context_name() -> &'static str {
                 "Special2"
             }
         }
@@ -864,14 +818,13 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             println!("Dispatched: {}", msg.addr);
             received_messages_clone.borrow_mut().push(msg);
-        };
+        });
 
         // Create a router with both special contexts
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(SpecialContextKind1 {})
                     .add_key_route("/track/{id}/special/init1"),
@@ -923,19 +876,17 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages_clone.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
             .add_layer(Box::new(
-                ContextGateBuilder::new(RouterContextKind::Track(TrackContextKind {}))
-                    .add_key_route("/track/{track_guid}/index"),
+                ContextGateBuilder::new().add_key_route("/track/{track_guid}/index"),
             ))
             .add_layer(Box::new(
-                ContextGateBuilder::new(RouterContextKind::Send(SendContextKind {}))
+                ContextGateBuilder::new(SendContextKind {})
                     .add_key_route("/track/{track_guid}/send/{send_index}/guid"),
             ))
             .build()
@@ -1004,12 +955,11 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages_clone.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
@@ -1058,12 +1008,11 @@ mod tests {
         let received_messages = Rc::new(RefCell::new(Vec::new()));
         let received_messages_clone = received_messages.clone();
 
-        let dispatcher = move |msg: OscMessage| {
+        let dispatcher = Box::new(move |msg: OscMessage| {
             received_messages_clone.borrow_mut().push(msg);
-        };
+        });
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .with_buffer_timeout(Duration::from_millis(10))
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
@@ -1142,16 +1091,15 @@ mod tests {
                 builder = builder.add_key_route(*key);
             }
 
-            let mut router = OscGatedRouterBuilder::new()
-                .with_dispatcher({
-                    let received_messages_clone = received_messages.clone();
-                    move |msg| {
-                        received_messages_clone.borrow_mut().push(msg);
-                    }
+            let mut router = OscGatedRouterBuilder::new({
+                let received_messages_clone = received_messages.clone();
+                Box::new(move |msg| {
+                    received_messages_clone.borrow_mut().push(msg);
                 })
-                .add_layer(Box::new(builder))
-                .build()
-                .unwrap();
+            })
+            .add_layer(Box::new(builder))
+            .build()
+            .unwrap();
 
             let track_guid = format!("order{}", i);
             let context = TrackContext {
@@ -1207,8 +1155,7 @@ mod tests {
             received_messages_clone.borrow_mut().push(msg);
         };
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index"),
@@ -1258,7 +1205,7 @@ mod tests {
         struct OverlappingContextKind2 {}
 
         impl ContextKindTrait<OverlappingContext> for OverlappingContextKind1 {
-            fn parse(&self, osc_address: &str) -> Option<OverlappingContext> {
+            fn parse(osc_address: &str) -> Option<OverlappingContext> {
                 if osc_address.starts_with("/overlap/") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
                     if parts.len() >= 3 {
@@ -1270,13 +1217,13 @@ mod tests {
                 None
             }
 
-            fn context_name(&self) -> &'static str {
+            fn context_name() -> &'static str {
                 "Overlap1"
             }
         }
 
         impl ContextKindTrait<OverlappingContext> for OverlappingContextKind2 {
-            fn parse(&self, osc_address: &str) -> Option<OverlappingContext> {
+            fn parse(osc_address: &str) -> Option<OverlappingContext> {
                 if osc_address.starts_with("/overlap/") {
                     let parts: Vec<&str> = osc_address.split('/').collect();
                     if parts.len() >= 3 {
@@ -1288,7 +1235,7 @@ mod tests {
                 None
             }
 
-            fn context_name(&self) -> &'static str {
+            fn context_name() -> &'static str {
                 "Overlap2"
             }
         }
@@ -1300,8 +1247,7 @@ mod tests {
             received_messages_clone.borrow_mut().push(msg);
         };
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(OverlappingContextKind1 {})
                     .add_key_route("/overlap/{id}/init1"),
@@ -1362,8 +1308,7 @@ mod tests {
             received_messages_clone.borrow_mut().push(msg);
         };
 
-        let mut router = OscGatedRouterBuilder::new()
-            .with_dispatcher(dispatcher)
+        let mut router = OscGatedRouterBuilder::new(dispatcher)
             .add_layer(Box::new(
                 ContextGateBuilder::new(TrackContextKind {})
                     .add_key_route("/track/{track_guid}/index")
