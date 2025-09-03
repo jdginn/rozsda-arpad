@@ -37,7 +37,7 @@ pub trait ContextGateBuilderTrait {
 // Builder for a single context gate layer
 pub struct ContextGateBuilder<K: ContextKindTrait> {
     key_routes: Vec<String>,
-    on_initialized: Option<Box<dyn Fn(K::Context, &HashMap<String, OscMessage>)>>,
+    on_initialized: Option<Box<dyn FnMut(K::Context, &HashMap<String, OscMessage>)>>,
 
     _marker: PhantomData<K>,
 }
@@ -65,7 +65,7 @@ impl<K: ContextKindTrait> ContextGateBuilder<K> {
 
     pub fn with_initialization_callback<F>(mut self, callback: F) -> Self
     where
-        F: Fn(K::Context, &HashMap<String, OscMessage>) + 'static,
+        F: FnMut(K::Context, &HashMap<String, OscMessage>) + 'static,
     {
         self.on_initialized = Some(Box::new(callback));
         self
@@ -120,7 +120,7 @@ struct ContextGate<K: ContextKindTrait + 'static> {
     // At the moment we set it true, we also flush the buffer.
     initialized: HashMap<K::Context, bool>,
     // Called when a specific context is initialized
-    on_initialized: Option<Box<dyn Fn(K::Context, &HashMap<String, OscMessage>)>>,
+    on_initialized: Option<Box<dyn FnMut(K::Context, &HashMap<String, OscMessage>)>>,
     key_messages: HashMap<K::Context, HashMap<String, OscMessage>>,
 
     _marker: PhantomData<K>,
@@ -131,7 +131,7 @@ impl<K: ContextKindTrait> ContextGate<K> {
     pub fn initialize(&mut self, context: K::Context) {
         let key_messages = self.key_messages.get(&context).unwrap();
 
-        if let Some(callback) = &self.on_initialized {
+        if let Some(callback) = &mut self.on_initialized {
             callback(context.clone(), key_messages);
         }
         self.initialized.insert(context.clone(), true);
