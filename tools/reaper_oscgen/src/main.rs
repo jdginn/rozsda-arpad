@@ -137,11 +137,10 @@ fn write_imports(code: &mut String) {
     code.push_str("use std::net::UdpSocket;\n");
     code.push_str("use std::collections::HashMap;\n");
     code.push_str("use std::sync::Arc;\n\n");
-    code.push_str("use regex::Regex;\n\n");
 
     code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
 
-    code.push_str("use crate::osc::context_gate::{ContextKindTrait, ContextTrait};\n\n");
+    code.push_str("use crate::osc::route_context::{ContextTrait};\n\n");
 
     code.push_str("#[derive(Debug)]\npub struct OscError;\n\n");
 }
@@ -218,7 +217,7 @@ pub fn osc_address_template_to_regex(osc_address: &str) -> String {
 fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     use std::collections::BTreeMap;
 
-    // Step 1: Gather all unique contexts with their keys and arguments
+    // Step 0: Gather all unique contexts with their keys and arguments
     #[derive(Debug)]
     struct ContextInfo {
         name: String,
@@ -242,57 +241,45 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
         });
     }
 
+    // Step 1: put these structs in a module
+    writeln!(code, "pub mod context {{").unwrap();
+    writeln!(code, "    use crate::osc::generated_osc::ContextTrait;\n").unwrap();
+
     // Step 2: Generate context structs
     for ctx in contexts.values() {
-        writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
-        writeln!(code, "pub struct {}Context {{", ctx.name).unwrap();
+        writeln!(code, "    #[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
+        writeln!(code, "    pub struct {} {{", ctx.name).unwrap();
         for param in &ctx.parameters {
-            writeln!(code, "    pub {}: {},", param.name, param.typ).unwrap();
+            writeln!(code, "        pub {}: {},", param.name, param.typ).unwrap();
         }
-        writeln!(code, "}}\n\n").unwrap();
-    }
-
-    // Step 3: Generate OscContext enum
-    writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
-    writeln!(code, "pub enum OscContext {{").unwrap();
-    for ctx in contexts.values() {
-        writeln!(code, "    {}({}Context),", ctx.name, ctx.name).unwrap();
+        writeln!(code, "    }}\n\n").unwrap();
+        writeln!(code, "    impl ContextTrait for {} {{}}\n", ctx.name).unwrap();
     }
     writeln!(code, "}}\n\n").unwrap();
-    writeln!(code, "impl ContextTrait for OscContext {{}}\n\n").unwrap();
 
-    // Step 4: Generate OscContextKind enum and parsing implementation
-    writeln!(code, "#[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
-    writeln!(code, "pub enum OscContextKind {{").unwrap();
-    for ctx in contexts.values() {
-        writeln!(code, "    {},", ctx.name).unwrap();
-    }
-    writeln!(code, "}}\n\n").unwrap();
+    writeln!(code, "pub mod context_kind {{").unwrap();
+    writeln!(code, "    use regex::Regex;").unwrap();
+    writeln!(code, "    use super::context;").unwrap();
     writeln!(
         code,
-        "impl ContextKindTrait<OscContext> for OscContextKind {{"
+        "    use crate::osc::route_context::{{ContextKindTrait}};\n"
     )
     .unwrap();
-    writeln!(code, "    fn context_name(&self) -> &'static str {{").unwrap();
-    writeln!(code, "        match self {{").unwrap();
     for ctx in contexts.values() {
+        writeln!(code, "    #[derive(Clone, Debug, PartialEq, Eq, Hash)]").unwrap();
+        writeln!(code, "    pub struct {} {{}}\n\n", ctx.name).unwrap();
+        writeln!(code, "    impl ContextKindTrait for {} {{\n", ctx.name).unwrap();
+        writeln!(code, "        type Context = context::{};\n\n", ctx.name).unwrap();
+        writeln!(code, "        fn context_name() -> &'static str {{").unwrap();
+        writeln!(code, "            \"{}\"\n", ctx.name).unwrap();
+        writeln!(code, "        }}\n\n").unwrap();
+
         writeln!(
             code,
-            "            OscContextKind::{} => \"{}\",",
-            ctx.name, ctx.name
+            "    fn parse(osc_address: &str) -> Option<context::{}> {{\n",
+            ctx.name
         )
         .unwrap();
-    }
-    writeln!(code, "        }}\n    }}\n\n").unwrap();
-
-    writeln!(
-        code,
-        "    fn parse(&self, osc_address: &str) -> Option<OscContext> {{"
-    )
-    .unwrap();
-    writeln!(code, "        match self {{").unwrap();
-
-    for ctx in contexts.values() {
         // Compose capture logic
         let mut capture_fields = String::new();
         println!("Context parameters: {:?}", ctx.parameters);
@@ -320,26 +307,22 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
                 )),
             }
         }
-
-        writeln!(code, "            OscContextKind::{} => {{", ctx.name).unwrap();
         writeln!(
             code,
-            "                let re = Regex::new(r\"{}{}\").unwrap();",
+            "            let re = Regex::new(r\"{}{}\").unwrap();",
             ctx.regex,
             if ctx.parameters.is_empty() { "" } else { "" } // No extra required
         )
         .unwrap();
         writeln!(
             code,
-            "                re.captures(osc_address).map(|caps| OscContext::{}({}Context {{ {} }}))",
-            ctx.name, ctx.name, capture_fields
-        ).unwrap();
-        writeln!(code, "            }}").unwrap();
+            "            re.captures(osc_address).map(|caps| context::{}{{ {} }})",
+            ctx.name, capture_fields
+        )
+        .unwrap();
+        writeln!(code, "        }}\n").unwrap();
+        writeln!(code, "    }}\n").unwrap();
     }
-
-    writeln!(code, "            _ => None,").unwrap();
-    writeln!(code, "        }}").unwrap();
-    writeln!(code, "    }}").unwrap();
     writeln!(code, "}}\n\n").unwrap();
 }
 
@@ -735,10 +718,7 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
     code.push_str("    }\n");
     code.push_str("    Some(args)\n");
     code.push_str("}\n\n");
-    code.push_str("pub fn dispatch_osc<F>(reaper: &mut Reaper, packet: rosc::OscPacket, log_unknown: F)\nwhere F: Fn(&str) {\n");
-    code.push_str(
-        "    let msg = match packet { rosc::OscPacket::Message(msg) => msg, _ => return, };\n",
-    );
+    code.push_str("pub fn dispatch_osc<F>(reaper: &mut Reaper, msg: rosc::OscMessage, log_unknown: F)\nwhere F: Fn(&str) {\n");
     code.push_str("    let addr = msg.addr.as_str();\n");
 
     // Emit match arms for each endpoint

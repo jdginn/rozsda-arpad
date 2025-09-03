@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::traits::{Bind, Query, Set};
 
-use crate::osc::route_context::{ContextKindTrait, ContextTrait};
+use crate::osc::route_context::ContextTrait;
 
 #[derive(Debug)]
 pub struct OscError;
@@ -31,16 +31,16 @@ pub mod context {
 }
 
 pub mod context_kind {
+    use super::context;
+    use crate::osc::route_context::ContextKindTrait;
     use regex::Regex;
-
-    use crate::osc::generated_osc::context;
-    use crate::osc::route_context::{ContextKindTrait, ContextTrait};
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Track {}
 
     impl ContextKindTrait for Track {
         type Context = context::Track;
+
         fn context_name() -> &'static str {
             "Track"
         }
@@ -58,6 +58,7 @@ pub mod context_kind {
 
     impl ContextKindTrait for TrackSend {
         type Context = context::TrackSend;
+
         fn context_name() -> &'static str {
             "TrackSend"
         }
@@ -138,6 +139,13 @@ impl TrackSend {
             send_index: send_index.clone(),
         }
     }
+    pub fn guid(&self) -> TrackSendGuid {
+        TrackSendGuid::new(
+            self.socket.clone(),
+            self.track_guid.clone(),
+            self.send_index.clone(),
+        )
+    }
     pub fn volume(&self) -> TrackSendVolume {
         TrackSendVolume::new(
             self.socket.clone(),
@@ -145,12 +153,56 @@ impl TrackSend {
             self.send_index.clone(),
         )
     }
-    pub fn guid(&self) -> TrackSendGuid {
-        TrackSendGuid::new(
-            self.socket.clone(),
-            self.track_guid.clone(),
-            self.send_index.clone(),
-        )
+}
+
+pub struct TrackSendGuid {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackSendGuidHandler>,
+    pub track_guid: String,
+    pub send_index: String,
+}
+
+impl TrackSendGuid {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: String) -> TrackSendGuid {
+        TrackSendGuid {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+            send_index: send_index.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackSendGuidArgs {
+    pub guid: String, // unique identifier for the send
+}
+
+pub type TrackSendGuidHandler = Box<dyn FnMut(TrackSendGuidArgs) + 'static>;
+
+/// /track/{track_guid}/send/{send_index}/guid
+impl Query for TrackSendGuid {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/send/{}/guid", self.track_guid, self.send_index);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/send/{send_index}/guid
+impl Bind<TrackSendGuidArgs> for TrackSendGuid {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackSendGuidArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
     }
 }
 
@@ -216,57 +268,6 @@ impl Bind<TrackSendVolumeArgs> for TrackSendVolume {
     fn bind<F>(&mut self, callback: F)
     where
         F: FnMut(TrackSendVolumeArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
-pub struct TrackSendGuid {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackSendGuidHandler>,
-    pub track_guid: String,
-    pub send_index: String,
-}
-
-impl TrackSendGuid {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: String) -> TrackSendGuid {
-        TrackSendGuid {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-            send_index: send_index.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackSendGuidArgs {
-    pub guid: String, // unique identifier for the send
-}
-
-pub type TrackSendGuidHandler = Box<dyn FnMut(TrackSendGuidArgs) + 'static>;
-
-/// /track/{track_guid}/send/{send_index}/guid
-impl Query for TrackSendGuid {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/send/{}/guid", self.track_guid, self.send_index);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/send/{send_index}/guid
-impl Bind<TrackSendGuidArgs> for TrackSendGuid {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackSendGuidArgs) + 'static,
     {
         self.handler = Some(Box::new(callback));
     }
@@ -405,30 +406,11 @@ fn match_addr(addr: &str, pattern: &str) -> Option<Vec<String>> {
     Some(args)
 }
 
-pub fn dispatch_osc<F>(reaper: &mut Reaper, packet: rosc::OscPacket, log_unknown: F)
+pub fn dispatch_osc<F>(reaper: &mut Reaper, msg: rosc::OscMessage, log_unknown: F)
 where
     F: Fn(&str),
 {
-    let msg = match packet {
-        rosc::OscPacket::Message(msg) => msg,
-        _ => return,
-    };
     let addr = msg.addr.as_str();
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/volume") {
-        let send_index = &args[1];
-        let track_guid = &args[2];
-        let track = reaper.track(track_guid.clone());
-        let send = track.send(send_index.clone());
-        let mut endpoint = send.volume();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(volume) = msg.args.get(0) {
-                handler(TrackSendVolumeArgs {
-                    volume: volume.clone().float().unwrap(),
-                });
-            }
-        }
-        return;
-    }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/guid") {
         let send_index = &args[1];
         let track_guid = &args[2];
@@ -439,6 +421,21 @@ where
             if let Some(guid) = msg.args.get(0) {
                 handler(TrackSendGuidArgs {
                     guid: guid.clone().string().unwrap().clone(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/volume") {
+        let send_index = &args[1];
+        let track_guid = &args[2];
+        let track = reaper.track(track_guid.clone());
+        let send = track.send(send_index.clone());
+        let mut endpoint = send.volume();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(volume) = msg.args.get(0) {
+                handler(TrackSendVolumeArgs {
+                    volume: volume.clone().float().unwrap(),
                 });
             }
         }
