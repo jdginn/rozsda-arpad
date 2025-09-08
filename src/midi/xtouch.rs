@@ -36,7 +36,7 @@ impl Set<i32> for Fader {
         let mut midi = self.base.lock().unwrap();
         midi.midi_out
             .send(byte_slice(msg).as_slice())
-            .map_err(MidiError::SendError)?;
+            .map_err(MidiError::Send)?;
         Ok(())
     }
 }

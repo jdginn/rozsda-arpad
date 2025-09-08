@@ -1,7 +1,7 @@
 pub trait Bind<Args> {
     fn bind<F>(&mut self, callback: F)
     where
-        F: FnMut(Args) + 'static;
+        F: FnMut(Args) + Send + 'static;
 }
 
 pub trait Set<Args> {
