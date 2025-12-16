@@ -6,13 +6,14 @@ use helgoboss_midi::{
 };
 use midir::{MidiInput, MidiInputPort, MidiOutputConnection};
 
-use crate::traits::{Bind, Query, Set};
+use crate::traits::{Bind, Set};
 
 fn byte_slice(msg: RawShortMessage) -> [u8; 3] {
     let bytes = msg.to_bytes();
     [bytes.0, bytes.1.get(), bytes.2.get()]
 }
 
+#[derive(Debug)]
 pub enum MidiError {
     Send(midir::SendError),
     Connect(midir::ConnectError<midir::MidiInput>),
@@ -22,16 +23,16 @@ pub enum MidiError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NoteOn {
-    channel: u8,
-    key_number: u8,
+    pub channel: u8,
+    pub key_number: u8,
 }
 
 pub struct NoteOnBuilder<'a> {
-    device: &'a mut MidiDevice,
-    spec: NoteOn,
+    pub device: &'a mut MidiDevice,
+    pub spec: NoteOn,
 }
 
-impl<'a> Bind<u8> for NoteOnBuilder<'a> {
+impl Bind<u8> for NoteOnBuilder<'_> {
     fn bind<F>(&mut self, _callback: F)
     where
         F: FnMut(u8) + Send + 'static,
@@ -44,7 +45,7 @@ impl<'a> Bind<u8> for NoteOnBuilder<'a> {
     }
 }
 
-impl<'a> Set<u8> for NoteOnBuilder<'a> {
+impl Set<u8> for NoteOnBuilder<'_> {
     type Error = MidiError;
 
     fn set(&mut self, value: u8) -> Result<(), Self::Error> {
@@ -62,16 +63,16 @@ impl<'a> Set<u8> for NoteOnBuilder<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NoteOff {
-    channel: u8,
-    key_number: u8,
+    pub channel: u8,
+    pub key_number: u8,
 }
 
 pub struct NoteOffBuilder<'a> {
-    device: &'a mut MidiDevice,
-    spec: NoteOff,
+    pub device: &'a mut MidiDevice,
+    pub spec: NoteOff,
 }
 
-impl<'a> Bind<u8> for NoteOffBuilder<'a> {
+impl Bind<u8> for NoteOffBuilder<'_> {
     fn bind<F>(&mut self, _callback: F)
     where
         F: FnMut(u8) + Send + 'static,
@@ -84,7 +85,7 @@ impl<'a> Bind<u8> for NoteOffBuilder<'a> {
     }
 }
 
-impl<'a> Set<u8> for NoteOffBuilder<'a> {
+impl Set<u8> for NoteOffBuilder<'_> {
     type Error = MidiError;
 
     fn set(&mut self, value: u8) -> Result<(), Self::Error> {
@@ -111,7 +112,7 @@ pub struct ControlChangeBuilder<'a> {
     spec: ControlChange,
 }
 
-impl<'a> Bind<u8> for ControlChangeBuilder<'a> {
+impl Bind<u8> for ControlChangeBuilder<'_> {
     fn bind<F>(&mut self, _callback: F)
     where
         F: FnMut(u8) + Send + 'static,
@@ -124,7 +125,7 @@ impl<'a> Bind<u8> for ControlChangeBuilder<'a> {
     }
 }
 
-impl<'a> Set<u8> for ControlChangeBuilder<'a> {
+impl Set<u8> for ControlChangeBuilder<'_> {
     type Error = MidiError;
 
     fn set(&mut self, value: u8) -> Result<(), Self::Error> {
@@ -142,15 +143,15 @@ impl<'a> Set<u8> for ControlChangeBuilder<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PitchBend {
-    channel: u8,
+    pub channel: u8,
 }
 
 pub struct PitchBendBuilder<'a> {
-    device: &'a mut MidiDevice,
-    spec: PitchBend,
+    pub device: &'a mut MidiDevice,
+    pub spec: PitchBend,
 }
 
-impl<'a> Bind<u16> for PitchBendBuilder<'a> {
+impl Bind<u16> for PitchBendBuilder<'_> {
     fn bind<F>(&mut self, _callback: F)
     where
         F: FnMut(u16) + Send + 'static,
@@ -163,7 +164,7 @@ impl<'a> Bind<u16> for PitchBendBuilder<'a> {
     }
 }
 
-impl<'a> Set<u16> for PitchBendBuilder<'a> {
+impl Set<u16> for PitchBendBuilder<'_> {
     type Error = MidiError;
 
     fn set(&mut self, value: u16) -> Result<(), Self::Error> {
