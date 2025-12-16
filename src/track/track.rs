@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::thread;
 
-use crossbeam_channel::{Receiver, Sender, bounded};
-
-use bimap::BiMap;
+use crossbeam_channel::{Receiver, Sender};
 
 #[derive(Clone)]
 pub enum Direction {
@@ -33,13 +30,14 @@ pub struct TrackQuery {
 
 #[derive(Clone)]
 pub enum DataPayload {
-    Volume(f32),
-    Pan(f32),
     Name(String),
+    ReaperTrackIndex(Option<i32>),
     Selected(bool),
     Muted(bool),
     Soloed(bool),
     Armed(bool),
+    Volume(f32),
+    Pan(f32),
     TrackData(TrackData),
 }
 
@@ -47,6 +45,7 @@ pub enum DataPayload {
 struct TrackData {
     guid: String,
     name: String,
+    reaper_track_index: Option<i32>,
     selected: bool,
     muted: bool,
     soloed: bool,
@@ -64,6 +63,7 @@ impl TrackData {
         Self {
             guid: guid.to_string(),
             name: String::new(),
+            reaper_track_index: None,
             selected: false,
             muted: false,
             soloed: false,
@@ -92,7 +92,6 @@ impl TrackAccessor<'_> {
 }
 
 pub struct TrackManager {
-    mux: Mutex<()>,
     tracks: HashMap<String, TrackData>,
     input: Receiver<TrackMsg>,
     downstream: Sender<TrackMsg>,
@@ -107,7 +106,6 @@ impl TrackManager {
     ) {
         thread::spawn(move || {
             let mut manager = Self {
-                mux: Mutex::new(()),
                 tracks: HashMap::new(),
                 input,
                 downstream,
@@ -131,17 +129,13 @@ impl TrackManager {
                         .or_insert_with(|| TrackData::new(&msg.guid));
                     // Update the track data based on the message
                     match msg.data {
-                        DataPayload::Volume(volume) => {
-                            track.volume = volume;
-                            println!("Track {} volume set to {}", msg.guid, volume);
-                        }
-                        DataPayload::Pan(pan) => {
-                            track.pan = pan;
-                            println!("Track {} pan set to {}", msg.guid, pan);
-                        }
                         DataPayload::Name(name) => {
                             track.name = name.clone();
                             println!("Track {} name set to {}", msg.guid, name);
+                        }
+                        DataPayload::ReaperTrackIndex(index) => {
+                            track.reaper_track_index = index;
+                            println!("Track {} Reaper index set to {:?}", msg.guid, index);
                         }
                         DataPayload::Selected(selected) => {
                             track.selected = selected;
@@ -158,6 +152,14 @@ impl TrackManager {
                         DataPayload::Armed(armed) => {
                             track.armed = armed;
                             println!("Track {} armed set to {}", msg.guid, armed);
+                        }
+                        DataPayload::Volume(volume) => {
+                            track.volume = volume;
+                            println!("Track {} volume set to {}", msg.guid, volume);
+                        }
+                        DataPayload::Pan(pan) => {
+                            track.pan = pan;
+                            println!("Track {} pan set to {}", msg.guid, pan);
                         }
                         // Update everything!
                         DataPayload::TrackData(track_data) => {
