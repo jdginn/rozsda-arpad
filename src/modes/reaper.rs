@@ -11,13 +11,36 @@ use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
+struct Button {
+    state: bool,
+}
+
+impl Button {
+    fn new() -> Self {
+        Button { state: false }
+    }
+
+    fn is_on(&self) -> bool {
+        self.state
+    }
+
+    fn set(&mut self, new_state: bool) {
+        self.state = new_state;
+    }
+
+    fn toggle(&mut self) -> bool {
+        self.state = !self.state;
+        self.state
+    }
+}
+
 // Collection of state for the buttons repeated for each channel on the hw controller
 //
 // TODO: this might be too implementation-specific to live here?
 struct ButtonState {
-    mute: bool,
-    solo: bool,
-    arm: bool,
+    mute: Button,
+    solo: Button,
+    arm: Button,
 }
 
 /// Implements a mode where that "basic" reaper functionality is mapped to the channel strips on
@@ -57,6 +80,19 @@ impl VolumePanMode {
             from_xtouch,
         };
         mode
+    }
+
+    fn get_track_state(&mut self, guid: String) -> &mut ButtonState {
+        self.track_states.entry(guid).or_insert(ButtonState {
+            mute: Button::new(),
+            solo: Button::new(),
+            arm: Button::new(),
+        })
+    }
+
+    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<String> {
+        let assignments = self.track_hw_assignments.lock().unwrap();
+        assignments[hw_channel].clone()
     }
 
     // For a given track GUID, find which hardware channel it's assigned to (if any)
@@ -115,69 +151,39 @@ impl VolumePanMode {
                 }
                 TrackDataPayload::Muted(muted) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.track_states
-                            .entry(msg.guid)
-                            .or_insert(ButtonState {
-                                mute: false,
-                                solo: false,
-                                arm: false,
-                            })
-                            .mute = muted;
+                        self.get_track_state(msg.guid).mute.set(muted);
                         // Send mute LED update to XTouch
                         let _ =
                             self.to_xtouch
                                 .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
                                     idx: hw_channel as i32,
-                                    state: match muted {
-                                        true => LEDState::On,
-                                        false => LEDState::Off,
-                                    },
+                                    state: LEDState::from(muted),
                                 }));
                     }
                     return curr_mode;
                 }
                 TrackDataPayload::Soloed(soloed) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.track_states
-                            .entry(msg.guid)
-                            .or_insert(ButtonState {
-                                mute: false,
-                                solo: false,
-                                arm: false,
-                            })
-                            .solo = soloed;
+                        self.get_track_state(msg.guid).solo.set(soloed);
                         // Send solo LED update to XTouch
                         let _ =
                             self.to_xtouch
                                 .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
                                     idx: hw_channel as i32,
-                                    state: match soloed {
-                                        true => LEDState::On,
-                                        false => LEDState::Off,
-                                    },
+                                    state: LEDState::from(soloed),
                                 }));
                     }
                     return curr_mode;
                 }
                 TrackDataPayload::Armed(armed) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.track_states
-                            .entry(msg.guid)
-                            .or_insert(ButtonState {
-                                mute: false,
-                                solo: false,
-                                arm: false,
-                            })
-                            .arm = armed;
+                        self.get_track_state(msg.guid).arm.set(armed);
                         // Send arm LED update to XTouch
                         let _ =
                             self.to_xtouch
                                 .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
                                     idx: hw_channel as i32,
-                                    state: match armed {
-                                        true => LEDState::On,
-                                        false => LEDState::Off,
-                                    },
+                                    state: LEDState::from(armed),
                                 }));
                     }
                     return curr_mode;
@@ -267,97 +273,53 @@ impl VolumePanMode {
                 curr_mode
             }
             XTouchUpstreamMsg::MutePress(mute_msg) => {
-                if let Some(guid) =
-                    &self.track_hw_assignments.lock().unwrap()[mute_msg.idx as usize]
-                {
-                    let curr = self
-                        .track_states
-                        .get(guid)
-                        .map_or(false, |state| state.mute);
-                    self.track_states
-                        .entry(guid.clone())
-                        .or_insert(ButtonState {
-                            mute: false,
-                            solo: false,
-                            arm: false,
-                        })
-                        .mute = curr;
+                if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
+                    let new_state = self.get_track_state(guid.clone()).mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
                     self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
                         direction: Direction::Upstream,
                         guid: guid.clone(),
-                        data: TrackDataPayload::Muted(curr),
+                        data: TrackDataPayload::Muted(new_state),
                     }));
                     // Update the toggle on the hardware
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
                             idx: mute_msg.idx,
-                            state: match curr {
-                                true => LEDState::On,
-                                false => LEDState::Off,
-                            },
+                            state: LEDState::from(new_state),
                         }));
                 }
                 curr_mode
             }
             XTouchUpstreamMsg::SoloPress(solo_msg) => {
-                if let Some(guid) =
-                    &self.track_hw_assignments.lock().unwrap()[solo_msg.idx as usize]
-                {
-                    let curr = self
-                        .track_states
-                        .get(guid)
-                        .map_or(false, |state| state.solo);
-                    self.track_states
-                        .entry(guid.clone())
-                        .or_insert(ButtonState {
-                            mute: false,
-                            solo: false,
-                            arm: false,
-                        })
-                        .solo = curr;
+                if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
+                    let new_state = self.get_track_state(guid.clone()).solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
                     self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
                         direction: Direction::Upstream,
                         guid: guid.clone(),
-                        data: TrackDataPayload::Soloed(curr),
+                        data: TrackDataPayload::Soloed(new_state),
                     }));
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
                             idx: solo_msg.idx,
-                            state: match curr {
-                                true => LEDState::On,
-                                false => LEDState::Off,
-                            },
+                            state: LEDState::from(new_state),
                         }));
                 }
                 curr_mode
             }
             XTouchUpstreamMsg::ArmPress(arm_msg) => {
-                if let Some(guid) = &self.track_hw_assignments.lock().unwrap()[arm_msg.idx as usize]
-                {
-                    let curr = self.track_states.get(guid).map_or(false, |state| state.arm);
-                    self.track_states
-                        .entry(guid.clone())
-                        .or_insert(ButtonState {
-                            mute: false,
-                            solo: false,
-                            arm: false,
-                        })
-                        .arm = curr;
+                if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
+                    let new_state = self.get_track_state(guid.clone()).arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
                     self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
                         direction: Direction::Upstream,
                         guid: guid.clone(),
-                        data: TrackDataPayload::Armed(curr),
+                        data: TrackDataPayload::Armed(new_state),
                     }));
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
                             idx: arm_msg.idx,
-                            state: match curr {
-                                true => LEDState::On,
-                                false => LEDState::Off,
-                            },
+                            state: LEDState::from(new_state),
                         }));
                 }
                 curr_mode

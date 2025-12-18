@@ -24,6 +24,15 @@ pub enum LEDState {
     Flash,
 }
 
+impl From<bool> for LEDState {
+    fn from(value: bool) -> Self {
+        match value {
+            false => LEDState::Off,
+            true => LEDState::On,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct MutePress {
     pub idx: i32,
