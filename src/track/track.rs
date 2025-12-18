@@ -46,7 +46,7 @@ pub enum DataPayload {
     TrackData(TrackData),
 }
 
-/// Maintains stae for a given track to the best of our knowledge
+/// Maintains state for a given track to the best of our knowledge
 #[derive(Clone)]
 struct TrackData {
     guid: String,
@@ -103,7 +103,7 @@ impl TrackManager {
     }
 
     pub fn handle_messages(&mut self) {
-        while let Ok(msg) = self.input.try_recv() {
+        while let Ok(msg) = self.input.recv() {
             match msg {
                 TrackMsg::Barrier(barrier) => {
                     self.downstream

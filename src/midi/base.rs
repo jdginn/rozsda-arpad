@@ -207,8 +207,8 @@ impl MidiDevice {
         let midi_in = MidiInput::new(&self.name).map_err(MidiError::Init)?;
         let cc_callbacks_clone = self.cc_callbacks.clone();
         let note_on_callbacks_clone = self.note_on_callbacks.clone();
-        let note_off_callbacks_clone = self.note_on_callbacks.clone();
-        let pich_bend_callbacks_clone = self.pitch_bend_callbacks.clone();
+        let note_off_callbacks_clone = self.note_off_callbacks.clone();
+        let pitch_bend_callbacks_clone = self.pitch_bend_callbacks.clone();
         midi_in
             .connect(
                 &self.midi_in_port,
@@ -269,7 +269,7 @@ impl MidiDevice {
                             channel,
                             pitch_bend_value,
                         } => {
-                            let mut callbacks = pich_bend_callbacks_clone.lock().unwrap();
+                            let mut callbacks = pitch_bend_callbacks_clone.lock().unwrap();
                             for (spec, callback) in callbacks.iter_mut() {
                                 if Channel::new(spec.channel) == channel {
                                     callback(u16::from(pitch_bend_value));

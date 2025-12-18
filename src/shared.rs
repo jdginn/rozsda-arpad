@@ -20,12 +20,6 @@ impl<T> Shared<T> {
         let mut guard = self.inner.lock().unwrap();
         f(&mut *guard)
     }
-
-    pub fn clone(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-        }
-    }
 }
 
 impl<T> Clone for Shared<T> {

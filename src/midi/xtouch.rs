@@ -105,7 +105,7 @@ pub enum ViewUpstream {
     MIDITracksRelease,
     InputsPress,
     InputsRelease,
-    AudioTradcksPress,
+    AudioTracksPress,
     AudioTracksRelease,
     AudioInstPress,
     AudioInstRelease,

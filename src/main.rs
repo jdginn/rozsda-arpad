@@ -98,7 +98,7 @@ fn main() {
                                 )
                             }
                         });
-                        // Tack Selected
+                        // Track Selected
                         reaper.track(track_guid.clone()).selected().bind({
                             let track_guid = track_guid.clone();
                             let a_send = a_send.clone();

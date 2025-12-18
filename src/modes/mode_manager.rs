@@ -103,7 +103,7 @@ impl ModeManager {
                                 // of jitter on the hw. But even then, we are not propagating
                                 // hardware settings upstream, so upstream should still always be
                                 // correct.
-                            _ = reaper_pan_vol.handle_downstream_messages(track_msg, manager.curr_mode)
+                            manager.curr_mode = reaper_pan_vol.handle_downstream_messages(track_msg, manager.curr_mode)
                         },
                         _ => {panic!("Inside unknown mode in ModeManager")},
                         }

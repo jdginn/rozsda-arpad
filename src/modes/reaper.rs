@@ -74,7 +74,8 @@ impl VolumePanMode {
             // Forward barriers downstream (they need to reflect back upstream for the mode to
             // transition)
             self.to_xtouch
-                .send(XTouchDownstreamMsg::Barrier(barrier.clone()));
+                .send(XTouchDownstreamMsg::Barrier(barrier.clone()))
+                .unwrap();
             match curr_mode.state {
                 // If we were already waiting on a barrier from upstream, check if this is the one
                 // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
@@ -244,7 +245,7 @@ impl VolumePanMode {
                         });
                     let barrier = Barrier { id: 1337 }; // TODO: there should be some
                     // barrier generator that automatically increments ID
-                    self.to_reaper.send(TrackMsg::Barrier(barrier));
+                    self.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
                     ModeState {
                         mode: Mode::ReaperSends,
                         state: State::WaitingBarrierFromDownstream(barrier),
