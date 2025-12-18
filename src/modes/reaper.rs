@@ -72,15 +72,14 @@ impl VolumePanMode {
         let track_hw_assignments = Arc::new(Mutex::new(vec![None; num_channels]));
         let button_states = HashMap::new();
 
-        let mode = VolumePanMode {
+        VolumePanMode {
             track_hw_assignments,
             track_states: button_states,
             to_reaper,
             from_reaper,
             to_xtouch,
             from_xtouch,
-        };
-        mode
+        }
     }
 
     fn get_track_state(&mut self, guid: String) -> &mut ButtonState {
@@ -113,7 +112,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             // Forward barriers downstream (they need to reflect back upstream for the mode to
             // transition)
             self.to_xtouch
-                .send(XTouchDownstreamMsg::Barrier(barrier.clone()))
+                .send(XTouchDownstreamMsg::Barrier(barrier))
                 .unwrap();
             match curr_mode.state {
                 // If we were already waiting on a barrier from upstream, check if this is the one

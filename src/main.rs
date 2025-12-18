@@ -7,7 +7,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use clap::Parser;
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::bounded;
 use rosc::OscMessage;
 
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};

@@ -48,7 +48,7 @@ pub enum DataPayload {
 
 /// Maintains state for a given track to the best of our knowledge
 #[derive(Clone)]
-struct TrackData {
+pub struct TrackData {
     guid: String,
     name: String,
     reaper_track_index: Option<i32>,
@@ -106,9 +106,7 @@ impl TrackManager {
         while let Ok(msg) = self.input.recv() {
             match msg {
                 TrackMsg::Barrier(barrier) => {
-                    self.downstream
-                        .send(TrackMsg::Barrier(barrier.clone()))
-                        .unwrap();
+                    self.downstream.send(TrackMsg::Barrier(barrier)).unwrap();
                 }
                 TrackMsg::TrackDataMsg(msg) => {
                     let msg_cloned = msg.clone();
