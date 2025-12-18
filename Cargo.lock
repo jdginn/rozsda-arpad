@@ -93,6 +93,7 @@ dependencies = [
  "derive_more 2.1.0",
  "helgoboss-midi",
  "midir",
+ "once_cell",
  "regex",
  "rosc",
 ]

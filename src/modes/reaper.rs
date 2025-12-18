@@ -63,12 +63,13 @@ pub struct VolumePanMode {
 
 impl VolumePanMode {
     pub fn new(
+        num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
         from_xtouch: Receiver<XTouchUpstreamMsg>,
         to_xtouch: Sender<XTouchDownstreamMsg>,
     ) -> Self {
-        let track_hw_assignments = Arc::new(Mutex::new(vec![None; 8])); // Assuming 8 channels
+        let track_hw_assignments = Arc::new(Mutex::new(vec![None; num_channels]));
         let button_states = HashMap::new();
 
         let mode = VolumePanMode {
@@ -248,8 +249,7 @@ impl VolumePanMode {
                             }));
                         }
                     });
-                let barrier = Barrier { id: 1337 }; // TODO: there should be some
-                // barrier generator that automatically increments ID
+                let barrier = Barrier::new();
                 self.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
                 ModeState {
                     mode: Mode::ReaperSends,

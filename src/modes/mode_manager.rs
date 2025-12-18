@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender, select};
@@ -6,13 +8,30 @@ use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::reaper::VolumePanMode;
 use crate::track::track::TrackMsg;
 
+// Global atomic counter for unique IDs
+static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+
 /// A synchronization barrier to allow us to ensure that all data relevant to some mode transition
 /// is processed before we continue forwarding messages.
 ///
 /// Barriers are unique.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Barrier {
-    pub id: u64,
+    id: u64,
+}
+
+// Generate a new barrier with a unique ID
+impl Barrier {
+    pub fn new() -> Self {
+        let id = BARRIER_COUNTER.fetch_add(1, Ordering::SeqCst);
+        Barrier { id }
+    }
+}
+
+impl Default for Barrier {
+    fn default() -> Self {
+        Barrier::new()
+    }
 }
 
 /// Represents state of mode manager: mostly whether we are in a mode transition.
@@ -81,6 +100,7 @@ impl ModeManager {
 
         // Each mode's implementation struct needs to be initialized here
         let mut reaper_pan_vol = VolumePanMode::new(
+            8, // For now, assume we have 8 faders on the conroller
             from_reaper.clone(),
             to_reaper.clone(),
             from_xtouch.clone(),
