@@ -61,6 +61,13 @@ pub struct ModeState {
     pub state: State,
 }
 
+/// Each mode implementation struct needs to implement this trait to handle messages
+pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
+    fn handle_upstream_messages(&mut self, msg: FromDownstream, curr_mode: ModeState) -> ModeState;
+    fn handle_downstream_messages(&mut self, msg: FromUpstream, curr_mode: ModeState) -> ModeState;
+    fn initiate_mode_transition(&mut self, upstream: Sender<ToUpstream>) -> ModeState;
+}
+
 /// Presents all modes with a uniform interface, (mostly) seamlessly handling switching between modes.
 ///
 /// Shields upstream and downstream from having to know anything about the modes.

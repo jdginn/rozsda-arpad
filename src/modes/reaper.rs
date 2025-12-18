@@ -6,7 +6,7 @@ use crossbeam_channel::{Receiver, Sender};
 
 use crate::midi::xtouch;
 use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
-use crate::modes::mode_manager::{Barrier, Mode, ModeState, State};
+use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
 };
@@ -105,8 +105,10 @@ impl VolumePanMode {
             .find(|(_, assigned_guid)| *assigned_guid == &Some(guid.to_string()))
             .map(|(hw_channel, _)| hw_channel)
     }
+}
 
-    pub fn handle_downstream_messages(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for VolumePanMode {
+    fn handle_downstream_messages(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
         if let TrackMsg::Barrier(barrier) = msg {
             // Forward barriers downstream (they need to reflect back upstream for the mode to
             // transition)
@@ -194,7 +196,7 @@ impl VolumePanMode {
         }
         curr_mode
     }
-    pub fn handle_upstream_messages(
+    fn handle_upstream_messages(
         &mut self,
         msg: XTouchUpstreamMsg,
         curr_mode: ModeState,
@@ -231,30 +233,8 @@ impl VolumePanMode {
             XTouchUpstreamMsg::GlobalPress => curr_mode, // GlobalPress maps to this mode!
             // MIDITracksPress maps to ReaperSends mode
             XTouchUpstreamMsg::MIDITracksPress => {
-                // TODO: this logic is actually for entering THIS mode, so we need to move it
-                // somewhere else and replace this with the logic to enter ReaperSends mode
-                //
-                // TODO: this logic for fetching relevant data for transitioning state should
-                // probably be implemented once within the mode we are entering
-                self.track_hw_assignments
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .for_each(|assignment| {
-                        if let Some(guid) = assignment {
-                            // Request track data from Reaper for each assigned track
-                            let _ = self.to_reaper.send(TrackMsg::TrackQuery(TrackQuery {
-                                guid: guid.clone(),
-                                direction: Direction::Upstream,
-                            }));
-                        }
-                    });
-                let barrier = Barrier::new();
-                self.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
-                ModeState {
-                    mode: Mode::ReaperSends,
-                    state: State::WaitingBarrierFromDownstream(barrier),
-                }
+                // TODO
+                panic!("Not implemented yet!");
             }
             XTouchUpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) =
@@ -322,6 +302,30 @@ impl VolumePanMode {
                 curr_mode
             }
             _ => curr_mode,
+        }
+    }
+
+    fn initiate_mode_transition(&mut self, upstream: Sender<TrackMsg>) -> ModeState {
+        // TODO: this logic for fetching relevant data for transitioning state should
+        // probably be implemented once within the mode we are entering
+        self.track_hw_assignments
+            .lock()
+            .unwrap()
+            .iter()
+            .for_each(|assignment| {
+                if let Some(guid) = assignment {
+                    // Request track data from Reaper for each assigned track
+                    let _ = self.to_reaper.send(TrackMsg::TrackQuery(TrackQuery {
+                        guid: guid.clone(),
+                        direction: Direction::Upstream,
+                    }));
+                }
+            });
+        let barrier = Barrier::new();
+        upstream.send(TrackMsg::Barrier(barrier)).unwrap();
+        ModeState {
+            mode: Mode::ReaperSends,
+            state: State::WaitingBarrierFromDownstream(barrier),
         }
     }
 }
