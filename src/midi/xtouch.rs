@@ -8,13 +8,12 @@ use crate::midi::base::{
     NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend, PitchBendBuilder,
 };
 use crate::midi::{MidiDevice, MidiError};
-use crate::track::track::Direction; // TODO: probably hoist this out of track
+use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
 #[derive(Clone)]
 pub struct FaderAbsMsg {
     pub idx: i32,
-    pub direction: Direction,
     pub value: f64, // Probably too much precision?
 }
 
@@ -40,7 +39,6 @@ pub struct MuteRelease {
 #[derive(Clone)]
 pub struct MuteLEDMsg {
     pub idx: i32,
-    pub direction: Direction,
     pub state: LEDState,
 }
 
@@ -57,7 +55,6 @@ pub struct SoloRelease {
 #[derive(Clone)]
 pub struct SoloLEDMsg {
     pub idx: i32,
-    pub direction: Direction,
     pub state: LEDState,
 }
 
@@ -74,18 +71,68 @@ pub struct ArmRelease {
 #[derive(Clone)]
 pub struct ArmLEDMsg {
     pub idx: i32,
-    pub direction: Direction,
     pub state: LEDState,
 }
 
-pub enum XTouchDownstreamMsg {
-    FaderAbs(FaderAbsMsg),
-    MuteLED(MuteLEDMsg),
-    SoloLED(SoloLEDMsg),
-    ArmLED(ArmLEDMsg),
+pub enum EncoderAssignUpstreamMsg {
+    TrackPress,
+    TrackRelease,
+    PanPress,
+    PanRelease,
+    EQPress,
+    EQRelease,
+    SendPress,
+    SendRelease,
+    PluginPress,
+    PluginRelease,
+    InstPress,
+    InstRelease,
+}
+
+pub enum EncoderAssignDownstreamMsg {
+    Track(LEDState),
+    Pan(LEDState),
+    EQ(LEDState),
+    Send(LEDState),
+    Plugin(LEDState),
+    Inst(LEDState),
+}
+
+pub enum ViewUpstream {
+    GlobalPress,
+    GlobalRelease,
+    MIDITracksPress,
+    MIDITracksRelease,
+    InputsPress,
+    InputsRelease,
+    AudioTradcksPress,
+    AudioTracksRelease,
+    AudioInstPress,
+    AudioInstRelease,
+    AuxPress,
+    AuxRelease,
+    BusesPress,
+    BusesRelease,
+    OutputsPress,
+    OutputsRelease,
+    UserPress,
+    UserRelease,
+}
+
+pub enum ViewDownstream {
+    Global(LEDState),
+    MIDITracks(LEDState),
+    Inputs(LEDState),
+    AudioTracks(LEDState),
+    AudioInst(LEDState),
+    Aux(LEDState),
+    Buses(LEDState),
+    Outputs(LEDState),
+    User(LEDState),
 }
 
 pub enum XTouchUpstreamMsg {
+    Barrier(Barrier),
     FaderAbs(FaderAbsMsg),
     MutePress(MutePress),
     MuteRelease(MuteRelease),
@@ -93,6 +140,18 @@ pub enum XTouchUpstreamMsg {
     SoloRelease(SoloRelease),
     ArmPress(ArmPress),
     ArmRelease(ArmRelease),
+    EncoderAssignUpstreamMsg(EncoderAssignUpstreamMsg),
+    ViewUpstream(ViewUpstream),
+}
+
+pub enum XTouchDownstreamMsg {
+    Barrier(Barrier),
+    FaderAbs(FaderAbsMsg),
+    MuteLED(MuteLEDMsg),
+    SoloLED(SoloLEDMsg),
+    ArmLED(ArmLEDMsg),
+    EncoderAssignDownstreamMsg,
+    ViewDownstream,
 }
 
 fn byte_slice(msg: RawShortMessage) -> [u8; 3] {
@@ -264,6 +323,11 @@ impl XTouchBuilder {
             loop {
                 if let Ok(msg) = xtouch.input.recv() {
                     match msg {
+                        XTouchDownstreamMsg::Barrier(barrier_msg) => {
+                            let _ = xtouch
+                                .upstream
+                                .send(XTouchUpstreamMsg::Barrier(barrier_msg));
+                        }
                         XTouchDownstreamMsg::FaderAbs(fader_msg) => {
                             xtouch.faders[fader_msg.idx as usize]
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...

@@ -3,14 +3,19 @@ use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
 
+use crate::modes::mode_manager::Barrier;
+
+// TODO: probably instead of having direction, make an enum of separate UpstreamTrackMsg and DownstreamTrackMsg like we do for XTouch? That seems cleaner
 #[derive(Clone)]
 pub enum Direction {
     Upstream,
     Downstream,
 }
 
+/// Set of messages that TrackManager can handle
 #[derive(Clone)]
 pub enum TrackMsg {
+    Barrier(Barrier),
     TrackDataMsg(TrackDataMsg),
     TrackQuery(TrackQuery),
 }
@@ -41,6 +46,7 @@ pub enum DataPayload {
     TrackData(TrackData),
 }
 
+/// Maintains stae for a given track to the best of our knowledge
 #[derive(Clone)]
 struct TrackData {
     guid: String,
@@ -54,10 +60,6 @@ struct TrackData {
     pan: f32,
 }
 
-// To do this the normal way with putting Bind/Set on each field involves a lot of boilerplate...
-// we have to make something like TrackDataNameAccessor that implements the traits and then expose
-// that via TrackData.name().bind() etc.
-
 impl TrackData {
     fn new(guid: &str) -> Self {
         Self {
@@ -70,23 +72,6 @@ impl TrackData {
             armed: false,
             volume: 0.0,
             pan: 0.0,
-        }
-    }
-}
-
-// This basically should expose the Binds on an underlying TrackData but keep TrackManager locked
-// while we do so
-struct TrackAccessor<'a> {
-    guard: std::sync::MutexGuard<'a, ()>,
-    manager: &'a mut TrackManager,
-    guid: String,
-    downstream: Sender<TrackMsg>,
-}
-
-impl TrackAccessor<'_> {
-    fn set_name(&mut self, name: String) {
-        if let Some(track) = self.manager.tracks.get_mut(&self.guid) {
-            track.name = name;
         }
     }
 }
@@ -120,6 +105,11 @@ impl TrackManager {
     pub fn handle_messages(&mut self) {
         while let Ok(msg) = self.input.try_recv() {
             match msg {
+                TrackMsg::Barrier(barrier) => {
+                    self.downstream
+                        .send(TrackMsg::Barrier(barrier.clone()))
+                        .unwrap();
+                }
                 TrackMsg::TrackDataMsg(msg) => {
                     let msg_cloned = msg.clone();
                     // If we've never seen this track before, create a new entry
@@ -127,7 +117,8 @@ impl TrackManager {
                         .tracks
                         .entry(msg.guid.to_string())
                         .or_insert_with(|| TrackData::new(&msg.guid));
-                    // Update the track data based on the message
+                    // TODO: this really should also be forwarding all messages downstream as well
+                    // as accumulating state internally
                     match msg.data {
                         DataPayload::Name(name) => {
                             track.name = name.clone();

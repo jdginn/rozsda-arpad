@@ -1,20 +1,33 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::vec::Vec;
 
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Receiver, Sender};
 
 use crate::midi::xtouch;
 use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
-use crate::track::track::{DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg};
+use crate::modes::mode_manager::{Barrier, Mode, ModeState, State};
+use crate::track::track::{
+    DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
+};
 
+// Collection of state for the buttons repeated for each channel on the hw controller
+//
+// TODO: this might be too implementation-specific to live here?
 struct ButtonState {
     mute: bool,
     solo: bool,
     arm: bool,
 }
 
+/// Implements a mode where that "basic" reaper functionality is mapped to the channel strips on
+/// the control surface, namely:
+/// - Volume on faders
+/// - Pan on rotary encoders
+/// - Select/Mute/Solo/Arm on buttons
+///
+/// Button LED toggling is handled here (downstream does not need to worry about managing button
+/// LEDS.)
 pub struct VolumePanMode {
     // Maps each channel on the hardware controller to a Reaper track
     track_hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
@@ -26,16 +39,16 @@ pub struct VolumePanMode {
 }
 
 impl VolumePanMode {
-    pub fn start(
-        to_reaper: Sender<TrackMsg>,
+    pub fn new(
         from_reaper: Receiver<TrackMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        to_reaper: Sender<TrackMsg>,
         from_xtouch: Receiver<XTouchUpstreamMsg>,
-    ) {
+        to_xtouch: Sender<XTouchDownstreamMsg>,
+    ) -> Self {
         let track_hw_assignments = Arc::new(Mutex::new(vec![None; 8])); // Assuming 8 channels
         let button_states = HashMap::new();
 
-        let mut mode = VolumePanMode {
+        let mode = VolumePanMode {
             track_hw_assignments,
             track_states: button_states,
             to_reaper,
@@ -43,14 +56,10 @@ impl VolumePanMode {
             to_xtouch,
             from_xtouch,
         };
-
-        thread::spawn(move || {
-            loop {
-                mode.handle_messages();
-            }
-        });
+        mode
     }
 
+    // For a given track GUID, find which hardware channel it's assigned to (if any)
     pub fn find_hw_channel(&self, guid: &str) -> Option<usize> {
         let assignments = self.track_hw_assignments.lock().unwrap();
         assignments
@@ -60,14 +69,35 @@ impl VolumePanMode {
             .map(|(hw_channel, _)| hw_channel)
     }
 
-    pub fn handle_messages(&mut self) {
-        // Handle messages from Reaper and XTouch here
-        // Update track_hw_assignments as needed
-        if let Ok(TrackMsg::TrackDataMsg(msg)) = self.from_reaper.recv() {
+    pub fn handle_downstream_messages(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+        if let TrackMsg::Barrier(barrier) = msg {
+            // Forward barriers downstream (they need to reflect back upstream for the mode to
+            // transition)
+            self.to_xtouch
+                .send(XTouchDownstreamMsg::Barrier(barrier.clone()));
+            match curr_mode.state {
+                // If we were already waiting on a barrier from upstream, check if this is the one
+                // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
+                State::WaitingBarrierFromUpstream(expected_barrier) => {
+                    if barrier == expected_barrier {
+                        return ModeState {
+                            mode: curr_mode.mode,
+                            state: State::WaitingBarrierFromDownstream(barrier),
+                        };
+                    } else {
+                        return curr_mode;
+                    }
+                }
+                _ => return curr_mode,
+            }
+        }
+        if let TrackMsg::TrackDataMsg(msg) = msg {
             match msg.data {
+                // We use track index according to reaper to assign tracks to hardware channels
                 TrackDataPayload::ReaperTrackIndex(Some(index)) => {
                     self.track_hw_assignments.lock().unwrap()[index as usize] =
                         Some(msg.guid.clone());
+                    return curr_mode;
                 }
                 TrackDataPayload::Volume(value) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
@@ -76,11 +106,11 @@ impl VolumePanMode {
                         let _ = self
                             .to_xtouch
                             .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
-                                direction: Direction::Downstream,
                                 idx: hw_channel as i32,
                                 value: fader_value as f64,
                             }));
                     }
+                    return curr_mode;
                 }
                 TrackDataPayload::Muted(muted) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
@@ -96,7 +126,6 @@ impl VolumePanMode {
                         let _ =
                             self.to_xtouch
                                 .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
-                                    direction: Direction::Downstream,
                                     idx: hw_channel as i32,
                                     state: match muted {
                                         true => LEDState::On,
@@ -104,6 +133,7 @@ impl VolumePanMode {
                                     },
                                 }));
                     }
+                    return curr_mode;
                 }
                 TrackDataPayload::Soloed(soloed) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
@@ -119,7 +149,6 @@ impl VolumePanMode {
                         let _ =
                             self.to_xtouch
                                 .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
-                                    direction: Direction::Downstream,
                                     idx: hw_channel as i32,
                                     state: match soloed {
                                         true => LEDState::On,
@@ -127,6 +156,7 @@ impl VolumePanMode {
                                     },
                                 }));
                     }
+                    return curr_mode;
                 }
                 TrackDataPayload::Armed(armed) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
@@ -142,7 +172,6 @@ impl VolumePanMode {
                         let _ =
                             self.to_xtouch
                                 .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
-                                    direction: Direction::Downstream,
                                     idx: hw_channel as i32,
                                     state: match armed {
                                         true => LEDState::On,
@@ -150,125 +179,189 @@ impl VolumePanMode {
                                     },
                                 }));
                     }
+                    return curr_mode;
                 }
-                _ => {}
+                _ => panic!("Unhandled track data payload in VolumePanMode"),
             }
-            // Update track_hw_assignments based on data_msg
-            // For example, if data_msg contains track index info, map it to a hardware channel
         }
-        if let Ok(msg) = self.from_xtouch.recv() {
-            match msg {
-                XTouchUpstreamMsg::FaderAbs(fader_msg) => {
-                    if let Some(guid) =
-                        &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
-                    {
-                        // Send volume update to Reaper for the corresponding track
-                        let _ = self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
-                            guid: guid.clone(),
-                            data: TrackDataPayload::Volume(fader_msg.value as f32), // TODO: Need to scale appropriately
-                        }));
+        curr_mode
+    }
+    pub fn handle_upstream_messages(
+        &mut self,
+        msg: XTouchUpstreamMsg,
+        curr_mode: ModeState,
+    ) -> ModeState {
+        match msg {
+            // If we were already waiting on a barrier from downstream, check if this is the one
+            // we were waiting for. If yes, the state transition is finished.
+            //
+            // Note, we do not need to forward this barrier onward, since the hardware is not
+            // allowed to reflect barriers back upstream.
+            XTouchUpstreamMsg::Barrier(barrier) => {
+                match curr_mode.state {
+                    State::WaitingBarrierFromDownstream(expected_barrier) => {
+                        if barrier == expected_barrier {
+                            ModeState {
+                                mode: curr_mode.mode,
+                                state: State::Active,
+                            }
+                        } else {
+                            curr_mode
+                        }
+                    }
+                    _ => {
+                        // TODO: This is a barrier message we don't care about. Do we need to do
+                        // anything with it?
+                        //
+                        // Presumably if a barrier comes back that we weren't looking for, it's for
+                        // some old irrelevant state transition that has already been superseded.
+                        curr_mode
                     }
                 }
-                XTouchUpstreamMsg::MutePress(mute_msg) => {
-                    if let Some(guid) =
-                        &self.track_hw_assignments.lock().unwrap()[mute_msg.idx as usize]
-                    {
-                        let curr = self
-                            .track_states
-                            .get(guid)
-                            .map_or(false, |state| state.mute);
-                        self.track_states
-                            .entry(guid.clone())
-                            .or_insert(ButtonState {
-                                mute: false,
-                                solo: false,
-                                arm: false,
-                            })
-                            .mute = curr;
-                        // Send mute toggle to Reaper for the corresponding track
-                        self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
-                            guid: guid.clone(),
-                            data: TrackDataPayload::Muted(curr),
-                        }));
-                        // Update the toggle on the hardware
-                        self.to_xtouch
-                            .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
-                                direction: Direction::Downstream,
-                                idx: mute_msg.idx,
-                                state: match curr {
-                                    true => LEDState::On,
-                                    false => LEDState::Off,
-                                },
-                            }));
-                    }
-                }
-                XTouchUpstreamMsg::SoloPress(solo_msg) => {
-                    if let Some(guid) =
-                        &self.track_hw_assignments.lock().unwrap()[solo_msg.idx as usize]
-                    {
-                        let curr = self
-                            .track_states
-                            .get(guid)
-                            .map_or(false, |state| state.solo);
-                        self.track_states
-                            .entry(guid.clone())
-                            .or_insert(ButtonState {
-                                mute: false,
-                                solo: false,
-                                arm: false,
-                            })
-                            .solo = curr;
-                        // Send solo toggle to Reaper for the corresponding track
-                        self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
-                            guid: guid.clone(),
-                            data: TrackDataPayload::Soloed(curr),
-                        }));
-                        self.to_xtouch
-                            .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
-                                direction: Direction::Downstream,
-                                idx: solo_msg.idx,
-                                state: match curr {
-                                    true => LEDState::On,
-                                    false => LEDState::Off,
-                                },
-                            }));
-                    }
-                }
-                XTouchUpstreamMsg::ArmPress(arm_msg) => {
-                    if let Some(guid) =
-                        &self.track_hw_assignments.lock().unwrap()[arm_msg.idx as usize]
-                    {
-                        let curr = self.track_states.get(guid).map_or(false, |state| state.arm);
-                        self.track_states
-                            .entry(guid.clone())
-                            .or_insert(ButtonState {
-                                mute: false,
-                                solo: false,
-                                arm: false,
-                            })
-                            .arm = curr;
-                        // Send arm toggle to Reaper for the corresponding track
-                        self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
-                            guid: guid.clone(),
-                            data: TrackDataPayload::Armed(curr),
-                        }));
-                        self.to_xtouch
-                            .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
-                                direction: Direction::Downstream,
-                                idx: arm_msg.idx,
-                                state: match curr {
-                                    true => LEDState::On,
-                                    false => LEDState::Off,
-                                },
-                            }));
-                    }
-                }
-                _ => {}
+                // Handle barrier messages if needed
             }
+            XTouchUpstreamMsg::ViewUpstream(view_msg) => match view_msg {
+                xtouch::ViewUpstream::GlobalPress => curr_mode, // GlobalPress maps to this mode!
+                // MIDITracksPress maps to ReaperSends mode
+                xtouch::ViewUpstream::MIDITracksPress => {
+                    // TODO: this logic is actually for entering THIS mode, so we need to move it
+                    // somewhere else and replace this with the logic to enter ReaperSends mode
+                    //
+                    // TODO: this logic for fetching relevant data for transitioning state should
+                    // probably be implemented once within the mode we are entering
+                    self.track_hw_assignments
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .for_each(|assignment| {
+                            if let Some(guid) = assignment {
+                                // Request track data from Reaper for each assigned track
+                                let _ = self.to_reaper.send(TrackMsg::TrackQuery(TrackQuery {
+                                    guid: guid.clone(),
+                                    direction: Direction::Upstream,
+                                }));
+                            }
+                        });
+                    let barrier = Barrier { id: 1337 }; // TODO: there should be some
+                    // barrier generator that automatically increments ID
+                    self.to_reaper.send(TrackMsg::Barrier(barrier));
+                    ModeState {
+                        mode: Mode::ReaperSends,
+                        state: State::WaitingBarrierFromDownstream(barrier),
+                    }
+                }
+                _ => panic!("Unhandled view message in VolumePanMode"),
+            },
+            XTouchUpstreamMsg::FaderAbs(fader_msg) => {
+                if let Some(guid) =
+                    &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
+                {
+                    // Send volume update to Reaper for the corresponding track
+                    let _ = self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                        direction: Direction::Upstream,
+                        guid: guid.clone(),
+                        data: TrackDataPayload::Volume(fader_msg.value as f32), // TODO: Need to scale appropriately
+                    }));
+                }
+                curr_mode
+            }
+            XTouchUpstreamMsg::MutePress(mute_msg) => {
+                if let Some(guid) =
+                    &self.track_hw_assignments.lock().unwrap()[mute_msg.idx as usize]
+                {
+                    let curr = self
+                        .track_states
+                        .get(guid)
+                        .map_or(false, |state| state.mute);
+                    self.track_states
+                        .entry(guid.clone())
+                        .or_insert(ButtonState {
+                            mute: false,
+                            solo: false,
+                            arm: false,
+                        })
+                        .mute = curr;
+                    // Send mute toggle to Reaper for the corresponding track
+                    self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                        direction: Direction::Upstream,
+                        guid: guid.clone(),
+                        data: TrackDataPayload::Muted(curr),
+                    }));
+                    // Update the toggle on the hardware
+                    self.to_xtouch
+                        .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
+                            idx: mute_msg.idx,
+                            state: match curr {
+                                true => LEDState::On,
+                                false => LEDState::Off,
+                            },
+                        }));
+                }
+                curr_mode
+            }
+            XTouchUpstreamMsg::SoloPress(solo_msg) => {
+                if let Some(guid) =
+                    &self.track_hw_assignments.lock().unwrap()[solo_msg.idx as usize]
+                {
+                    let curr = self
+                        .track_states
+                        .get(guid)
+                        .map_or(false, |state| state.solo);
+                    self.track_states
+                        .entry(guid.clone())
+                        .or_insert(ButtonState {
+                            mute: false,
+                            solo: false,
+                            arm: false,
+                        })
+                        .solo = curr;
+                    // Send solo toggle to Reaper for the corresponding track
+                    self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                        direction: Direction::Upstream,
+                        guid: guid.clone(),
+                        data: TrackDataPayload::Soloed(curr),
+                    }));
+                    self.to_xtouch
+                        .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
+                            idx: solo_msg.idx,
+                            state: match curr {
+                                true => LEDState::On,
+                                false => LEDState::Off,
+                            },
+                        }));
+                }
+                curr_mode
+            }
+            XTouchUpstreamMsg::ArmPress(arm_msg) => {
+                if let Some(guid) = &self.track_hw_assignments.lock().unwrap()[arm_msg.idx as usize]
+                {
+                    let curr = self.track_states.get(guid).map_or(false, |state| state.arm);
+                    self.track_states
+                        .entry(guid.clone())
+                        .or_insert(ButtonState {
+                            mute: false,
+                            solo: false,
+                            arm: false,
+                        })
+                        .arm = curr;
+                    // Send arm toggle to Reaper for the corresponding track
+                    self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                        direction: Direction::Upstream,
+                        guid: guid.clone(),
+                        data: TrackDataPayload::Armed(curr),
+                    }));
+                    self.to_xtouch
+                        .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
+                            idx: arm_msg.idx,
+                            state: match curr {
+                                true => LEDState::On,
+                                false => LEDState::Off,
+                            },
+                        }));
+                }
+                curr_mode
+            }
+            _ => curr_mode,
         }
     }
 }
