@@ -90,6 +90,7 @@ dependencies = [
  "bimap",
  "clap",
  "crossbeam-channel",
+ "derive_more 2.1.0",
  "helgoboss-midi",
  "midir",
  "regex",
@@ -271,6 +272,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_more"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10b768e943bed7bf2cab53df09f4bc34bfd217cdb57d971e769874c9a6710618"
+dependencies = [
+ "derive_more-impl",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d286bfdaf75e988b4a78e013ecd79c581e06399ab53fbacd2d916c2f904f30b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rustc_version",
+ "syn 2.0.101",
+]
+
+[[package]]
 name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -300,7 +322,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc8b9091737ce4a801c6248f600f2f787c16722890daf82187381e65d23214c7"
 dependencies = [
- "derive_more",
+ "derive_more 0.99.20",
  "doc-comment",
  "num_enum",
 ]

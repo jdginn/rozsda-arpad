@@ -227,38 +227,35 @@ impl VolumePanMode {
                 }
                 // Handle barrier messages if needed
             }
-            XTouchUpstreamMsg::ViewUpstream(view_msg) => match view_msg {
-                xtouch::ViewUpstream::GlobalPress => curr_mode, // GlobalPress maps to this mode!
-                // MIDITracksPress maps to ReaperSends mode
-                xtouch::ViewUpstream::MIDITracksPress => {
-                    // TODO: this logic is actually for entering THIS mode, so we need to move it
-                    // somewhere else and replace this with the logic to enter ReaperSends mode
-                    //
-                    // TODO: this logic for fetching relevant data for transitioning state should
-                    // probably be implemented once within the mode we are entering
-                    self.track_hw_assignments
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .for_each(|assignment| {
-                            if let Some(guid) = assignment {
-                                // Request track data from Reaper for each assigned track
-                                let _ = self.to_reaper.send(TrackMsg::TrackQuery(TrackQuery {
-                                    guid: guid.clone(),
-                                    direction: Direction::Upstream,
-                                }));
-                            }
-                        });
-                    let barrier = Barrier { id: 1337 }; // TODO: there should be some
-                    // barrier generator that automatically increments ID
-                    self.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
-                    ModeState {
-                        mode: Mode::ReaperSends,
-                        state: State::WaitingBarrierFromDownstream(barrier),
-                    }
+            XTouchUpstreamMsg::GlobalPress => curr_mode, // GlobalPress maps to this mode!
+            // MIDITracksPress maps to ReaperSends mode
+            XTouchUpstreamMsg::MIDITracksPress => {
+                // TODO: this logic is actually for entering THIS mode, so we need to move it
+                // somewhere else and replace this with the logic to enter ReaperSends mode
+                //
+                // TODO: this logic for fetching relevant data for transitioning state should
+                // probably be implemented once within the mode we are entering
+                self.track_hw_assignments
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .for_each(|assignment| {
+                        if let Some(guid) = assignment {
+                            // Request track data from Reaper for each assigned track
+                            let _ = self.to_reaper.send(TrackMsg::TrackQuery(TrackQuery {
+                                guid: guid.clone(),
+                                direction: Direction::Upstream,
+                            }));
+                        }
+                    });
+                let barrier = Barrier { id: 1337 }; // TODO: there should be some
+                // barrier generator that automatically increments ID
+                self.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
+                ModeState {
+                    mode: Mode::ReaperSends,
+                    state: State::WaitingBarrierFromDownstream(barrier),
                 }
-                _ => panic!("Unhandled view message in VolumePanMode"),
-            },
+            }
             XTouchUpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) =
                     &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]

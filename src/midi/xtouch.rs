@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
+use derive_more::From;
 use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
 
 use crate::midi::base::{
@@ -83,7 +84,20 @@ pub struct ArmLEDMsg {
     pub state: LEDState,
 }
 
-pub enum EncoderAssignUpstreamMsg {
+#[derive(From)]
+pub enum XTouchUpstreamMsg {
+    Barrier(Barrier),
+
+    // Channel strip messages
+    FaderAbs(FaderAbsMsg),
+    MutePress(MutePress),
+    MuteRelease(MuteRelease),
+    SoloPress(SoloPress),
+    SoloRelease(SoloRelease),
+    ArmPress(ArmPress),
+    ArmRelease(ArmRelease),
+
+    // Encoder assign messages
     TrackPress,
     TrackRelease,
     PanPress,
@@ -96,18 +110,8 @@ pub enum EncoderAssignUpstreamMsg {
     PluginRelease,
     InstPress,
     InstRelease,
-}
 
-pub enum EncoderAssignDownstreamMsg {
-    Track(LEDState),
-    Pan(LEDState),
-    EQ(LEDState),
-    Send(LEDState),
-    Plugin(LEDState),
-    Inst(LEDState),
-}
-
-pub enum ViewUpstream {
+    // View messages
     GlobalPress,
     GlobalRelease,
     MIDITracksPress,
@@ -128,7 +132,24 @@ pub enum ViewUpstream {
     UserRelease,
 }
 
-pub enum ViewDownstream {
+pub enum XTouchDownstreamMsg {
+    Barrier(Barrier),
+
+    // Channel strip messages
+    FaderAbs(FaderAbsMsg),
+    MuteLED(MuteLEDMsg),
+    SoloLED(SoloLEDMsg),
+    ArmLED(ArmLEDMsg),
+
+    // Encoder assign messages
+    Track(LEDState),
+    Pan(LEDState),
+    EQ(LEDState),
+    Send(LEDState),
+    Plugin(LEDState),
+    Inst(LEDState),
+
+    // View messages
     Global(LEDState),
     MIDITracks(LEDState),
     Inputs(LEDState),
@@ -138,29 +159,6 @@ pub enum ViewDownstream {
     Buses(LEDState),
     Outputs(LEDState),
     User(LEDState),
-}
-
-pub enum XTouchUpstreamMsg {
-    Barrier(Barrier),
-    FaderAbs(FaderAbsMsg),
-    MutePress(MutePress),
-    MuteRelease(MuteRelease),
-    SoloPress(SoloPress),
-    SoloRelease(SoloRelease),
-    ArmPress(ArmPress),
-    ArmRelease(ArmRelease),
-    EncoderAssignUpstreamMsg(EncoderAssignUpstreamMsg),
-    ViewUpstream(ViewUpstream),
-}
-
-pub enum XTouchDownstreamMsg {
-    Barrier(Barrier),
-    FaderAbs(FaderAbsMsg),
-    MuteLED(MuteLEDMsg),
-    SoloLED(SoloLEDMsg),
-    ArmLED(ArmLEDMsg),
-    EncoderAssignDownstreamMsg,
-    ViewDownstream,
 }
 
 fn byte_slice(msg: RawShortMessage) -> [u8; 3] {
@@ -286,7 +284,7 @@ impl XTouchBuilder {
             b.bind_press(move |velocity| {
                 let _ = upstream_press
                     .clone()
-                    .send(XTouchUpstreamMsg::MutePress(MutePress {
+                    .send(XTouchUpstreamMsg::from(MutePress {
                         idx: i as i32,
                         velocity,
                     }));
@@ -295,7 +293,7 @@ impl XTouchBuilder {
             b.bind_release(move |velocity| {
                 let _ = upstream_release
                     .clone()
-                    .send(XTouchUpstreamMsg::MuteRelease(MuteRelease {
+                    .send(XTouchUpstreamMsg::from(MuteRelease {
                         idx: i as i32,
                         velocity,
                     }));
@@ -357,6 +355,7 @@ impl XTouchBuilder {
                                 .set(arm_msg.state)
                                 .unwrap();
                         }
+                        _ => panic!("Not implemented yet!"),
                     }
                 }
             }
