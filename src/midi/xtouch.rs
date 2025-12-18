@@ -355,7 +355,27 @@ impl XTouchBuilder {
                                 .set(arm_msg.state)
                                 .unwrap();
                         }
-                        _ => panic!("Not implemented yet!"),
+                        // Encoder assign messages - hardware not yet implemented
+                        XTouchDownstreamMsg::Track(_)
+                        | XTouchDownstreamMsg::Pan(_)
+                        | XTouchDownstreamMsg::EQ(_)
+                        | XTouchDownstreamMsg::Send(_)
+                        | XTouchDownstreamMsg::Plugin(_)
+                        | XTouchDownstreamMsg::Inst(_) => {
+                            // TODO: Implement encoder assign button LEDs
+                        }
+                        // View messages - hardware not yet implemented
+                        XTouchDownstreamMsg::Global(_)
+                        | XTouchDownstreamMsg::MIDITracks(_)
+                        | XTouchDownstreamMsg::Inputs(_)
+                        | XTouchDownstreamMsg::AudioTracks(_)
+                        | XTouchDownstreamMsg::AudioInst(_)
+                        | XTouchDownstreamMsg::Aux(_)
+                        | XTouchDownstreamMsg::Buses(_)
+                        | XTouchDownstreamMsg::Outputs(_)
+                        | XTouchDownstreamMsg::User(_) => {
+                            // TODO: Implement view button LEDs
+                        }
                     }
                 }
             }
