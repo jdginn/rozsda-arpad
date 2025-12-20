@@ -94,49 +94,22 @@ impl Reaper {
 
 pub struct Track {
     socket: Arc<UdpSocket>,
-    pub track_guid: String,
+    pub track_guid: string,
     pub send_index_map: HashMap<String, TrackSend>,
 }
 
 impl Track {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> Track {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> Track {
         Track {
             socket,
             track_guid: track_guid.clone(),
             send_index_map: HashMap::new(),
         }
     }
-    pub fn delete(&self) -> TrackDelete {
-        TrackDelete::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn mute(&self) -> TrackMute {
-        TrackMute::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn name(&self) -> TrackName {
-        TrackName::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn selected(&self) -> TrackSelected {
-        TrackSelected::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn pan(&self) -> TrackPan {
-        TrackPan::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn rec_arm(&self) -> TrackRecArm {
-        TrackRecArm::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn color(&self) -> TrackColor {
-        TrackColor::new(self.socket.clone(), self.track_guid.clone())
-    }
     pub fn solo(&self) -> TrackSolo {
         TrackSolo::new(self.socket.clone(), self.track_guid.clone())
     }
-    pub fn volume(&self) -> TrackVolume {
-        TrackVolume::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn index(&self) -> TrackIndex {
-        TrackIndex::new(self.socket.clone(), self.track_guid.clone())
-    }
-    pub fn send(&mut self, send_index: String) -> &mut TrackSend {
+    pub fn send(&mut self, send_index: i32) -> &mut TrackSend {
         self.send_index_map
             .entry(send_index.clone())
             .or_insert_with(|| {
@@ -147,469 +120,43 @@ impl Track {
                 )
             })
     }
-}
-
-pub struct TrackDelete {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackDeleteHandler>,
-    pub track_guid: String,
-}
-
-impl TrackDelete {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackDelete {
-        TrackDelete {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
+    pub fn color(&self) -> TrackColor {
+        TrackColor::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-#[derive(Debug)]
-pub struct TrackDeleteArgs {}
-
-pub type TrackDeleteHandler = Box<dyn FnMut(TrackDeleteArgs) + 'static>;
-
-/// /track/{track_guid}/delete
-impl Set<TrackDeleteArgs> for TrackDelete {
-    type Error = OscError;
-    fn set(&mut self, args: TrackDeleteArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/delete", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
+    pub fn rec_arm(&self) -> TrackRecArm {
+        TrackRecArm::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-/// /track/{track_guid}/delete
-impl Query for TrackDelete {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/delete", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
+    pub fn selected(&self) -> TrackSelected {
+        TrackSelected::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-/// /track/{track_guid}/delete
-impl Bind<TrackDeleteArgs> for TrackDelete {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackDeleteArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
+    pub fn name(&self) -> TrackName {
+        TrackName::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-pub struct TrackMute {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackMuteHandler>,
-    pub track_guid: String,
-}
-
-impl TrackMute {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackMute {
-        TrackMute {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
+    pub fn delete(&self) -> TrackDelete {
+        TrackDelete::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-#[derive(Debug)]
-pub struct TrackMuteArgs {
-    pub mute: bool, // true means track is muted
-}
-
-pub type TrackMuteHandler = Box<dyn FnMut(TrackMuteArgs) + 'static>;
-
-/// /track/{track_guid}/mute
-impl Set<TrackMuteArgs> for TrackMute {
-    type Error = OscError;
-    fn set(&mut self, args: TrackMuteArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/mute", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::Bool(args.mute)],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
+    pub fn volume(&self) -> TrackVolume {
+        TrackVolume::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-/// /track/{track_guid}/mute
-impl Query for TrackMute {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/mute", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
+    pub fn mute(&self) -> TrackMute {
+        TrackMute::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-/// /track/{track_guid}/mute
-impl Bind<TrackMuteArgs> for TrackMute {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackMuteArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
+    pub fn pan(&self) -> TrackPan {
+        TrackPan::new(self.socket.clone(), self.track_guid.clone())
     }
-}
-
-pub struct TrackName {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackNameHandler>,
-    pub track_guid: String,
-}
-
-impl TrackName {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackName {
-        TrackName {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackNameArgs {
-    pub name: String, // name of the track
-}
-
-pub type TrackNameHandler = Box<dyn FnMut(TrackNameArgs) + 'static>;
-
-/// /track/{track_guid}/name
-impl Set<TrackNameArgs> for TrackName {
-    type Error = OscError;
-    fn set(&mut self, args: TrackNameArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/name", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::String(args.name.clone())],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/name
-impl Query for TrackName {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/name", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/name
-impl Bind<TrackNameArgs> for TrackName {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackNameArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
-pub struct TrackSelected {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackSelectedHandler>,
-    pub track_guid: String,
-}
-
-impl TrackSelected {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackSelected {
-        TrackSelected {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackSelectedArgs {
-    pub selected: bool, // true means track is selected
-}
-
-pub type TrackSelectedHandler = Box<dyn FnMut(TrackSelectedArgs) + 'static>;
-
-/// /track/{track_guid}/selected
-impl Set<TrackSelectedArgs> for TrackSelected {
-    type Error = OscError;
-    fn set(&mut self, args: TrackSelectedArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/selected", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::Bool(args.selected)],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/selected
-impl Query for TrackSelected {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/selected", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/selected
-impl Bind<TrackSelectedArgs> for TrackSelected {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackSelectedArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
-pub struct TrackPan {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackPanHandler>,
-    pub track_guid: String,
-}
-
-impl TrackPan {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackPan {
-        TrackPan {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackPanArgs {
-    pub pan: f32, // pan of the track, normalized to -1.0 to 1.0
-}
-
-pub type TrackPanHandler = Box<dyn FnMut(TrackPanArgs) + 'static>;
-
-/// /track/{track_guid}/pan
-impl Set<TrackPanArgs> for TrackPan {
-    type Error = OscError;
-    fn set(&mut self, args: TrackPanArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/pan", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::Float(args.pan)],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/pan
-impl Query for TrackPan {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/pan", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/pan
-impl Bind<TrackPanArgs> for TrackPan {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackPanArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
-pub struct TrackRecArm {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackRecArmHandler>,
-    pub track_guid: String,
-}
-
-impl TrackRecArm {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackRecArm {
-        TrackRecArm {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackRecArmArgs {
-    pub rec_arm: bool, // true means track is armed for recording
-}
-
-pub type TrackRecArmHandler = Box<dyn FnMut(TrackRecArmArgs) + 'static>;
-
-/// /track/{track_guid}/rec-arm
-impl Set<TrackRecArmArgs> for TrackRecArm {
-    type Error = OscError;
-    fn set(&mut self, args: TrackRecArmArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/rec-arm", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::Bool(args.rec_arm)],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/rec-arm
-impl Query for TrackRecArm {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/rec-arm", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/rec-arm
-impl Bind<TrackRecArmArgs> for TrackRecArm {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackRecArmArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
-pub struct TrackColor {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackColorHandler>,
-    pub track_guid: String,
-}
-
-impl TrackColor {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackColor {
-        TrackColor {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackColorArgs {
-    pub color: i32, // color of the track, represented as an RGB integer
-}
-
-pub type TrackColorHandler = Box<dyn FnMut(TrackColorArgs) + 'static>;
-
-/// /track/{track_guid}/color
-impl Set<TrackColorArgs> for TrackColor {
-    type Error = OscError;
-    fn set(&mut self, args: TrackColorArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/color", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::Int(args.color)],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/color
-impl Query for TrackColor {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/color", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/color
-impl Bind<TrackColorArgs> for TrackColor {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackColorArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
+    pub fn index(&self) -> TrackIndex {
+        TrackIndex::new(self.socket.clone(), self.track_guid.clone())
     }
 }
 
 pub struct TrackSolo {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSoloHandler>,
-    pub track_guid: String,
+    pub track_guid: string,
 }
 
 impl TrackSolo {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackSolo {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackSolo {
         TrackSolo {
             socket,
             handler: None,
@@ -667,128 +214,14 @@ impl Bind<TrackSoloArgs> for TrackSolo {
     }
 }
 
-pub struct TrackVolume {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackVolumeHandler>,
-    pub track_guid: String,
-}
-
-impl TrackVolume {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackVolume {
-        TrackVolume {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackVolumeArgs {
-    pub volume: f32, // volume of the track, normalized to 0 to 1.0
-}
-
-pub type TrackVolumeHandler = Box<dyn FnMut(TrackVolumeArgs) + 'static>;
-
-/// /track/{track_guid}/volume
-impl Set<TrackVolumeArgs> for TrackVolume {
-    type Error = OscError;
-    fn set(&mut self, args: TrackVolumeArgs) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/volume", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![rosc::OscType::Float(args.volume)],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/volume
-impl Query for TrackVolume {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/volume", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/volume
-impl Bind<TrackVolumeArgs> for TrackVolume {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackVolumeArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
-pub struct TrackIndex {
-    socket: Arc<UdpSocket>,
-    handler: Option<TrackIndexHandler>,
-    pub track_guid: String,
-}
-
-impl TrackIndex {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackIndex {
-        TrackIndex {
-            socket,
-            handler: None,
-            track_guid: track_guid.clone(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TrackIndexArgs {
-    pub index: i32, // index of the track in the project according to reaper's mixer view
-}
-
-pub type TrackIndexHandler = Box<dyn FnMut(TrackIndexArgs) + 'static>;
-
-/// /track/{track_guid}/index
-impl Query for TrackIndex {
-    type Error = OscError;
-    fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/index", self.track_guid);
-        let osc_msg = rosc::OscMessage {
-            addr: osc_address,
-            args: vec![],
-        };
-        let packet = rosc::OscPacket::Message(osc_msg);
-        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
-        self.socket.send(&buf).map_err(|_| OscError)?;
-        Ok(())
-    }
-}
-
-/// /track/{track_guid}/index
-impl Bind<TrackIndexArgs> for TrackIndex {
-    fn bind<F>(&mut self, callback: F)
-    where
-        F: FnMut(TrackIndexArgs) + 'static,
-    {
-        self.handler = Some(Box::new(callback));
-    }
-}
-
 pub struct TrackSend {
     socket: Arc<UdpSocket>,
-    pub track_guid: String,
-    pub send_index: String,
+    pub track_guid: string,
+    pub send_index: int,
 }
 
 impl TrackSend {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: String) -> TrackSend {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSend {
         TrackSend {
             socket,
             track_guid: track_guid.clone(),
@@ -821,12 +254,12 @@ impl TrackSend {
 pub struct TrackSendGuid {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendGuidHandler>,
-    pub track_guid: String,
-    pub send_index: String,
+    pub track_guid: string,
+    pub send_index: int,
 }
 
 impl TrackSendGuid {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: String) -> TrackSendGuid {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSendGuid {
         TrackSendGuid {
             socket,
             handler: None,
@@ -872,12 +305,12 @@ impl Bind<TrackSendGuidArgs> for TrackSendGuid {
 pub struct TrackSendPan {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendPanHandler>,
-    pub track_guid: String,
-    pub send_index: String,
+    pub track_guid: string,
+    pub send_index: int,
 }
 
 impl TrackSendPan {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: String) -> TrackSendPan {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSendPan {
         TrackSendPan {
             socket,
             handler: None,
@@ -939,12 +372,12 @@ impl Bind<TrackSendPanArgs> for TrackSendPan {
 pub struct TrackSendVolume {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendVolumeHandler>,
-    pub track_guid: String,
-    pub send_index: String,
+    pub track_guid: string,
+    pub send_index: int,
 }
 
 impl TrackSendVolume {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: String) -> TrackSendVolume {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSendVolume {
         TrackSendVolume {
             socket,
             handler: None,
@@ -1003,6 +436,573 @@ impl Bind<TrackSendVolumeArgs> for TrackSendVolume {
     }
 }
 
+pub struct TrackColor {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackColorHandler>,
+    pub track_guid: string,
+}
+
+impl TrackColor {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackColor {
+        TrackColor {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackColorArgs {
+    pub color: i32, // color of the track, represented as an RGB integer
+}
+
+pub type TrackColorHandler = Box<dyn FnMut(TrackColorArgs) + 'static>;
+
+/// /track/{track_guid}/color
+impl Set<TrackColorArgs> for TrackColor {
+    type Error = OscError;
+    fn set(&mut self, args: TrackColorArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/color", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::Int(args.color)],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/color
+impl Query for TrackColor {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/color", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/color
+impl Bind<TrackColorArgs> for TrackColor {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackColorArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackRecArm {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackRecArmHandler>,
+    pub track_guid: string,
+}
+
+impl TrackRecArm {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackRecArm {
+        TrackRecArm {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackRecArmArgs {
+    pub rec_arm: bool, // true means track is armed for recording
+}
+
+pub type TrackRecArmHandler = Box<dyn FnMut(TrackRecArmArgs) + 'static>;
+
+/// /track/{track_guid}/rec-arm
+impl Set<TrackRecArmArgs> for TrackRecArm {
+    type Error = OscError;
+    fn set(&mut self, args: TrackRecArmArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/rec-arm", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::Bool(args.rec_arm)],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/rec-arm
+impl Query for TrackRecArm {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/rec-arm", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/rec-arm
+impl Bind<TrackRecArmArgs> for TrackRecArm {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackRecArmArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackSelected {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackSelectedHandler>,
+    pub track_guid: string,
+}
+
+impl TrackSelected {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackSelected {
+        TrackSelected {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackSelectedArgs {
+    pub selected: bool, // true means track is selected
+}
+
+pub type TrackSelectedHandler = Box<dyn FnMut(TrackSelectedArgs) + 'static>;
+
+/// /track/{track_guid}/selected
+impl Set<TrackSelectedArgs> for TrackSelected {
+    type Error = OscError;
+    fn set(&mut self, args: TrackSelectedArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/selected", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::Bool(args.selected)],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/selected
+impl Query for TrackSelected {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/selected", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/selected
+impl Bind<TrackSelectedArgs> for TrackSelected {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackSelectedArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackName {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackNameHandler>,
+    pub track_guid: string,
+}
+
+impl TrackName {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackName {
+        TrackName {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackNameArgs {
+    pub name: String, // name of the track
+}
+
+pub type TrackNameHandler = Box<dyn FnMut(TrackNameArgs) + 'static>;
+
+/// /track/{track_guid}/name
+impl Set<TrackNameArgs> for TrackName {
+    type Error = OscError;
+    fn set(&mut self, args: TrackNameArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/name", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::String(args.name.clone())],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/name
+impl Query for TrackName {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/name", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/name
+impl Bind<TrackNameArgs> for TrackName {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackNameArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackDelete {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackDeleteHandler>,
+    pub track_guid: string,
+}
+
+impl TrackDelete {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackDelete {
+        TrackDelete {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackDeleteArgs {}
+
+pub type TrackDeleteHandler = Box<dyn FnMut(TrackDeleteArgs) + 'static>;
+
+/// /track/{track_guid}/delete
+impl Set<TrackDeleteArgs> for TrackDelete {
+    type Error = OscError;
+    fn set(&mut self, args: TrackDeleteArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/delete", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/delete
+impl Query for TrackDelete {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/delete", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/delete
+impl Bind<TrackDeleteArgs> for TrackDelete {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackDeleteArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackVolume {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackVolumeHandler>,
+    pub track_guid: string,
+}
+
+impl TrackVolume {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackVolume {
+        TrackVolume {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackVolumeArgs {
+    pub volume: f32, // volume of the track, normalized to 0 to 1.0
+}
+
+pub type TrackVolumeHandler = Box<dyn FnMut(TrackVolumeArgs) + 'static>;
+
+/// /track/{track_guid}/volume
+impl Set<TrackVolumeArgs> for TrackVolume {
+    type Error = OscError;
+    fn set(&mut self, args: TrackVolumeArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/volume", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::Float(args.volume)],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/volume
+impl Query for TrackVolume {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/volume", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/volume
+impl Bind<TrackVolumeArgs> for TrackVolume {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackVolumeArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackMute {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackMuteHandler>,
+    pub track_guid: string,
+}
+
+impl TrackMute {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackMute {
+        TrackMute {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackMuteArgs {
+    pub mute: bool, // true means track is muted
+}
+
+pub type TrackMuteHandler = Box<dyn FnMut(TrackMuteArgs) + 'static>;
+
+/// /track/{track_guid}/mute
+impl Set<TrackMuteArgs> for TrackMute {
+    type Error = OscError;
+    fn set(&mut self, args: TrackMuteArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/mute", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::Bool(args.mute)],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/mute
+impl Query for TrackMute {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/mute", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/mute
+impl Bind<TrackMuteArgs> for TrackMute {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackMuteArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackPan {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackPanHandler>,
+    pub track_guid: string,
+}
+
+impl TrackPan {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackPan {
+        TrackPan {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackPanArgs {
+    pub pan: f32, // pan of the track, normalized to -1.0 to 1.0
+}
+
+pub type TrackPanHandler = Box<dyn FnMut(TrackPanArgs) + 'static>;
+
+/// /track/{track_guid}/pan
+impl Set<TrackPanArgs> for TrackPan {
+    type Error = OscError;
+    fn set(&mut self, args: TrackPanArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/pan", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::Float(args.pan)],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/pan
+impl Query for TrackPan {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/pan", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/pan
+impl Bind<TrackPanArgs> for TrackPan {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackPanArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+pub struct TrackIndex {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackIndexHandler>,
+    pub track_guid: string,
+}
+
+impl TrackIndex {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackIndex {
+        TrackIndex {
+            socket,
+            handler: None,
+            track_guid: track_guid.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TrackIndexArgs {
+    pub index: i32, // index of the track in the project according to reaper's mixer view
+}
+
+pub type TrackIndexHandler = Box<dyn FnMut(TrackIndexArgs) + 'static>;
+
+/// /track/{track_guid}/index
+impl Query for TrackIndex {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/index", self.track_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /track/{track_guid}/index
+impl Bind<TrackIndexArgs> for TrackIndex {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackIndexArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
 /// Try to match an OSC address against a pattern, extracting arguments.
 /// E.g. addr: "/track/abc123/pan", pattern: "/track/{}/pan" -> Some(vec!["abc123"])
 fn match_addr(addr: &str, pattern: &str) -> Option<Vec<String>> {
@@ -1027,91 +1027,6 @@ where
     F: Fn(&str),
 {
     let addr = msg.addr.as_str();
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/delete") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.delete();
-        if let Some(handler) = &mut endpoint.handler {}
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/mute") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.mute();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(mute) = msg.args.get(0) {
-                handler(TrackMuteArgs {
-                    mute: mute.clone().bool().unwrap(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/name") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.name();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(name) = msg.args.get(0) {
-                handler(TrackNameArgs {
-                    name: name.clone().string().unwrap().clone(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/selected") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.selected();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(selected) = msg.args.get(0) {
-                handler(TrackSelectedArgs {
-                    selected: selected.clone().bool().unwrap(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/pan") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.pan();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(pan) = msg.args.get(0) {
-                handler(TrackPanArgs {
-                    pan: pan.clone().float().unwrap(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/rec-arm") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.rec_arm();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(rec_arm) = msg.args.get(0) {
-                handler(TrackRecArmArgs {
-                    rec_arm: rec_arm.clone().bool().unwrap(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/color") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.color();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(color) = msg.args.get(0) {
-                handler(TrackColorArgs {
-                    color: color.clone().int().unwrap(),
-                });
-            }
-        }
-        return;
-    }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/solo") {
         let track_guid = &args[1];
         let track = reaper.track(track_guid.clone());
@@ -1120,32 +1035,6 @@ where
             if let Some(solo) = msg.args.get(0) {
                 handler(TrackSoloArgs {
                     solo: solo.clone().bool().unwrap(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/volume") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.volume();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(volume) = msg.args.get(0) {
-                handler(TrackVolumeArgs {
-                    volume: volume.clone().float().unwrap(),
-                });
-            }
-        }
-        return;
-    }
-    if let Some(args) = match_addr(addr, "/track/{track_guid}/index") {
-        let track_guid = &args[1];
-        let track = reaper.track(track_guid.clone());
-        let mut endpoint = track.index();
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(index) = msg.args.get(0) {
-                handler(TrackIndexArgs {
-                    index: index.clone().int().unwrap(),
                 });
             }
         }
@@ -1191,6 +1080,117 @@ where
             if let Some(volume) = msg.args.get(0) {
                 handler(TrackSendVolumeArgs {
                     volume: volume.clone().float().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/color") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.color();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(color) = msg.args.get(0) {
+                handler(TrackColorArgs {
+                    color: color.clone().int().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/rec-arm") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.rec_arm();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(rec_arm) = msg.args.get(0) {
+                handler(TrackRecArmArgs {
+                    rec_arm: rec_arm.clone().bool().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/selected") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.selected();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(selected) = msg.args.get(0) {
+                handler(TrackSelectedArgs {
+                    selected: selected.clone().bool().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/name") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.name();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(name) = msg.args.get(0) {
+                handler(TrackNameArgs {
+                    name: name.clone().string().unwrap().clone(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/delete") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.delete();
+        if let Some(handler) = &mut endpoint.handler {}
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/volume") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.volume();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(volume) = msg.args.get(0) {
+                handler(TrackVolumeArgs {
+                    volume: volume.clone().float().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/mute") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.mute();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(mute) = msg.args.get(0) {
+                handler(TrackMuteArgs {
+                    mute: mute.clone().bool().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/pan") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.pan();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(pan) = msg.args.get(0) {
+                handler(TrackPanArgs {
+                    pan: pan.clone().float().unwrap(),
+                });
+            }
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/index") {
+        let track_guid = &args[1];
+        let track = reaper.track(track_guid.clone());
+        let mut endpoint = track.index();
+        if let Some(handler) = &mut endpoint.handler {
+            if let Some(index) = msg.args.get(0) {
+                handler(TrackIndexArgs {
+                    index: index.clone().int().unwrap(),
                 });
             }
         }
