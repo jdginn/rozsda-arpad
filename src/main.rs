@@ -68,7 +68,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::ReaperTrackIndex(Some(index.index)),
                                     }))
                                     .unwrap();
@@ -87,7 +87,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Name(name.name.clone()),
                                     }))
                                     .unwrap();
@@ -106,7 +106,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Selected(selected.selected),
                                     }))
                                     .unwrap();
@@ -125,7 +125,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Muted(muted.mute),
                                     }))
                                     .unwrap();
@@ -144,7 +144,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Soloed(soloed.solo),
                                     }))
                                     .unwrap();
@@ -163,7 +163,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Armed(rec_arm.rec_arm),
                                     }))
                                     .unwrap();
@@ -182,7 +182,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Volume(volume.volume),
                                     }))
                                     .unwrap();
@@ -201,7 +201,7 @@ fn main() {
                                 a_send
                                     .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                         guid: track_guid.clone(),
-                                        direction: Direction::Upstream,
+                                        direction: Direction::Downstream,
                                         data: DataPayload::Pan(pan.pan),
                                     }))
                                     .unwrap();
@@ -212,6 +212,110 @@ fn main() {
                                 )
                             }
                         });
+                    });
+                }),
+        ))
+        .add_layer(Box::new(
+            ContextGateBuilder::<context_kind::TrackSend>::new()
+                .add_key_route("/track/{guid}/send/{send_index}/guid")
+                .with_initialization_callback(move |ctx, key_messages| {
+                    let track_guid = ctx.track_guid.clone();
+                    let send_index = ctx.send_index;
+                    println!(
+                        "Initialized track send context: {:?} with messages: {:?}",
+                        ctx, key_messages
+                    );
+                    let reaper = reaper.with_mut(|reaper| {
+                        // Track Send GUID
+                        reaper
+                            .track(track_guid.clone())
+                            .send(send_index)
+                            .guid()
+                            .bind({
+                                let track_guid = track_guid.clone();
+                                let send_index = send_index;
+                                let a_send = a_send.clone();
+                                move |send_guid| {
+                                    a_send
+                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                            guid: track_guid.clone(),
+                                            direction: Direction::Downstream,
+                                            data: DataPayload::SendIndex(
+                                                osc::generated_osc::ReaperTrackSendIndex {
+                                                    guid: send_guid.guid.clone(),
+                                                    send_index: send_index,
+                                                },
+                                            ),
+                                        }))
+                                        .unwrap();
+                                    println!(
+                                        "Track {} send {} guid initial value: {:?}",
+                                        track_guid.clone(),
+                                        send_index,
+                                        send_guid
+                                    )
+                                }
+                            });
+                        // Track Send Volume
+                        reaper
+                            .track(track_guid.clone())
+                            .send(send_index)
+                            .volume()
+                            .bind({
+                                let track_guid = track_guid.clone();
+                                let send_index = send_index;
+                                let a_send = a_send.clone();
+                                move |send_volume| {
+                                    a_send
+                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                            guid: track_guid.clone(),
+                                            direction: Direction::Downstream,
+                                            data: DataPayload::SendVolume(
+                                                osc::generated_osc::ReaperTrackSendVolume {
+                                                    send_index: send_volume.send_index,
+                                                    volume: send_volume.volume,
+                                                },
+                                            ),
+                                        }))
+                                        .unwrap();
+                                    println!(
+                                        "Track {} send {} volume initial value: {:?}",
+                                        track_guid.clone(),
+                                        send_index,
+                                        send_volume
+                                    )
+                                }
+                            });
+                        // Track Send Pan
+                        reaper
+                            .track(track_guid.clone())
+                            .send(send_index)
+                            .pan()
+                            .bind({
+                                let track_guid = track_guid.clone();
+                                let send_index = send_index;
+                                let a_send = a_send.clone();
+                                move |send_pan| {
+                                    a_send
+                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                            guid: track_guid.clone(),
+                                            direction: Direction::Downstream,
+                                            data: DataPayload::SendPan(
+                                                osc::generated_osc::ReaperTrackSendPan {
+                                                    send_index: send_pan.send_index,
+                                                    pan: send_pan.pan,
+                                                },
+                                            ),
+                                        }))
+                                        .unwrap();
+                                    println!(
+                                        "Track {} send {} pan initial value: {:?}",
+                                        track_guid.clone(),
+                                        send_index,
+                                        send_pan
+                                    )
+                                }
+                            });
                     });
                 }),
         ))
