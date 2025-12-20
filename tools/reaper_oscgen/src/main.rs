@@ -2,7 +2,7 @@ use clap::Parser;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -60,12 +60,32 @@ struct OscArgument {
     description: Option<String>,
 }
 
+impl Display for OscArgument {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "OscArgument {{ name: {}, type: {} }}",
+            self.name, self.typ
+        )
+    }
+}
+
 // OSC route as represented in the YAML
 #[derive(Debug, Deserialize, Clone)]
 struct OscRoute {
     osc_address: String,
     arguments: Vec<OscArgument>,
     direction: Option<String>,
+}
+
+impl Display for OscRoute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "OscRoute {{ osc_address: {}, arguments: {:?}, direction: {:?} }}",
+            self.osc_address, self.arguments, self.direction
+        )
+    }
 }
 
 /// Info for leaf endpoints
@@ -76,11 +96,23 @@ struct LeafInfo {
     direction: Option<String>,
 }
 
+impl Display for LeafInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "LeafInfo {{ osc_address: {}, args: {:?} }}",
+            self.osc_address, self.args
+        )
+    }
+}
+
 /// A node in the OSC hierarchy tree
 #[derive(Debug, Clone)]
 struct TreeNode {
     // how to access this node in the fluent API
     accessor_name: String,
+    // argument type for this node's accessor in the fluent API
+    accessor_type: String,
     // type name in the generated source
     // NOTE: must represent its whole hierarchy to avoid name
     // collisions (e.g. "Pan" is not ennough because we may have both TrackPan" vs "TrackSendPan")
@@ -89,6 +121,21 @@ struct TreeNode {
     children: HashMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
     parents: Vec<PathStep>, // For convenience since linked lists are hard in Rust
+}
+
+impl Display for TreeNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "TreeNode {{ struct_name: {}, accessor_name: {}, accessor_type: {}, path_arg: {:?}, leaf: {:?}, children: [{}] }}",
+            self.struct_name,
+            self.accessor_name,
+            self.accessor_type,
+            self.path_arg,
+            self.leaf,
+            self.children.keys().cloned().collect::<Vec<_>>().join(", ")
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -330,6 +377,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
 fn build_tree(routes: &[OscRoute]) -> TreeNode {
     let mut root = TreeNode {
         accessor_name: "Reaper".to_string(),
+        accessor_type: "ERROR".to_string(),
         struct_name: "Reaper".to_string(),
         path_arg: None,
         children: HashMap::new(),
@@ -343,13 +391,13 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         let parsed = parse_address(&route.osc_address);
         let mut node = &mut root;
         let mut parents = Vec::new();
-        for (name, arg_name) in &parsed {
+        for (i, (name, arg_name)) in parsed.iter().enumerate() {
             let struct_name = full_path_struct_name(path.as_slice());
             parents.push(PathStep {
                 accessor: name.clone(),
                 arg: arg_name.clone().map(|a| ParentArg {
                     name: sanitize_path_level(&a),
-                    typ: "String".to_string(),
+                    typ: route.arguments[i].typ.clone(),
                 }),
                 struct_name,
             });
@@ -362,8 +410,15 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
                     .map_or(String::new(), |a| format!("${}", a))
             );
 
+            let accessor_type = if i < parsed.len() - 1 {
+                rust_type(&route.arguments[i].typ.clone()).to_string()
+            } else {
+                "empty".to_string()
+            };
+
             node = node.children.entry(key.clone()).or_insert(TreeNode {
                 accessor_name: sanitize_path_level(&name.clone()),
+                accessor_type,
                 struct_name: full_path_struct_name(path.as_slice()),
                 path_arg: arg_name.clone(),
                 children: HashMap::new(),
@@ -492,9 +547,10 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
 
         if let Some(arg_name) = &child.path_arg {
             code.push_str(&format!(
-                "    pub fn {0}(&mut self, {1}: String) -> &mut {2} {{\n",
+                "    pub fn {0}(&mut self, {1}: {2}) -> &mut {3} {{\n",
                 method_name,
                 sanitize_path_level(arg_name),
+                child.accessor_type,
                 child.struct_name,
             ));
             code.push_str(&format!(
