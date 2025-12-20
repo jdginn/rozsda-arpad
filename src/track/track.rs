@@ -34,6 +34,24 @@ pub struct TrackQuery {
 }
 
 #[derive(Clone)]
+pub struct SendIndex {
+    pub guid: String,
+    pub send_index: i32,
+}
+
+#[derive(Clone)]
+pub struct SendLevel {
+    pub guid: String,
+    pub level: f32,
+}
+
+#[derive(Clone)]
+pub struct SendPan {
+    pub guid: String,
+    pub pan: f32,
+}
+
+#[derive(Clone)]
 pub enum DataPayload {
     Name(String),
     ReaperTrackIndex(Option<i32>),
@@ -43,7 +61,18 @@ pub enum DataPayload {
     Armed(bool),
     Volume(f32),
     Pan(f32),
+    SendIndex(SendIndex),
+    SendLevel(SendLevel),
+    SendPan(SendPan),
     TrackData(TrackData),
+}
+
+#[derive(Clone)]
+pub struct SendData {
+    pub target_guid: String,
+    pub send_index: i32,
+    pub level: f32,
+    pub pan: f32,
 }
 
 /// Maintains state for a given track to the best of our knowledge
@@ -58,6 +87,7 @@ pub struct TrackData {
     armed: bool,
     volume: f32,
     pan: f32,
+    sends: Vec<SendData>,
 }
 
 impl TrackData {
@@ -72,7 +102,25 @@ impl TrackData {
             armed: false,
             volume: 0.0,
             pan: 0.0,
+            sends: Vec::new(),
         }
+    }
+
+    fn get_send_state(&mut self, index: i32) -> Option<&mut SendData> {
+        self.sends.get_mut(index as usize)
+    }
+
+    fn set_send_index(&mut self, send_index: SendIndex) {
+        // Ensure the sends vector is large enough
+        while self.sends.len() <= send_index.send_index as usize {
+            self.sends.push(SendData {
+                target_guid: String::new(),
+                send_index: self.sends.len() as i32,
+                level: 0.0,
+                pan: 0.0,
+            });
+        }
+        self.sends[send_index.send_index as usize].target_guid = send_index.guid;
     }
 }
 
@@ -153,6 +201,34 @@ impl TrackManager {
                         // Update everything!
                         DataPayload::TrackData(track_data) => {
                             *track = track_data;
+                        }
+                        DataPayload::SendIndex(send_index) => {
+                            track.set_send_index(send_index.clone());
+                            println!(
+                                "Track {} send {} target GUID set to {}",
+                                msg.guid, send_index.send_index, send_index.guid
+                            );
+                        }
+                        DataPayload::SendLevel(send_level) => {
+                            if let Some(send) =
+                                track.get_send_state(send_level.guid.parse().unwrap())
+                            {
+                                send.level = send_level.level;
+                                println!(
+                                    "Track {} send {} level set to {}",
+                                    msg.guid, send.send_index, send_level.level
+                                );
+                            }
+                        }
+                        DataPayload::SendPan(send_pan) => {
+                            if let Some(send) = track.get_send_state(send_pan.guid.parse().unwrap())
+                            {
+                                send.pan = send_pan.pan;
+                                println!(
+                                    "Track {} send {} pan set to {}",
+                                    msg.guid, send.send_index, send_pan.pan
+                                );
+                            }
                         }
                     }
                     // Forward the message to the appropriate place
