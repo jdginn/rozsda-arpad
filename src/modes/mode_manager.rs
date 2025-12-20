@@ -5,7 +5,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 
 use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
-use crate::modes::reaper::VolumePanMode;
+use crate::modes::reaper_vol_pan::VolumePanMode;
 use crate::track::track::TrackMsg;
 
 // Global atomic counter for unique IDs

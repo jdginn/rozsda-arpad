@@ -1,2 +1,2 @@
 pub mod mode_manager;
-pub mod reaper;
+pub mod reaper_vol_pan;
