@@ -15,7 +15,7 @@ static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 /// is processed before we continue forwarding messages.
 ///
 /// Barriers are unique.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Barrier {
     id: u64,
 }
@@ -35,7 +35,7 @@ impl Default for Barrier {
 }
 
 /// Represents state of mode manager: mostly whether we are in a mode transition.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum State {
     // Normal operation: forward messages in both directions
     Active,
@@ -47,7 +47,7 @@ pub enum State {
 }
 
 /// Represents the various control modes supported.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
     ReaperVolPan,
     ReaperSends,
@@ -55,7 +55,7 @@ pub enum Mode {
 }
 
 /// Represents the current mode and state of the mode manager.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ModeState {
     pub mode: Mode,
     pub state: State,
@@ -164,4 +164,148 @@ impl ModeManager {
             }
         });
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for Barrier
+
+    #[test]
+    fn test_barrier_new_creates_unique_ids() {
+        let barrier1 = Barrier::new();
+        let barrier2 = Barrier::new();
+        assert_ne!(barrier1, barrier2);
+    }
+
+    #[test]
+    fn test_barrier_clone_preserves_id() {
+        let barrier1 = Barrier::new();
+        let barrier2 = barrier1.clone();
+        assert_eq!(barrier1, barrier2);
+    }
+
+    #[test]
+    fn test_barrier_default() {
+        let barrier = Barrier::default();
+        // Just verify it creates a barrier - can't check much else without exposing id
+        assert_ne!(barrier, Barrier::new()); // Should get different ID
+    }
+
+    // Tests for State
+
+    #[test]
+    fn test_state_active_equality() {
+        let state1 = State::Active;
+        let state2 = State::Active;
+        assert_eq!(state1, state2);
+    }
+
+    #[test]
+    fn test_state_waiting_barrier_upstream() {
+        let barrier = Barrier::new();
+        let state = State::WaitingBarrierFromUpstream(barrier);
+        assert!(matches!(state, State::WaitingBarrierFromUpstream(_)));
+    }
+
+    #[test]
+    fn test_state_waiting_barrier_downstream() {
+        let barrier = Barrier::new();
+        let state = State::WaitingBarrierFromDownstream(barrier);
+        assert!(matches!(state, State::WaitingBarrierFromDownstream(_)));
+    }
+
+    #[test]
+    fn test_state_clone() {
+        let state1 = State::Active;
+        let state2 = state1.clone();
+        assert_eq!(state1, state2);
+    }
+
+    // Tests for Mode
+
+    #[test]
+    fn test_mode_equality() {
+        assert_eq!(Mode::ReaperVolPan, Mode::ReaperVolPan);
+        assert_ne!(Mode::ReaperVolPan, Mode::ReaperSends);
+        assert_ne!(Mode::ReaperSends, Mode::MotuVolPan);
+    }
+
+    #[test]
+    fn test_mode_clone() {
+        let mode1 = Mode::ReaperSends;
+        let mode2 = mode1.clone();
+        assert_eq!(mode1, mode2);
+    }
+
+    #[test]
+    fn test_mode_copy() {
+        let mode1 = Mode::ReaperVolPan;
+        let mode2 = mode1; // Copy, not move
+        assert_eq!(mode1, mode2);
+        // Verify mode1 is still usable (copy trait)
+        assert_eq!(mode1, Mode::ReaperVolPan);
+    }
+
+    // Tests for ModeState
+
+    #[test]
+    fn test_mode_state_creation() {
+        let mode_state = ModeState {
+            mode: Mode::ReaperVolPan,
+            state: State::Active,
+        };
+        assert_eq!(mode_state.mode, Mode::ReaperVolPan);
+        assert_eq!(mode_state.state, State::Active);
+    }
+
+    #[test]
+    fn test_mode_state_equality() {
+        let state1 = ModeState {
+            mode: Mode::ReaperVolPan,
+            state: State::Active,
+        };
+        let state2 = ModeState {
+            mode: Mode::ReaperVolPan,
+            state: State::Active,
+        };
+        assert_eq!(state1, state2);
+    }
+
+    #[test]
+    fn test_mode_state_inequality() {
+        let state1 = ModeState {
+            mode: Mode::ReaperVolPan,
+            state: State::Active,
+        };
+        let state2 = ModeState {
+            mode: Mode::ReaperSends,
+            state: State::Active,
+        };
+        assert_ne!(state1, state2);
+    }
+
+    #[test]
+    fn test_mode_state_with_barrier() {
+        let barrier = Barrier::new();
+        let mode_state = ModeState {
+            mode: Mode::ReaperVolPan,
+            state: State::WaitingBarrierFromUpstream(barrier),
+        };
+        assert_eq!(mode_state.mode, Mode::ReaperVolPan);
+        assert!(matches!(
+            mode_state.state,
+            State::WaitingBarrierFromUpstream(_)
+        ));
+    }
+
+    // NOTE: Testing ModeManager::start and the full message handling loop would require:
+    // 1. Setting up channels for all four directions (to/from upstream, to/from downstream)
+    // 2. Creating mode handler implementations
+    // 3. Thread synchronization and message passing
+    // 4. Complex state machine testing
+    //
+    // These are better suited for integration tests. For unit tests, we've focused on
+    // the data structures and enums that can be tested in isolation.
 }
