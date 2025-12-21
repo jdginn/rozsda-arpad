@@ -207,3 +207,70 @@ impl TrackSendsMode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for Button (same structure as in reaper_vol_pan, but duplicated here)
+
+    #[test]
+    fn test_button_new_starts_off() {
+        let button = Button::new();
+        assert_eq!(button.is_on(), false);
+        assert_eq!(button.state, false);
+    }
+
+    #[test]
+    fn test_button_set_updates_state() {
+        let mut button = Button::new();
+        button.set(true);
+        assert_eq!(button.is_on(), true);
+        
+        button.set(false);
+        assert_eq!(button.is_on(), false);
+    }
+
+    #[test]
+    fn test_button_toggle_changes_state() {
+        let mut button = Button::new();
+        assert_eq!(button.state, false);
+        
+        let result = button.toggle();
+        assert_eq!(result, true);
+        assert_eq!(button.state, true);
+        
+        let result = button.toggle();
+        assert_eq!(result, false);
+        assert_eq!(button.state, false);
+    }
+
+    #[test]
+    fn test_button_toggle_returns_new_state() {
+        let mut button = Button::new();
+        let new_state = button.toggle();
+        assert_eq!(new_state, true);
+        assert_eq!(button.is_on(), true);
+    }
+
+    // Tests for TrackSendState
+
+    #[test]
+    fn test_track_send_state_creation() {
+        let _state = TrackSendState {};
+        // TrackSendState is currently an empty struct
+        // This test just verifies it can be instantiated
+    }
+
+    // NOTE: Testing TrackSendsMode would require:
+    // 1. Setting up channels for communication
+    // 2. Complex state management and message handling
+    // 3. Mode transitions and barrier synchronization
+    //
+    // The TrackSendsMode struct is better suited for integration testing.
+    // For unit tests, we've focused on the helper structures (Button, TrackSendState)
+    // that can be tested in isolation.
+    //
+    // TODO: Consider extracting the channel-to-GUID mapping logic into
+    // a separate testable function or structure.
+}
