@@ -371,3 +371,147 @@ pub struct XTouch {
     input: Receiver<XTouchDownstreamMsg>,
     upstream: Sender<XTouchUpstreamMsg>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for LEDState
+
+    #[test]
+    fn test_led_state_from_bool_false() {
+        let state: LEDState = false.into();
+        assert!(matches!(state, LEDState::Off));
+    }
+
+    #[test]
+    fn test_led_state_from_bool_true() {
+        let state: LEDState = true.into();
+        assert!(matches!(state, LEDState::On));
+    }
+
+    #[test]
+    fn test_led_state_copy() {
+        let state = LEDState::Flash;
+        let copied = state;
+        assert!(matches!(copied, LEDState::Flash));
+        // Verify original is still usable (copy trait)
+        assert!(matches!(state, LEDState::Flash));
+    }
+
+    // Tests for message structures
+
+    #[test]
+    fn test_fader_abs_msg_creation() {
+        let msg = FaderAbsMsg {
+            idx: 3,
+            value: 0.75,
+        };
+        assert_eq!(msg.idx, 3);
+        assert_eq!(msg.value, 0.75);
+    }
+
+    #[test]
+    fn test_fader_abs_msg_clone() {
+        let msg = FaderAbsMsg {
+            idx: 1,
+            value: 0.5,
+        };
+        let cloned = msg.clone();
+        assert_eq!(cloned.idx, 1);
+        assert_eq!(cloned.value, 0.5);
+    }
+
+    #[test]
+    fn test_mute_press_creation() {
+        let msg = MutePress {
+            idx: 2,
+            velocity: 127,
+        };
+        assert_eq!(msg.idx, 2);
+        assert_eq!(msg.velocity, 127);
+    }
+
+    #[test]
+    fn test_mute_led_msg_creation() {
+        let msg = MuteLEDMsg {
+            idx: 5,
+            state: LEDState::Flash,
+        };
+        assert_eq!(msg.idx, 5);
+        assert!(matches!(msg.state, LEDState::Flash));
+    }
+
+    #[test]
+    fn test_solo_press_creation() {
+        let msg = SoloPress { idx: 4 };
+        assert_eq!(msg.idx, 4);
+    }
+
+    #[test]
+    fn test_solo_led_msg_creation() {
+        let msg = SoloLEDMsg {
+            idx: 7,
+            state: LEDState::On,
+        };
+        assert_eq!(msg.idx, 7);
+        assert!(matches!(msg.state, LEDState::On));
+    }
+
+    #[test]
+    fn test_arm_press_creation() {
+        let msg = ArmPress { idx: 6 };
+        assert_eq!(msg.idx, 6);
+    }
+
+    #[test]
+    fn test_arm_led_msg_creation() {
+        let msg = ArmLEDMsg {
+            idx: 1,
+            state: LEDState::Off,
+        };
+        assert_eq!(msg.idx, 1);
+        assert!(matches!(msg.state, LEDState::Off));
+    }
+
+    // Tests for message enums
+
+    #[test]
+    fn test_xtouch_upstream_msg_from_fader_abs() {
+        let fader_msg = FaderAbsMsg {
+            idx: 0,
+            value: 0.5,
+        };
+        let msg: XTouchUpstreamMsg = fader_msg.into();
+        assert!(matches!(msg, XTouchUpstreamMsg::FaderAbs(_)));
+    }
+
+    #[test]
+    fn test_xtouch_downstream_msg_mute_led_variant() {
+        let led_msg = MuteLEDMsg {
+            idx: 2,
+            state: LEDState::On,
+        };
+        let msg = XTouchDownstreamMsg::MuteLED(led_msg);
+        assert!(matches!(msg, XTouchDownstreamMsg::MuteLED(_)));
+    }
+
+    #[test]
+    fn test_xtouch_downstream_msg_fader_abs_variant() {
+        let fader_msg = FaderAbsMsg {
+            idx: 1,
+            value: 0.8,
+        };
+        let msg = XTouchDownstreamMsg::FaderAbs(fader_msg);
+        assert!(matches!(msg, XTouchDownstreamMsg::FaderAbs(_)));
+    }
+
+    // NOTE: Testing XTouch::start, Fader, and Button would require:
+    // 1. Mock MIDI devices and connections
+    // 2. Channel setup and thread synchronization
+    // 3. Complex async message passing
+    //
+    // These components are better suited for integration tests.
+    // For unit tests, we've focused on the data structures and simple
+    // conversions that can be tested in isolation.
+}
