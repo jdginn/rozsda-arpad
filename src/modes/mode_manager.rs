@@ -17,7 +17,7 @@ static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 /// is processed before we continue forwarding messages.
 ///
 /// Barriers are unique.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Barrier {
     id: u64,
 }

@@ -94,12 +94,12 @@ impl Reaper {
 
 pub struct Track {
     socket: Arc<UdpSocket>,
-    pub track_guid: string,
-    pub send_index_map: HashMap<String, TrackSend>,
+    pub track_guid: String,
+    pub send_index_map: HashMap<i32, TrackSend>,
 }
 
 impl Track {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> Track {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> Track {
         Track {
             socket,
             track_guid: track_guid.clone(),
@@ -152,11 +152,11 @@ impl Track {
 pub struct TrackSolo {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSoloHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackSolo {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackSolo {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackSolo {
         TrackSolo {
             socket,
             handler: None,
@@ -216,12 +216,12 @@ impl Bind<TrackSoloArgs> for TrackSolo {
 
 pub struct TrackSend {
     socket: Arc<UdpSocket>,
-    pub track_guid: string,
-    pub send_index: int,
+    pub track_guid: String,
+    pub send_index: i32,
 }
 
 impl TrackSend {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSend {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: i32) -> TrackSend {
         TrackSend {
             socket,
             track_guid: track_guid.clone(),
@@ -254,12 +254,12 @@ impl TrackSend {
 pub struct TrackSendGuid {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendGuidHandler>,
-    pub track_guid: string,
-    pub send_index: int,
+    pub track_guid: String,
+    pub send_index: i32,
 }
 
 impl TrackSendGuid {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSendGuid {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: i32) -> TrackSendGuid {
         TrackSendGuid {
             socket,
             handler: None,
@@ -305,12 +305,12 @@ impl Bind<TrackSendGuidArgs> for TrackSendGuid {
 pub struct TrackSendPan {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendPanHandler>,
-    pub track_guid: string,
-    pub send_index: int,
+    pub track_guid: String,
+    pub send_index: i32,
 }
 
 impl TrackSendPan {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSendPan {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: i32) -> TrackSendPan {
         TrackSendPan {
             socket,
             handler: None,
@@ -372,12 +372,12 @@ impl Bind<TrackSendPanArgs> for TrackSendPan {
 pub struct TrackSendVolume {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendVolumeHandler>,
-    pub track_guid: string,
-    pub send_index: int,
+    pub track_guid: String,
+    pub send_index: i32,
 }
 
 impl TrackSendVolume {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string, send_index: int) -> TrackSendVolume {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String, send_index: i32) -> TrackSendVolume {
         TrackSendVolume {
             socket,
             handler: None,
@@ -439,11 +439,11 @@ impl Bind<TrackSendVolumeArgs> for TrackSendVolume {
 pub struct TrackColor {
     socket: Arc<UdpSocket>,
     handler: Option<TrackColorHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackColor {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackColor {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackColor {
         TrackColor {
             socket,
             handler: None,
@@ -504,11 +504,11 @@ impl Bind<TrackColorArgs> for TrackColor {
 pub struct TrackRecArm {
     socket: Arc<UdpSocket>,
     handler: Option<TrackRecArmHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackRecArm {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackRecArm {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackRecArm {
         TrackRecArm {
             socket,
             handler: None,
@@ -569,11 +569,11 @@ impl Bind<TrackRecArmArgs> for TrackRecArm {
 pub struct TrackSelected {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSelectedHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackSelected {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackSelected {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackSelected {
         TrackSelected {
             socket,
             handler: None,
@@ -634,11 +634,11 @@ impl Bind<TrackSelectedArgs> for TrackSelected {
 pub struct TrackName {
     socket: Arc<UdpSocket>,
     handler: Option<TrackNameHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackName {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackName {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackName {
         TrackName {
             socket,
             handler: None,
@@ -699,11 +699,11 @@ impl Bind<TrackNameArgs> for TrackName {
 pub struct TrackDelete {
     socket: Arc<UdpSocket>,
     handler: Option<TrackDeleteHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackDelete {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackDelete {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackDelete {
         TrackDelete {
             socket,
             handler: None,
@@ -762,11 +762,11 @@ impl Bind<TrackDeleteArgs> for TrackDelete {
 pub struct TrackVolume {
     socket: Arc<UdpSocket>,
     handler: Option<TrackVolumeHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackVolume {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackVolume {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackVolume {
         TrackVolume {
             socket,
             handler: None,
@@ -827,11 +827,11 @@ impl Bind<TrackVolumeArgs> for TrackVolume {
 pub struct TrackMute {
     socket: Arc<UdpSocket>,
     handler: Option<TrackMuteHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackMute {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackMute {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackMute {
         TrackMute {
             socket,
             handler: None,
@@ -892,11 +892,11 @@ impl Bind<TrackMuteArgs> for TrackMute {
 pub struct TrackPan {
     socket: Arc<UdpSocket>,
     handler: Option<TrackPanHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackPan {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackPan {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackPan {
         TrackPan {
             socket,
             handler: None,
@@ -957,11 +957,11 @@ impl Bind<TrackPanArgs> for TrackPan {
 pub struct TrackIndex {
     socket: Arc<UdpSocket>,
     handler: Option<TrackIndexHandler>,
-    pub track_guid: string,
+    pub track_guid: String,
 }
 
 impl TrackIndex {
-    pub fn new(socket: Arc<UdpSocket>, track_guid: string) -> TrackIndex {
+    pub fn new(socket: Arc<UdpSocket>, track_guid: String) -> TrackIndex {
         TrackIndex {
             socket,
             handler: None,
@@ -1041,10 +1041,10 @@ where
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/guid") {
-        let send_index = &args[1];
+        let send_index = args[1].parse::<i32>().unwrap();
         let track_guid = &args[2];
         let track = reaper.track(track_guid.clone());
-        let send = track.send(send_index.clone());
+        let send = track.send(send_index);
         let mut endpoint = send.guid();
         if let Some(handler) = &mut endpoint.handler {
             if let Some(guid) = msg.args.get(0) {
@@ -1056,10 +1056,10 @@ where
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/pan") {
-        let send_index = &args[1];
+        let send_index = args[1].parse::<i32>().unwrap();
         let track_guid = &args[2];
         let track = reaper.track(track_guid.clone());
-        let send = track.send(send_index.clone());
+        let send = track.send(send_index);
         let mut endpoint = send.pan();
         if let Some(handler) = &mut endpoint.handler {
             if let Some(pan) = msg.args.get(0) {
@@ -1071,10 +1071,10 @@ where
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/volume") {
-        let send_index = &args[1];
+        let send_index = args[1].parse::<i32>().unwrap();
         let track_guid = &args[2];
         let track = reaper.track(track_guid.clone());
-        let send = track.send(send_index.clone());
+        let send = track.send(send_index);
         let mut endpoint = send.volume();
         if let Some(handler) = &mut endpoint.handler {
             if let Some(volume) = msg.args.get(0) {

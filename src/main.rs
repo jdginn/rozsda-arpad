@@ -13,7 +13,7 @@ use rosc::OscMessage;
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
-use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackManager, TrackMsg};
+use arpad_rust::track::track::{DataPayload, Direction, SendIndex, SendLevel, SendPan, TrackDataMsg, TrackManager, TrackMsg};
 
 use crate::shared::Shared;
 use crate::traits::Bind;
@@ -48,7 +48,10 @@ fn main() {
     };
 
     let mut router = OscGatedRouterBuilder::new(dispatcher)
-        .add_layer(Box::new(
+        .add_layer({
+            let reaper = reaper.clone();
+            let a_send = a_send.clone();
+            Box::new(
             ContextGateBuilder::<context_kind::Track>::new()
                 .add_key_route("/track/{guid}/index")
                 .with_initialization_callback(move |ctx, key_messages| {
@@ -214,8 +217,12 @@ fn main() {
                         });
                     });
                 }),
-        ))
-        .add_layer(Box::new(
+            )
+        })
+        .add_layer({
+            let reaper = reaper.clone();
+            let a_send = a_send.clone();
+            Box::new(
             ContextGateBuilder::<context_kind::TrackSend>::new()
                 .add_key_route("/track/{guid}/send/{send_index}/guid")
                 .with_initialization_callback(move |ctx, key_messages| {
@@ -240,12 +247,10 @@ fn main() {
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
                                             direction: Direction::Downstream,
-                                            data: DataPayload::SendIndex(
-                                                osc::generated_osc::ReaperTrackSendIndex {
-                                                    guid: send_guid.guid.clone(),
-                                                    send_index: send_index,
-                                                },
-                                            ),
+                                            data: DataPayload::SendIndex(SendIndex {
+                                                guid: send_guid.guid.clone(),
+                                                send_index: send_index,
+                                            }),
                                         }))
                                         .unwrap();
                                     println!(
@@ -270,12 +275,10 @@ fn main() {
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
                                             direction: Direction::Downstream,
-                                            data: DataPayload::SendVolume(
-                                                osc::generated_osc::ReaperTrackSendVolume {
-                                                    send_index: send_volume.send_index,
-                                                    volume: send_volume.volume,
-                                                },
-                                            ),
+                                            data: DataPayload::SendLevel(SendLevel {
+                                                send_index: send_index,
+                                                level: send_volume.volume,
+                                            }),
                                         }))
                                         .unwrap();
                                     println!(
@@ -300,12 +303,10 @@ fn main() {
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
                                             direction: Direction::Downstream,
-                                            data: DataPayload::SendPan(
-                                                osc::generated_osc::ReaperTrackSendPan {
-                                                    send_index: send_pan.send_index,
-                                                    pan: send_pan.pan,
-                                                },
-                                            ),
+                                            data: DataPayload::SendPan(SendPan {
+                                                send_index: send_index,
+                                                pan: send_pan.pan,
+                                            }),
                                         }))
                                         .unwrap();
                                     println!(
@@ -318,7 +319,8 @@ fn main() {
                             });
                     });
                 }),
-        ))
+            )
+        })
         .build()
         .unwrap();
 
