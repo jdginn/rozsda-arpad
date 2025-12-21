@@ -328,3 +328,105 @@ impl VolumePanMode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for Button
+
+    #[test]
+    fn test_button_new_starts_off() {
+        let button = Button::new();
+        assert_eq!(button.is_on(), false);
+        assert_eq!(button.state, false);
+    }
+
+    #[test]
+    fn test_button_set_updates_state() {
+        let mut button = Button::new();
+        button.set(true);
+        assert_eq!(button.is_on(), true);
+        assert_eq!(button.state, true);
+        
+        button.set(false);
+        assert_eq!(button.is_on(), false);
+        assert_eq!(button.state, false);
+    }
+
+    #[test]
+    fn test_button_toggle_changes_state() {
+        let mut button = Button::new();
+        assert_eq!(button.state, false);
+        
+        let result = button.toggle();
+        assert_eq!(result, true);
+        assert_eq!(button.state, true);
+        
+        let result = button.toggle();
+        assert_eq!(result, false);
+        assert_eq!(button.state, false);
+    }
+
+    #[test]
+    fn test_button_toggle_returns_new_state() {
+        let mut button = Button::new();
+        button.set(false);
+        
+        let new_state = button.toggle();
+        assert_eq!(new_state, true);
+        assert_eq!(button.is_on(), true);
+    }
+
+    #[test]
+    fn test_button_is_on() {
+        let mut button = Button::new();
+        button.set(true);
+        assert!(button.is_on());
+        
+        button.set(false);
+        assert!(!button.is_on());
+    }
+
+    // Tests for ButtonState
+
+    #[test]
+    fn test_button_state_creation() {
+        let button_state = ButtonState {
+            mute: Button::new(),
+            solo: Button::new(),
+            arm: Button::new(),
+        };
+        
+        assert_eq!(button_state.mute.is_on(), false);
+        assert_eq!(button_state.solo.is_on(), false);
+        assert_eq!(button_state.arm.is_on(), false);
+    }
+
+    #[test]
+    fn test_button_state_independent_buttons() {
+        let mut button_state = ButtonState {
+            mute: Button::new(),
+            solo: Button::new(),
+            arm: Button::new(),
+        };
+        
+        button_state.mute.set(true);
+        button_state.solo.set(false);
+        button_state.arm.set(true);
+        
+        assert!(button_state.mute.is_on());
+        assert!(!button_state.solo.is_on());
+        assert!(button_state.arm.is_on());
+    }
+
+    // NOTE: Testing VolumePanMode would require:
+    // 1. Setting up channels for communication with tracks and XTouch
+    // 2. Complex state management across multiple channels
+    // 3. Message handling and mode transitions
+    // 4. Thread synchronization
+    //
+    // The VolumePanMode struct is better suited for integration testing.
+    // For unit tests, we've focused on the helper structures (Button, ButtonState)
+    // that can be tested in isolation.
+}
