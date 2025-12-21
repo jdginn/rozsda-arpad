@@ -287,3 +287,157 @@ impl MidiDevice {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for byte_slice helper function
+    #[test]
+    fn test_byte_slice_converts_raw_message() {
+        let message = ShortMessageFactory::note_on(
+            Channel::new(0),
+            helgoboss_midi::KeyNumber::new(60),
+            U7::new(100),
+        );
+        let bytes = byte_slice(message);
+        assert_eq!(bytes.len(), 3);
+        // First byte should be status byte (0x90 for Note On channel 0)
+        assert_eq!(bytes[0], 0x90);
+        // Second byte should be note number (60)
+        assert_eq!(bytes[1], 60);
+        // Third byte should be velocity (100)
+        assert_eq!(bytes[2], 100);
+    }
+
+    // Tests for NoteOn structure
+    #[test]
+    fn test_note_on_creation() {
+        let note_on = NoteOn {
+            channel: 1,
+            key_number: 60,
+        };
+        assert_eq!(note_on.channel, 1);
+        assert_eq!(note_on.key_number, 60);
+    }
+
+    #[test]
+    fn test_note_on_equality() {
+        let note1 = NoteOn {
+            channel: 1,
+            key_number: 60,
+        };
+        let note2 = NoteOn {
+            channel: 1,
+            key_number: 60,
+        };
+        let note3 = NoteOn {
+            channel: 2,
+            key_number: 60,
+        };
+        assert_eq!(note1, note2);
+        assert_ne!(note1, note3);
+    }
+
+    #[test]
+    fn test_note_on_clone() {
+        let note_on = NoteOn {
+            channel: 1,
+            key_number: 60,
+        };
+        let cloned = note_on.clone();
+        assert_eq!(note_on, cloned);
+    }
+
+    // Tests for NoteOff structure
+    #[test]
+    fn test_note_off_creation() {
+        let note_off = NoteOff {
+            channel: 2,
+            key_number: 72,
+        };
+        assert_eq!(note_off.channel, 2);
+        assert_eq!(note_off.key_number, 72);
+    }
+
+    #[test]
+    fn test_note_off_equality() {
+        let note1 = NoteOff {
+            channel: 2,
+            key_number: 72,
+        };
+        let note2 = NoteOff {
+            channel: 2,
+            key_number: 72,
+        };
+        let note3 = NoteOff {
+            channel: 2,
+            key_number: 73,
+        };
+        assert_eq!(note1, note2);
+        assert_ne!(note1, note3);
+    }
+
+    // Tests for ControlChange structure
+    #[test]
+    fn test_control_change_creation() {
+        let cc = ControlChange {
+            channel: 0,
+            controller_number: 7,
+        };
+        assert_eq!(cc.channel, 0);
+        assert_eq!(cc.controller_number, 7);
+    }
+
+    #[test]
+    fn test_control_change_equality() {
+        let cc1 = ControlChange {
+            channel: 0,
+            controller_number: 7,
+        };
+        let cc2 = ControlChange {
+            channel: 0,
+            controller_number: 7,
+        };
+        let cc3 = ControlChange {
+            channel: 1,
+            controller_number: 7,
+        };
+        assert_eq!(cc1, cc2);
+        assert_ne!(cc1, cc3);
+    }
+
+    // Tests for PitchBend structure
+    #[test]
+    fn test_pitch_bend_creation() {
+        let pb = PitchBend { channel: 3 };
+        assert_eq!(pb.channel, 3);
+    }
+
+    #[test]
+    fn test_pitch_bend_equality() {
+        let pb1 = PitchBend { channel: 3 };
+        let pb2 = PitchBend { channel: 3 };
+        let pb3 = PitchBend { channel: 4 };
+        assert_eq!(pb1, pb2);
+        assert_ne!(pb1, pb3);
+    }
+
+    // Tests for MidiError
+    #[test]
+    fn test_midi_error_debug() {
+        // Just verify that MidiError implements Debug
+        let error = format!("{:?}", MidiError::Init(midir::InitError));
+        assert!(error.contains("Init"));
+    }
+
+    // NOTE: Testing MidiDevice::new(), MidiDevice::run(), and the builder pattern
+    // implementations (NoteOnBuilder, NoteOffBuilder, etc.) would require:
+    // 1. Mock MIDI ports and connections
+    // 2. Complex setup of MIDI input/output infrastructure
+    // 3. Thread synchronization for callback testing
+    //
+    // These are better suited for integration tests with actual or mock MIDI devices.
+    // For unit tests, we've focused on the data structures and simple helper functions
+    // that can be tested in isolation.
+}
