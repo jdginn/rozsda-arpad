@@ -1198,3 +1198,108 @@ where
     }
     log_unknown(addr);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::context;
+    use super::context_kind;
+
+    // Tests for context structures
+
+    #[test]
+    fn test_track_context_creation() {
+        let track = context::Track {
+            track_guid: "test-guid".to_string(),
+        };
+        assert_eq!(track.track_guid, "test-guid");
+    }
+
+    #[test]
+    fn test_track_context_clone() {
+        let track1 = context::Track {
+            track_guid: "guid-1".to_string(),
+        };
+        let track2 = track1.clone();
+        assert_eq!(track1.track_guid, track2.track_guid);
+    }
+
+    #[test]
+    fn test_track_context_equality() {
+        let track1 = context::Track {
+            track_guid: "guid-1".to_string(),
+        };
+        let track2 = context::Track {
+            track_guid: "guid-1".to_string(),
+        };
+        let track3 = context::Track {
+            track_guid: "guid-2".to_string(),
+        };
+        assert_eq!(track1, track2);
+        assert_ne!(track1, track3);
+    }
+
+    #[test]
+    fn test_track_send_context_creation() {
+        let send = context::TrackSend {
+            track_guid: "track-guid".to_string(),
+            send_index: 3,
+        };
+        assert_eq!(send.track_guid, "track-guid");
+        assert_eq!(send.send_index, 3);
+    }
+
+    #[test]
+    fn test_track_send_context_equality() {
+        let send1 = context::TrackSend {
+            track_guid: "guid-1".to_string(),
+            send_index: 1,
+        };
+        let send2 = context::TrackSend {
+            track_guid: "guid-1".to_string(),
+            send_index: 1,
+        };
+        let send3 = context::TrackSend {
+            track_guid: "guid-1".to_string(),
+            send_index: 2,
+        };
+        assert_eq!(send1, send2);
+        assert_ne!(send1, send3);
+    }
+
+    // Tests for OscError
+
+    #[test]
+    fn test_osc_error_debug() {
+        let error = super::OscError;
+        let debug_str = format!("{:?}", error);
+        assert_eq!(debug_str, "OscError");
+    }
+
+    // Tests for context_kind
+
+    #[test]
+    fn test_track_context_kind_name() {
+        use crate::osc::route_context::ContextKindTrait;
+        assert_eq!(context_kind::Track::context_name(), "Track");
+    }
+
+    #[test]
+    fn test_track_send_context_kind_name() {
+        use crate::osc::route_context::ContextKindTrait;
+        assert_eq!(context_kind::TrackSend::context_name(), "TrackSend");
+    }
+
+    // NOTE: This file is AUTO-GENERATED CODE. Most of the functionality in this file
+    // involves:
+    // 1. OSC message parsing and routing
+    // 2. Complex pattern matching on OSC addresses
+    // 3. Callback invocation based on message types
+    // 4. Integration with the context gating system
+    //
+    // These are better suited for integration tests that can verify the full
+    // message routing pipeline. For unit tests, we've focused on the simple
+    // context data structures that can be tested in isolation.
+    //
+    // The generated code is produced by tools/reaper_oscgen and should be
+    // regenerated rather than manually modified.
+}
