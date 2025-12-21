@@ -6,7 +6,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::modes::mode_manager::Barrier;
 
 // TODO: probably instead of having direction, make an enum of separate UpstreamTrackMsg and DownstreamTrackMsg like we do for XTouch? That seems cleaner
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Direction {
     Upstream,
     Downstream,

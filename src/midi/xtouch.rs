@@ -37,7 +37,7 @@ impl From<bool> for LEDState {
 #[derive(Clone)]
 pub struct MutePress {
     pub idx: i32,
-    velocity: u8,
+    pub velocity: u8,
 }
 
 #[derive(Clone)]

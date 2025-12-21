@@ -37,7 +37,7 @@ impl Default for Barrier {
 }
 
 /// Represents state of mode manager: mostly whether we are in a mode transition.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum State {
     // Normal operation: forward messages in both directions
     Active,
@@ -51,7 +51,7 @@ pub enum State {
 }
 
 /// Represents the various control modes supported.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
     ReaperVolPan,
     ReaperSends,
@@ -59,7 +59,7 @@ pub enum Mode {
 }
 
 /// Represents the current mode and state of the mode manager.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ModeState {
     pub mode: Mode,
     pub state: State,
