@@ -50,10 +50,10 @@ pub struct TrackSendsMode {
 impl TrackSendsMode {
     pub fn new(
         num_channels: usize,
-        to_reaper: Sender<TrackMsg>,
         from_reaper: Receiver<TrackMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        to_reaper: Sender<TrackMsg>,
         from_xtouch: Receiver<XTouchUpstreamMsg>,
+        to_xtouch: Sender<XTouchDownstreamMsg>,
     ) -> Self {
         TrackSendsMode {
             track_sends: Arc::new(Mutex::new(vec![None; num_channels])),
@@ -187,10 +187,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 }
 
 impl TrackSendsMode {
-    fn initiate_mode_transition(
+    pub fn initiate_mode_transition(
         &mut self,
-        selected_track_guid: &str,
         upstream: Sender<TrackMsg>,
+        selected_track_guid: &str,
     ) -> ModeState {
         self.selected_track_guid = Some(selected_track_guid.to_string());
         upstream
