@@ -95,6 +95,8 @@ impl Reaper {
 pub struct Track {
     socket: Arc<UdpSocket>,
     pub track_guid: String,
+    // Note: send_index_map was changed from HashMap<String, TrackSend> to HashMap<i32, TrackSend>
+    // to match the actual i32 type of send_index in OSC paths like /track/{guid}/send/{send_index}/...
     pub send_index_map: HashMap<i32, TrackSend>,
 }
 
