@@ -274,3 +274,162 @@ impl TrackManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for TrackData
+
+    #[test]
+    fn test_track_data_new() {
+        let track = TrackData::new("test-guid");
+        assert_eq!(track.guid, "test-guid");
+        assert_eq!(track.name, "");
+        assert_eq!(track.reaper_track_index, None);
+        assert_eq!(track.selected, false);
+        assert_eq!(track.muted, false);
+        assert_eq!(track.soloed, false);
+        assert_eq!(track.armed, false);
+        assert_eq!(track.volume, 0.0);
+        assert_eq!(track.pan, 0.0);
+        assert!(track.sends.is_empty());
+    }
+
+    #[test]
+    fn test_set_send_index_creates_send() {
+        let mut track = TrackData::new("test-guid");
+        let send_index = SendIndex {
+            send_index: 0,
+            guid: "target-guid".to_string(),
+        };
+        
+        track.set_send_index(send_index);
+        
+        assert_eq!(track.sends.len(), 1);
+        assert_eq!(track.sends[0].target_guid, "target-guid");
+        assert_eq!(track.sends[0].send_index, 0);
+    }
+
+    #[test]
+    fn test_set_send_index_expands_vector() {
+        let mut track = TrackData::new("test-guid");
+        let send_index = SendIndex {
+            send_index: 3,
+            guid: "target-guid".to_string(),
+        };
+        
+        track.set_send_index(send_index);
+        
+        // Should create sends at indices 0, 1, 2, and 3
+        assert_eq!(track.sends.len(), 4);
+        assert_eq!(track.sends[3].target_guid, "target-guid");
+    }
+
+    #[test]
+    fn test_set_send_index_updates_existing() {
+        let mut track = TrackData::new("test-guid");
+        
+        // Create first send
+        track.set_send_index(SendIndex {
+            send_index: 0,
+            guid: "first-guid".to_string(),
+        });
+        
+        // Update the same send
+        track.set_send_index(SendIndex {
+            send_index: 0,
+            guid: "second-guid".to_string(),
+        });
+        
+        assert_eq!(track.sends.len(), 1);
+        assert_eq!(track.sends[0].target_guid, "second-guid");
+    }
+
+    #[test]
+    fn test_get_send_state_returns_none_for_invalid_index() {
+        let mut track = TrackData::new("test-guid");
+        assert!(track.get_send_state(0).is_none());
+    }
+
+    #[test]
+    fn test_get_send_state_returns_send() {
+        let mut track = TrackData::new("test-guid");
+        track.set_send_index(SendIndex {
+            send_index: 0,
+            guid: "target-guid".to_string(),
+        });
+        
+        let send = track.get_send_state(0);
+        assert!(send.is_some());
+        assert_eq!(send.unwrap().target_guid, "target-guid");
+    }
+
+    #[test]
+    fn test_get_send_state_allows_mutation() {
+        let mut track = TrackData::new("test-guid");
+        track.set_send_index(SendIndex {
+            send_index: 0,
+            guid: "target-guid".to_string(),
+        });
+        
+        if let Some(send) = track.get_send_state(0) {
+            send.level = 0.5;
+            send.pan = 0.25;
+        }
+        
+        let send = track.get_send_state(0).unwrap();
+        assert_eq!(send.level, 0.5);
+        assert_eq!(send.pan, 0.25);
+    }
+
+    // Tests for SendData
+
+    #[test]
+    fn test_send_data_clone() {
+        let send = SendData {
+            target_guid: "test-guid".to_string(),
+            send_index: 1,
+            level: 0.7,
+            pan: 0.3,
+        };
+        
+        let cloned = send.clone();
+        assert_eq!(cloned.target_guid, send.target_guid);
+        assert_eq!(cloned.send_index, send.send_index);
+        assert_eq!(cloned.level, send.level);
+        assert_eq!(cloned.pan, send.pan);
+    }
+
+    // Tests for message structures
+
+    #[test]
+    fn test_track_data_msg_clone() {
+        let msg = TrackDataMsg {
+            guid: "test-guid".to_string(),
+            direction: Direction::Upstream,
+            data: DataPayload::Volume(0.5),
+        };
+        
+        let cloned = msg.clone();
+        assert_eq!(cloned.guid, "test-guid");
+    }
+
+    #[test]
+    fn test_track_query_creation() {
+        let query = TrackQuery {
+            guid: "test-guid".to_string(),
+            direction: Direction::Downstream,
+        };
+        
+        assert_eq!(query.guid, "test-guid");
+    }
+
+    // NOTE: Testing TrackManager::start and handle_messages would require more complex
+    // integration testing with actual channels and thread synchronization. These tests
+    // would be better suited for integration tests rather than unit tests, as they
+    // involve spawning threads and channel communication across thread boundaries.
+    //
+    // For now, we've focused on testing the data structures and helper methods
+    // that can be tested in isolation.
+}
