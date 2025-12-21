@@ -35,19 +35,19 @@ pub struct TrackQuery {
 
 #[derive(Clone)]
 pub struct SendIndex {
-    pub guid: String,
     pub send_index: i32,
+    pub guid: String,
 }
 
 #[derive(Clone)]
 pub struct SendLevel {
-    pub guid: String,
+    pub send_index: i32,
     pub level: f32,
 }
 
 #[derive(Clone)]
 pub struct SendPan {
-    pub guid: String,
+    pub send_index: i32,
     pub pan: f32,
 }
 
@@ -126,6 +126,7 @@ impl TrackData {
 
 pub struct TrackManager {
     tracks: HashMap<String, TrackData>,
+    selected_track: Option<String>,
     input: Receiver<TrackMsg>,
     downstream: Sender<TrackMsg>,
     upstream: Sender<TrackMsg>,
@@ -140,6 +141,7 @@ impl TrackManager {
         thread::spawn(move || {
             let mut manager = Self {
                 tracks: HashMap::new(),
+                selected_track: None,
                 input,
                 downstream,
                 upstream,
@@ -176,6 +178,9 @@ impl TrackManager {
                         }
                         DataPayload::Selected(selected) => {
                             track.selected = selected;
+                            if selected {
+                                self.selected_track = Some(msg.guid.clone());
+                            }
                             println!("Track {} selected set to {}", msg.guid, selected);
                         }
                         DataPayload::Muted(muted) => {
@@ -210,19 +215,16 @@ impl TrackManager {
                             );
                         }
                         DataPayload::SendLevel(send_level) => {
-                            if let Some(send) =
-                                track.get_send_state(send_level.guid.parse().unwrap())
-                            {
+                            if let Some(send) = track.get_send_state(send_level.send_index) {
                                 send.level = send_level.level;
                                 println!(
                                     "Track {} send {} level set to {}",
-                                    msg.guid, send.send_index, send_level.level
+                                    msg.guid, send_level.send_index, send_level.level
                                 );
                             }
                         }
                         DataPayload::SendPan(send_pan) => {
-                            if let Some(send) = track.get_send_state(send_pan.guid.parse().unwrap())
-                            {
+                            if let Some(send) = track.get_send_state(send_pan.send_index) {
                                 send.pan = send_pan.pan;
                                 println!(
                                     "Track {} send {} pan set to {}",

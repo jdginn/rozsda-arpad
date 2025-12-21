@@ -303,10 +303,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             _ => curr_mode,
         }
     }
+}
 
-    fn initiate_mode_transition(&mut self, upstream: Sender<TrackMsg>) -> ModeState {
-        // TODO: this logic for fetching relevant data for transitioning state should
-        // probably be implemented once within the mode we are entering
+impl VolumePanMode {
+    pub fn initiate_mode_transition(&mut self, upstream: Sender<TrackMsg>) -> ModeState {
         self.track_hw_assignments
             .lock()
             .unwrap()
@@ -323,7 +323,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
         let barrier = Barrier::new();
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
         ModeState {
-            mode: Mode::ReaperSends,
+            mode: Mode::ReaperVolPan,
             state: State::WaitingBarrierFromDownstream(barrier),
         }
     }
