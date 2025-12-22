@@ -157,14 +157,18 @@ impl ModeManager {
                                     );
                             } else {
                                 //TODO: log that we won't enter the mode because no track is selected
+                                // If we can't transition, stay in current mode
+                                manager.curr_mode = mode;
                             }
                         }
                         Mode::MotuVolPan => {
                             panic!("MotuVolPan mode transition not implemented yet!")
                         }
                     }
+                } else {
+                    // Not requesting a transition, just update the mode
+                    manager.curr_mode = mode;
                 }
-                manager.curr_mode = mode
             };
 
             loop {

@@ -283,9 +283,8 @@ fn test_track_manager_concurrent_tracks() {
 }
 
 // TODO: Test edge case where TrackQuery is sent for a track that doesn't exist
-// Unclear behavior: Should it return an empty TrackData, return nothing, or error?
+// The current implementation doesn't send anything if track doesn't exist, which is verified below.
 #[test]
-#[ignore] // Ignoring until behavior is clarified
 fn test_track_manager_query_nonexistent_track() {
     let (input_tx, upstream_rx, _downstream_rx) = setup_track_manager();
 

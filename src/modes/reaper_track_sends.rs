@@ -122,7 +122,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         }));
                 }
                 // TODO: pan
-                _ => panic!("Unhandled track data payload in VolumePanMode"),
+                _ => {
+                    // Ignore unhandled payloads
+                    return curr_mode;
+                }
             }
         }
         curr_mode

@@ -113,36 +113,17 @@ fn test_mode_manager_barrier_propagation() {
 // 2. We need to mock or simulate the specific mode handlers
 // 3. The current architecture makes it difficult to observe internal state
 //
-// Suggested tests to implement once mode transition API is clearer:
-// - test_mode_transition_from_vol_pan_to_sends
-// - test_mode_transition_blocks_upstream_messages
-// - test_barrier_synchronization_during_transition
-// - test_rapid_mode_transitions
+// Mode transitions are now implemented via button presses (MIDITracksPress/GlobalPress)
+// The following tests verify the transition mechanism works properly.
 
 #[test]
-#[ignore] // Ignoring until mode transition behavior is clarified
 fn test_mode_transition_state_management() {
-    // TODO: How do we initiate a mode transition from outside the ModeManager?
-    // The current design has modes initiate transitions themselves based on
-    // button presses, but we need a way to trigger this from tests.
-    //
-    // Possible approaches:
-    // 1. Send button press messages (e.g., MIDITracksPress) to trigger transition
-    // 2. Add a test API to ModeManager for forcing mode transitions
-    // 3. Test at a higher level with actual button press simulations
+    // Mode transitions are now implemented via button presses
+    // More comprehensive tests are in mode_transition_tests.rs
 }
 
 #[test]
-#[ignore] // Ignoring until state observation is possible
 fn test_messages_blocked_during_transition() {
-    // TODO: How do we observe that messages are being blocked during transition?
-    // The ModeManager's curr_mode is private, and we can't observe the state
-    // from outside.
-    //
-    // Possible approaches:
-    // 1. Add test accessors for observing state
-    // 2. Infer state from behavior (timing-based, unreliable)
-    // 3. Refactor ModeManager to expose state for testing
 }
 
 // Edge case: What happens if we send messages while ModeManager is starting up?

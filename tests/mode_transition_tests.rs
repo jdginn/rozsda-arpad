@@ -100,11 +100,9 @@ fn test_mode_transition_vol_pan_to_sends() {
 }
 
 #[test]
-#[ignore] // TODO: This test requires completing the full barrier cycle which needs TrackManager in the loop
 fn test_mode_transition_sends_to_vol_pan() {
-    // This test verifies that we can transition from Sends mode back to VolPan mode
-    // The full barrier synchronization requires TrackManager in the loop, which is complex.
-    // This test focuses on verifying the button press triggers the transition request.
+    // This test verifies that we can transition from Sends mode back to VolPan mode.
+    // With the fix to handle_transitions, the barrier cycle now completes properly.
     
     let (reaper_tx, to_reaper_rx, xtouch_tx, _to_xtouch_rx) = setup_mode_transition_test();
 
