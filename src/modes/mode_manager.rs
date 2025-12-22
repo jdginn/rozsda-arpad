@@ -133,44 +133,53 @@ impl ModeManager {
 
         let reaper_pan_vol_clone = reaper_pan_vol.clone();
         let reaper_track_sends_clone = reaper_track_sends.clone();
-        let mut handle_transitions = move |mode: ModeState| {
-            if mode.state == State::RequestingModeTransition {
-                match mode.mode {
-                    Mode::ReaperVolPan => {
-                        manager.curr_mode = reaper_pan_vol_clone
-                            .lock()
-                            .unwrap()
-                            .initiate_mode_transition(manager.to_reaper.clone());
-                    }
-                    Mode::ReaperSends => {
-                        if let Some(currently_selected_track_guid) =
-                            manager.reaper_currently_selected_track_guid.clone()
-                        {
-                            manager.curr_mode = reaper_track_sends_clone
-                                .lock()
-                                .unwrap()
-                                .initiate_mode_transition(
-                                    manager.to_reaper.clone(),
-                                    &currently_selected_track_guid,
-                                );
-                        } else {
-                            //TODO: log that we won't enter the mode because no track is selected
-                        }
-                    }
-                    Mode::MotuVolPan => {
-                        panic!("MotuVolPan mode transition not implemented yet!")
-                    }
-                }
-            }
-            manager.curr_mode = mode
-        };
 
         thread::spawn(move || {
+            let mut handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
+                if mode.state == State::RequestingModeTransition {
+                    match mode.mode {
+                        Mode::ReaperVolPan => {
+                            manager.curr_mode = reaper_pan_vol_clone
+                                .lock()
+                                .unwrap()
+                                .initiate_mode_transition(manager.to_reaper.clone());
+                        }
+                        Mode::ReaperSends => {
+                            if let Some(currently_selected_track_guid) =
+                                manager.reaper_currently_selected_track_guid.clone()
+                            {
+                                manager.curr_mode = reaper_track_sends_clone
+                                    .lock()
+                                    .unwrap()
+                                    .initiate_mode_transition(
+                                        manager.to_reaper.clone(),
+                                        &currently_selected_track_guid,
+                                    );
+                            } else {
+                                //TODO: log that we won't enter the mode because no track is selected
+                            }
+                        }
+                        Mode::MotuVolPan => {
+                            panic!("MotuVolPan mode transition not implemented yet!")
+                        }
+                    }
+                }
+                manager.curr_mode = mode
+            };
+
             loop {
                 select! {
                     recv(manager.from_reaper) -> msg => {
                         if let Ok(track_msg) = msg {
-                        match manager.curr_mode.mode {
+                        // Track currently selected track for mode transitions
+                        if let TrackMsg::TrackDataMsg(ref data_msg) = track_msg {
+                            if let crate::track::track::DataPayload::Selected(true) = data_msg.data {
+                                manager.reaper_currently_selected_track_guid = Some(data_msg.guid.clone());
+                            }
+                        }
+                        
+                        let curr_mode = manager.curr_mode;
+                        match curr_mode.mode {
                         Mode::ReaperVolPan => {
                             // TODO: Do we need to gate this during transition? I think probably
                                 // not, since upstream changes are by definition authoritative, and
@@ -181,10 +190,10 @@ impl ModeManager {
                                 // of jitter on the hw. But even then, we are not propagating
                                 // hardware settings upstream, so upstream should still always be
                                 // correct.
-                            handle_transitions(reaper_pan_vol.lock().unwrap().handle_downstream_messages(track_msg, manager.curr_mode))
+                            handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
                         },
                             Mode::ReaperSends => {
-                                handle_transitions(reaper_track_sends.lock().unwrap().handle_downstream_messages(track_msg, manager.curr_mode))
+                                handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
                             },
                         _ => {panic!("Inside unknown mode in ModeManager")},
                         }
@@ -192,11 +201,13 @@ impl ModeManager {
                 }
                     recv(manager.from_xtouch) -> msg => {
                         if let Ok(xtouch_msg) = msg {
-                            match manager.curr_mode.mode{
+                            let curr_mode = manager.curr_mode;
+                            match curr_mode.mode{
                                 Mode::ReaperVolPan => {
-                                    match manager.curr_mode.state {
+                                    match curr_mode.state {
                                         State::Active => {
-                                            manager.curr_mode = reaper_pan_vol.lock().unwrap().handle_upstream_messages(xtouch_msg, manager.curr_mode);
+                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_upstream_messages(xtouch_msg, curr_mode);
+                                            handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
@@ -210,9 +221,10 @@ impl ModeManager {
                                     }
                                 },
                                 Mode::ReaperSends => {
-                                    match manager.curr_mode.state {
+                                    match curr_mode.state {
                                         State::Active => {
-                                            manager.curr_mode = reaper_track_sends.lock().unwrap().handle_upstream_messages(xtouch_msg, manager.curr_mode);
+                                            let new_mode = reaper_track_sends.lock().unwrap().handle_upstream_messages(xtouch_msg, curr_mode);
+                                            handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state

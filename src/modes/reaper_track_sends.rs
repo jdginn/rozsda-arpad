@@ -163,7 +163,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 // Handle barrier messages if needed
             }
             XTouchUpstreamMsg::GlobalPress => {
-                panic!("Not implemented yet!");
+                // Request transition to ReaperVolPan mode
+                ModeState {
+                    mode: Mode::ReaperVolPan,
+                    state: State::RequestingModeTransition,
+                }
             }
             XTouchUpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
             XTouchUpstreamMsg::FaderAbs(fader_msg) => {

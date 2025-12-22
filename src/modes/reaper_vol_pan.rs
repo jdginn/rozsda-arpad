@@ -190,7 +190,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     }
                     return curr_mode;
                 }
-                _ => panic!("Unhandled track data payload in VolumePanMode"),
+                _ => {
+                    // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
+                    return curr_mode;
+                }
             }
         }
         curr_mode
@@ -232,8 +235,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             XTouchUpstreamMsg::GlobalPress => curr_mode, // GlobalPress maps to this mode!
             // MIDITracksPress maps to ReaperSends mode
             XTouchUpstreamMsg::MIDITracksPress => {
-                // TODO
-                panic!("Not implemented yet!");
+                // Request transition to ReaperSends mode
+                ModeState {
+                    mode: Mode::ReaperSends,
+                    state: State::RequestingModeTransition,
+                }
             }
             XTouchUpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) =
