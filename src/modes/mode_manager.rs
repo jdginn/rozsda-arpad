@@ -135,7 +135,7 @@ impl ModeManager {
         let reaper_track_sends_clone = reaper_track_sends.clone();
 
         thread::spawn(move || {
-            let mut handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
+            let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
                 if mode.state == State::RequestingModeTransition {
                     match mode.mode {
                         Mode::ReaperVolPan => {
@@ -181,7 +181,7 @@ impl ModeManager {
                                 manager.reaper_currently_selected_track_guid = Some(data_msg.guid.clone());
                             }
                         }
-                        
+
                         let curr_mode = manager.curr_mode;
                         match curr_mode.mode {
                         Mode::ReaperVolPan => {
