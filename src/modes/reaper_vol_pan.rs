@@ -258,17 +258,20 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
                     let new_state = self.get_track_state(guid.clone()).mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
-                    self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                        direction: Direction::Upstream,
-                        guid: guid.clone(),
-                        data: TrackDataPayload::Muted(new_state),
-                    }));
+                    self.to_reaper
+                        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                            direction: Direction::Upstream,
+                            guid: guid.clone(),
+                            data: TrackDataPayload::Muted(new_state),
+                        }))
+                        .unwrap();
                     // Update the toggle on the hardware
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
                             idx: mute_msg.idx,
                             state: LEDState::from(new_state),
-                        }));
+                        }))
+                        .unwrap();
                 }
                 curr_mode
             }
@@ -276,16 +279,19 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
                     let new_state = self.get_track_state(guid.clone()).solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
-                    self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                        direction: Direction::Upstream,
-                        guid: guid.clone(),
-                        data: TrackDataPayload::Soloed(new_state),
-                    }));
+                    self.to_reaper
+                        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                            direction: Direction::Upstream,
+                            guid: guid.clone(),
+                            data: TrackDataPayload::Soloed(new_state),
+                        }))
+                        .unwrap();
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
                             idx: solo_msg.idx,
                             state: LEDState::from(new_state),
-                        }));
+                        }))
+                        .unwrap();
                 }
                 curr_mode
             }
@@ -293,16 +299,19 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
                     let new_state = self.get_track_state(guid.clone()).arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
-                    self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                        direction: Direction::Upstream,
-                        guid: guid.clone(),
-                        data: TrackDataPayload::Armed(new_state),
-                    }));
+                    self.to_reaper
+                        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                            direction: Direction::Upstream,
+                            guid: guid.clone(),
+                            data: TrackDataPayload::Armed(new_state),
+                        }))
+                        .unwrap();
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
                             idx: arm_msg.idx,
                             state: LEDState::from(new_state),
-                        }));
+                        }))
+                        .unwrap();
                 }
                 curr_mode
             }

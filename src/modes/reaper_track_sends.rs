@@ -119,7 +119,8 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
                             idx: msg.send_index,
                             value: fader_value as f64,
-                        }));
+                        }))
+                        .unwrap();
                 }
                 // TODO: pan
                 _ => {
