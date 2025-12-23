@@ -12,13 +12,13 @@ use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FaderAbsMsg {
     pub idx: i32,
     pub value: f64, // Probably too much precision?
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum LEDState {
     Off,
     On,
@@ -37,16 +37,14 @@ impl From<bool> for LEDState {
 #[derive(Clone)]
 pub struct MutePress {
     pub idx: i32,
-    pub velocity: u8,
 }
 
 #[derive(Clone)]
 pub struct MuteRelease {
     pub idx: i32,
-    velocity: u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MuteLEDMsg {
     pub idx: i32,
     pub state: LEDState,
@@ -62,7 +60,7 @@ pub struct SoloRelease {
     pub idx: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SoloLEDMsg {
     pub idx: i32,
     pub state: LEDState,
@@ -78,8 +76,24 @@ pub struct ArmRelease {
     pub idx: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArmLEDMsg {
+    pub idx: i32,
+    pub state: LEDState,
+}
+
+#[derive(Clone)]
+pub struct SelectPress {
+    pub idx: i32,
+}
+
+#[derive(Clone)]
+pub struct SelectRelease {
+    pub idx: i32,
+}
+
+#[derive(Clone, Debug)]
+pub struct SelectLEDMsg {
     pub idx: i32,
     pub state: LEDState,
 }
@@ -96,6 +110,8 @@ pub enum XTouchUpstreamMsg {
     SoloRelease(SoloRelease),
     ArmPress(ArmPress),
     ArmRelease(ArmRelease),
+    SelectPress(SelectPress),
+    SelectRelease(SelectRelease),
 
     // Encoder assign messages
     TrackPress,
@@ -132,6 +148,7 @@ pub enum XTouchUpstreamMsg {
     UserRelease,
 }
 
+#[derive(Debug)]
 pub enum XTouchDownstreamMsg {
     Barrier(Barrier),
 
@@ -140,6 +157,7 @@ pub enum XTouchDownstreamMsg {
     MuteLED(MuteLEDMsg),
     SoloLED(SoloLEDMsg),
     ArmLED(ArmLEDMsg),
+    SelectLED(SelectLEDMsg),
 
     // Encoder assign messages
     Track(LEDState),
@@ -269,7 +287,7 @@ impl XTouchBuilder {
         for i in 0..self.num_channels {
             faders.push(Fader {
                 base: self.base.clone(),
-                channel: Channel::new(i as u8), // TODO: This has some offset
+                channel: Channel::new((i + 1) as u8),
             });
         }
         let mut mutes = Vec::with_capacity(self.num_channels);
@@ -278,43 +296,72 @@ impl XTouchBuilder {
             let mut b = Button {
                 base: self.base.clone(),
                 channel: Channel::new(i as u8),
-                midi_note: 0x10, // TODO: This has some offset
+                midi_note: 0x16 + i as u8,
             };
             let upstream_press = upstream.clone();
-            b.bind_press(move |velocity| {
-                let _ = upstream_press
-                    .clone()
-                    .send(XTouchUpstreamMsg::from(MutePress {
-                        idx: i as i32,
-                        velocity,
-                    }));
+            b.bind_press(move |_velocity| {
+                let _ = upstream_press.send(XTouchUpstreamMsg::from(MutePress { idx: i as i32 }));
             });
             let upstream_release = upstream.clone();
-            b.bind_release(move |velocity| {
-                let _ = upstream_release
-                    .clone()
-                    .send(XTouchUpstreamMsg::from(MuteRelease {
-                        idx: i as i32,
-                        velocity,
-                    }));
+            b.bind_release(move |_velocity| {
+                let _ =
+                    upstream_release.send(XTouchUpstreamMsg::from(MuteRelease { idx: i as i32 }));
             });
             mutes.push(b);
         }
         let mut solos = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
-            solos.push(Button {
+            let mut b = Button {
                 base: self.base.clone(),
                 channel: Channel::new(i as u8),
-                midi_note: 0x11, // TODO: This has some offset
+                midi_note: 0x08 + i as u8,
+            };
+            let upstream_press = upstream.clone();
+            b.bind_press(move |_velocity| {
+                let _ = upstream_press.send(XTouchUpstreamMsg::from(SoloPress { idx: i as i32 }));
             });
+            let upstream_release = upstream.clone();
+            b.bind_release(move |_velocity| {
+                let _ =
+                    upstream_release.send(XTouchUpstreamMsg::from(SoloRelease { idx: i as i32 }));
+            });
+            solos.push(b);
         }
         let mut arms = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
-            arms.push(Button {
+            let mut b = Button {
                 base: self.base.clone(),
                 channel: Channel::new(i as u8),
-                midi_note: 0x12, // TODO: This has some offset
+                midi_note: i as u8,
+            };
+            let upstream_press = upstream.clone();
+            b.bind_press(move |_velocity| {
+                let _ = upstream_press.send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }));
             });
+            let upstream_release = upstream.clone();
+            b.bind_release(move |_velocity| {
+                let _ =
+                    upstream_release.send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }));
+            });
+            arms.push(b);
+        }
+        let mut selects = Vec::with_capacity(self.num_channels);
+        for i in 0..self.num_channels {
+            let mut b = Button {
+                base: self.base.clone(),
+                channel: Channel::new(i as u8),
+                midi_note: 0x24 + i as u8,
+            };
+            let upstream_press = upstream.clone();
+            b.bind_press(move |_velocity| {
+                let _ = upstream_press.send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }));
+            });
+            let upstream_release = upstream.clone();
+            b.bind_release(move |_velocity| {
+                let _ =
+                    upstream_release.send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }));
+            });
+            selects.push(b);
         }
 
         let mut xtouch = XTouch {
@@ -324,6 +371,7 @@ impl XTouchBuilder {
             mutes,
             solos,
             arms,
+            selects,
         };
 
         thread::spawn(move || {
@@ -355,7 +403,12 @@ impl XTouchBuilder {
                                 .set(arm_msg.state)
                                 .unwrap();
                         }
-                        _ => panic!("Not implemented yet!"),
+                        XTouchDownstreamMsg::SelectLED(select_msg) => {
+                            xtouch.selects[select_msg.idx as usize]
+                                .set(select_msg.state)
+                                .unwrap();
+                        }
+                        _ => panic!("Message {:?} implemented yet!", msg),
                     }
                 }
             }
@@ -368,6 +421,7 @@ pub struct XTouch {
     pub mutes: Vec<Button>,
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,
+    pub selects: Vec<Button>,
     input: Receiver<XTouchDownstreamMsg>,
     upstream: Sender<XTouchUpstreamMsg>,
 }
