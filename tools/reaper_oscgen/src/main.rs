@@ -1,7 +1,7 @@
 use clap::Parser;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{Display, Write};
 use std::fs;
 use std::path::PathBuf;
@@ -117,8 +117,8 @@ struct TreeNode {
     // NOTE: must represent its whole hierarchy to avoid name
     // collisions (e.g. "Pan" is not ennough because we may have both TrackPan" vs "TrackSendPan")
     struct_name: String,
-    path_arg: Option<String>,            // e.g., "track_guid"
-    children: HashMap<String, TreeNode>, // next level down
+    path_arg: Option<String>,             // e.g., "track_guid"
+    children: BTreeMap<String, TreeNode>, // next level down
     leaf: Option<LeafInfo>,
     parents: Vec<PathStep>, // For convenience since linked lists are hard in Rust
 }
@@ -380,7 +380,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
         accessor_type: "ERROR".to_string(),
         struct_name: "Reaper".to_string(),
         path_arg: None,
-        children: HashMap::new(),
+        children: BTreeMap::new(),
         leaf: None,
         parents: Vec::new(),
     };
@@ -421,7 +421,7 @@ fn build_tree(routes: &[OscRoute]) -> TreeNode {
                 accessor_type,
                 struct_name: full_path_struct_name(path.as_slice()),
                 path_arg: arg_name.clone(),
-                children: HashMap::new(),
+                children: BTreeMap::new(),
                 leaf: None,
                 parents: parents.clone(),
             });
@@ -484,15 +484,16 @@ fn write_node_struct_definition(code: &mut String, node: &TreeNode) {
 
     for parent in &node.parents {
         if let Some(arg) = &parent.arg {
-            code.push_str(&format!("    pub {}: {},\n", arg.name, arg.typ));
+            code.push_str(&format!("    pub {}: {},\n", arg.name, rust_type(&arg.typ)));
         }
     }
 
     for child in node.children.values() {
         if let Some(arg_name) = &child.path_arg {
             code.push_str(&format!(
-                "    pub {0}_map: HashMap<String, {1}>,\n",
+                "    pub {0}_map: HashMap<{1}, {2}>,\n",
                 sanitize_path_level(arg_name),
+                child.accessor_type,
                 child.struct_name,
             ));
         }
@@ -505,7 +506,7 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
     code.push_str("    pub fn new(socket: Arc<UdpSocket>");
     for parent in &node.parents {
         if let Some(arg) = &parent.arg {
-            code.push_str(&format!(", {}: {}", arg.name, arg.typ));
+            code.push_str(&format!(", {}: {}", arg.name, rust_type(&arg.typ)));
         }
     }
     code.push_str(&format!(") -> {} {{\n", node.struct_name));
@@ -516,10 +517,14 @@ fn write_node_constructor(code: &mut String, node: &TreeNode) {
     }
     for parent in &node.parents {
         if let Some(arg) = &parent.arg {
-            code.push_str(&format!(
-                "            {}: {}.clone(),\n",
-                arg.name, arg.name
-            ));
+            match arg.typ.as_str() {
+                "int" | "float" | "bool" => code.push_str(&format!("            {},\n", arg.name)),
+                "string" => code.push_str(&format!(
+                    "            {}: {}.clone(),\n",
+                    arg.name, arg.name
+                )),
+                _ => panic!("Unsupported arg type '{}' in node {:?}", arg.typ, node),
+            }
         }
     }
     for child in node.children.values() {
@@ -553,16 +558,51 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
                 child.accessor_type,
                 child.struct_name,
             ));
-            code.push_str(&format!(
-                "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
-                sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
-            ));
+            match child.accessor_type.as_str() {
+                "i32" | "f32" | "bool" => {
+                    code.push_str(&format!(
+                        "        self.{0}_map.entry({1}).or_insert_with(|| {2}::new(self.socket.clone(), ",
+                        sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
+                    ));
+                }
+                "String" => {
+                    // strings need to be cloned
+                    code.push_str(&format!(
+                        "        self.{0}_map.entry({1}.clone()).or_insert_with(|| {2}::new(self.socket.clone(), ",
+                        sanitize_path_level(arg_name), sanitize_path_level(arg_name), child.struct_name
+                    ));
+                }
+                _ => panic!(
+                    "Unsupported accessor type '{}' in node {:?}",
+                    child.accessor_type, child
+                ),
+            }
             for parent in &node.parents {
                 if let Some(arg) = &parent.arg {
-                    code.push_str(&format!("self.{}.clone(), ", arg.name));
+                    match arg.typ.as_str() {
+                        "int" | "float" | "bool" => {
+                            code.push_str(&format!("self.{}, ", arg.name));
+                        }
+                        "string" => {
+                            code.push_str(&format!("self.{}.clone(), ", arg.name));
+                        }
+                        _ => panic!("Unsupported arg type '{}' in node {:?}", arg.typ, node),
+                    }
                 }
             }
-            code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
+            match child.accessor_type.as_str() {
+                "i32" | "f32" | "bool" => {
+                    code.push_str(&format!("{0}))\n", sanitize_path_level(arg_name)));
+                }
+                "String" => {
+                    code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
+                }
+                _ => panic!(
+                    "Unsupported accessor type '{}' in node {:?}",
+                    child.accessor_type, child
+                ),
+            }
+            // code.push_str(&format!("{0}.clone()))\n", sanitize_path_level(arg_name)));
             code.push_str("    }\n");
         } else {
             code.push_str(&format!(
@@ -571,7 +611,15 @@ fn write_child_fluent_api(code: &mut String, node: &TreeNode) {
             ));
             for parent in &node.parents {
                 if let Some(arg) = &parent.arg {
-                    code.push_str(&format!("self.{}.clone(), ", arg.name));
+                    match arg.typ.as_str() {
+                        "int" | "float" | "bool" => {
+                            code.push_str(&format!("self.{}, ", arg.name));
+                        }
+                        "string" => {
+                            code.push_str(&format!("self.{}.clone(), ", arg.name));
+                        }
+                        _ => panic!("Unsupported arg type '{}' in node {:?}", arg.typ, node),
+                    }
                 }
             }
 
@@ -788,20 +836,72 @@ fn write_dispatcher(code: &mut String, api_tree: &TreeNode) {
         // Extract path args
         for (i, parent) in node.parents.iter().rev().enumerate() {
             if let Some(arg) = &parent.arg {
-                code.push_str(&format!("        let {} = &args[{}];\n", arg.name, i));
+                // TODO: this is too naive; args are not always strings; we need to properly parse
+                // ints and other types
+                match arg.typ.as_str() {
+                    "int" => {
+                        code.push_str(&format!(
+                            "        let {}: i32 = args[{}].parse().unwrap();\n",
+                            arg.name, i
+                        ));
+                    }
+                    "float" => {
+                        code.push_str(&format!(
+                            "        let {}: f32 = args[{}].parse().unwrap();\n",
+                            arg.name, i
+                        ));
+                    }
+                    "bool" => {
+                        code.push_str(&format!(
+                            "        let {}: bool = args[{}] == \"true\";\n",
+                            arg.name, i
+                        ));
+                    }
+                    "string" => {
+                        code.push_str(&format!(
+                            "        let {} = args[{}].clone();\n",
+                            arg.name, i
+                        ));
+                    }
+                    _ => {
+                        panic!(
+                            "Unsupported path argument type '{}' in node {:?}",
+                            arg.typ, node
+                        );
+                    }
+                }
             }
         }
 
         let mut cursor = "reaper".to_string();
         for parent in node.parents.iter() {
             if let Some(arg) = &parent.arg {
-                code.push_str(&format!(
-                    "        let {} = {}.{}({}.clone());\n",
-                    parent.accessor.trim_end_matches("_mut"),
-                    cursor,
-                    parent.accessor,
-                    arg.name,
-                ));
+                match arg.typ.as_str() {
+                    "int" | "float" | "bool" => {
+                        code.push_str(&format!(
+                            "        let {} = {}.{}({});\n",
+                            parent.accessor.trim_end_matches("_mut"),
+                            cursor,
+                            parent.accessor,
+                            arg.name,
+                        ));
+                    }
+                    "string" => {
+                        code.push_str(&format!(
+                            "        let {} = {}.{}({}.clone());\n",
+                            parent.accessor.trim_end_matches("_mut"),
+                            cursor,
+                            parent.accessor,
+                            arg.name,
+                        ));
+                    }
+                    _ => {
+                        panic!(
+                            "Unsupported path argument type '{}' in node {:?}",
+                            arg.typ, node
+                        );
+                    }
+                }
                 cursor = parent.accessor.trim_end_matches("_mut").to_string();
             }
         }
