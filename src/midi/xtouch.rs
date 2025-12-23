@@ -6,7 +6,8 @@ use derive_more::From;
 use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
 
 use crate::midi::base::{
-    NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend, PitchBendBuilder,
+    ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
+    PitchBendBuilder,
 };
 use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
@@ -16,6 +17,32 @@ use crate::traits::{Bind, Set};
 pub struct FaderAbsMsg {
     pub idx: i32,
     pub value: f64, // Probably too much precision?
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EncoderTurnCW {
+    pub idx: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EncoderTurnCCW {
+    pub idx: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EncoderPressMsg {
+    pub idx: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EncoderReleaseMsg {
+    pub idx: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EncoderRingLEDMsg {
+    pub idx: i32,
+    pub pos: f32, // 0.0 to 1.0
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -104,6 +131,10 @@ pub enum XTouchUpstreamMsg {
 
     // Channel strip messages
     FaderAbs(FaderAbsMsg),
+    EncoderTurnInc(EncoderTurnCW),
+    EncoderTurnDec(EncoderTurnCCW),
+    EncoderPress(EncoderPressMsg),
+    EncoderRelease(EncoderReleaseMsg),
     MutePress(MutePress),
     MuteRelease(MuteRelease),
     SoloPress(SoloPress),
@@ -154,6 +185,7 @@ pub enum XTouchDownstreamMsg {
 
     // Channel strip messages
     FaderAbs(FaderAbsMsg),
+    EncoderRingLED(EncoderRingLEDMsg),
     MuteLED(MuteLEDMsg),
     SoloLED(SoloLEDMsg),
     ArmLED(ArmLEDMsg),
@@ -217,13 +249,69 @@ impl Set<i32> for Fader {
     }
 }
 
+pub struct Encoder {
+    base: Arc<Mutex<MidiDevice>>,
+    channel: Channel,
+    knob_cc: u8,
+    button_note: u8,
+}
+
+impl Encoder {
+    fn bind_turn<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(u8) + 'static + std::marker::Send,
+    {
+        ControlChangeBuilder {
+            device: &mut self.base.lock().unwrap(),
+            spec: ControlChange {
+                channel: self.channel.get(),
+                controller_number: self.knob_cc,
+            },
+        }
+        .bind(move |value| {
+            callback(value);
+        })
+    }
+
+    fn bind_press<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(u8) + 'static + std::marker::Send,
+    {
+        NoteOnBuilder {
+            device: &mut self.base.lock().unwrap(),
+            spec: NoteOn {
+                channel: self.channel.get(),
+                key_number: self.button_note,
+            },
+        }
+        .bind(move |value| {
+            callback(value);
+        })
+    }
+
+    fn bind_release<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(u8) + 'static + std::marker::Send,
+    {
+        NoteOffBuilder {
+            device: &mut self.base.lock().unwrap(),
+            spec: NoteOff {
+                channel: self.channel.get(),
+                key_number: self.button_note,
+            },
+        }
+        .bind(move |value| {
+            callback(value);
+        })
+    }
+}
+
 pub struct Button {
     base: Arc<Mutex<MidiDevice>>,
     channel: Channel,
     midi_note: u8,
 }
 
-// YOLO, who needs bind/set traits anyway?
 impl Button {
     fn bind_press<F>(&mut self, mut callback: F)
     where
@@ -285,10 +373,50 @@ impl XTouchBuilder {
     pub fn build(self, input: Receiver<XTouchDownstreamMsg>, upstream: Sender<XTouchUpstreamMsg>) {
         let mut faders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
-            faders.push(Fader {
+            let mut f = Fader {
                 base: self.base.clone(),
-                channel: Channel::new((i + 1) as u8),
+                channel: Channel::new(i as u8),
+            };
+            let upstream_fader = upstream.clone();
+            f.bind(move |value| {
+                let _ = upstream_fader.send(XTouchUpstreamMsg::from(FaderAbsMsg {
+                    idx: i as i32,
+                    value: value as f64 / 16383.0, // TODO: check this...
+                }));
             });
+            faders.push(f);
+        }
+        let mut encoders = Vec::with_capacity(self.num_channels);
+        for i in 0..self.num_channels {
+            let mut e = Encoder {
+                base: self.base.clone(),
+                channel: Channel::new(i as u8),
+                knob_cc: 0x16 + i as u8,
+                button_note: 0x32 + i as u8,
+            };
+            let upstream_turn = upstream.clone();
+            e.bind_turn(move |value| match value {
+                1 => upstream_turn
+                    .send(XTouchUpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
+                    .unwrap(),
+                65 => upstream_turn
+                    .send(XTouchUpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
+                    .unwrap(),
+                _ => panic!("Unexpected encoder turn value: {}", value),
+            });
+            let upstream_press = upstream.clone();
+            e.bind_press(move |_value| {
+                upstream_press
+                    .send(XTouchUpstreamMsg::from(EncoderPressMsg { idx: i as i32 }))
+                    .unwrap();
+            });
+            let upstream_release = upstream.clone();
+            e.bind_release(move |_value| {
+                upstream_release
+                    .send(XTouchUpstreamMsg::from(EncoderReleaseMsg { idx: i as i32 }))
+                    .unwrap();
+            });
+            encoders.push(e);
         }
         let mut mutes = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
@@ -368,6 +496,7 @@ impl XTouchBuilder {
             input,
             upstream,
             faders,
+            encoders,
             mutes,
             solos,
             arms,
@@ -418,6 +547,7 @@ impl XTouchBuilder {
 
 pub struct XTouch {
     pub faders: Vec<Fader>,
+    pub encoders: Vec<Encoder>,
     pub mutes: Vec<Button>,
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,

@@ -103,13 +103,13 @@ impl Set<u8> for NoteOffBuilder<'_> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ControlChange {
-    channel: u8,
-    controller_number: u8,
+    pub channel: u8,
+    pub controller_number: u8,
 }
 
 pub struct ControlChangeBuilder<'a> {
-    device: &'a mut MidiDevice,
-    spec: ControlChange,
+    pub device: &'a mut MidiDevice,
+    pub spec: ControlChange,
 }
 
 impl Bind<u8> for ControlChangeBuilder<'_> {
