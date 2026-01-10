@@ -4,7 +4,7 @@ use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::midi::xtouch;
+use crate::midi::xtouch::{self, EncoderRingLEDRangePointMsg};
 use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track::{
@@ -190,6 +190,19 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     }
                     return curr_mode;
                 }
+                TrackDataPayload::Pan(value) => {
+                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                        // Send pan update to XTouch for the corresponding encoder
+                        let pan_value = value; // TODO: scale appropriately
+                        let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
+                            xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                idx: hw_channel as i32,
+                                pos: pan_value,
+                            }),
+                        ));
+                    }
+                    return curr_mode;
+                }
                 _ => {
                     // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
                     return curr_mode;
@@ -315,6 +328,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 curr_mode
             }
+            // TODO: implement encoder inc/dec
             _ => curr_mode,
         }
     }
