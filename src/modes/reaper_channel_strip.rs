@@ -37,7 +37,7 @@ impl Button {
 // Collection of state for the buttons repeated for each channel on the hw controller
 //
 // TODO: this might be too implementation-specific to live here?
-struct ChannelButtonState {
+struct MuteSoloArmButtonState {
     mute: Button,
     solo: Button,
     arm: Button,
@@ -80,7 +80,7 @@ struct ChannelButtonState {
 pub struct ChannelStripMode {
     // Maps each channel on the hardware controller to a Reaper track
     track_hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
-    track_states: HashMap<String, ChannelButtonState>,
+    track_states: HashMap<String, MuteSoloArmButtonState>,
     to_reaper: Sender<TrackMsg>,
     from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
@@ -108,12 +108,14 @@ impl ChannelStripMode {
         }
     }
 
-    fn get_track_state(&mut self, guid: String) -> &mut ChannelButtonState {
-        self.track_states.entry(guid).or_insert(ChannelButtonState {
-            mute: Button::new(),
-            solo: Button::new(),
-            arm: Button::new(),
-        })
+    fn get_track_state(&mut self, guid: String) -> &mut MuteSoloArmButtonState {
+        self.track_states
+            .entry(guid)
+            .or_insert(MuteSoloArmButtonState {
+                mute: Button::new(),
+                solo: Button::new(),
+                arm: Button::new(),
+            })
     }
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<String> {
