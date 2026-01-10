@@ -66,7 +66,7 @@ fn main() {
                             // Track Index
                             //
                             // For now, we aren't doing anything with this
-                            reaper.track(track_guid.clone()).index().bind({
+                            reaper.track_index(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |index| {
@@ -85,7 +85,7 @@ fn main() {
                                 }
                             });
                             // Track Name
-                            reaper.track(track_guid.clone()).name().bind({
+                            reaper.track_name(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |name| {
@@ -104,7 +104,7 @@ fn main() {
                                 }
                             });
                             // Track Selected
-                            reaper.track(track_guid.clone()).selected().bind({
+                            reaper.track_selected(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |selected| {
@@ -123,7 +123,7 @@ fn main() {
                                 }
                             });
                             // Track Muted
-                            reaper.track(track_guid.clone()).mute().bind({
+                            reaper.track_mute(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |muted| {
@@ -142,7 +142,7 @@ fn main() {
                                 }
                             });
                             // Track Soloed
-                            reaper.track(track_guid.clone()).solo().bind({
+                            reaper.track_solo(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |soloed| {
@@ -161,7 +161,7 @@ fn main() {
                                 }
                             });
                             // Track Armed
-                            reaper.track(track_guid.clone()).rec_arm().bind({
+                            reaper.track_rec_arm(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |rec_arm| {
@@ -180,7 +180,7 @@ fn main() {
                                 }
                             });
                             // Track Volume
-                            reaper.track(track_guid.clone()).volume().bind({
+                            reaper.track_volume(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |volume| {
@@ -199,7 +199,7 @@ fn main() {
                                 }
                             });
                             // Track Pan
-                            reaper.track(track_guid.clone()).pan().bind({
+                            reaper.track_pan(track_guid.clone()).bind({
                                 let track_guid = track_guid.clone();
                                 let a_send = a_send.clone();
                                 move |pan| {
@@ -237,9 +237,7 @@ fn main() {
                         reaper.with_mut(|reaper| {
                             // Track Send GUID
                             reaper
-                                .track(track_guid.clone())
-                                .send(send_index)
-                                .guid()
+                                .track_send_guid(track_guid.clone(), send_index)
                                 .bind({
                                     let track_guid = track_guid.clone();
                                     let a_send = a_send.clone();
@@ -264,9 +262,7 @@ fn main() {
                                 });
                             // Track Send Volume
                             reaper
-                                .track(track_guid.clone())
-                                .send(send_index)
-                                .volume()
+                                .track_send_volume(track_guid.clone(), send_index)
                                 .bind({
                                     let track_guid = track_guid.clone();
                                     let a_send = a_send.clone();
@@ -290,32 +286,28 @@ fn main() {
                                     }
                                 });
                             // Track Send Pan
-                            reaper
-                                .track(track_guid.clone())
-                                .send(send_index)
-                                .pan()
-                                .bind({
-                                    let track_guid = track_guid.clone();
-                                    let a_send = a_send.clone();
-                                    move |send_pan| {
-                                        a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
-                                                data: DataPayload::SendPan(SendPan {
-                                                    send_index,
-                                                    pan: send_pan.pan,
-                                                }),
-                                            }))
-                                            .unwrap();
-                                        println!(
-                                            "Track {} send {} pan initial value: {:?}",
-                                            track_guid.clone(),
-                                            send_index,
-                                            send_pan
-                                        )
-                                    }
-                                });
+                            reaper.track_send_pan(track_guid.clone(), send_index).bind({
+                                let track_guid = track_guid.clone();
+                                let a_send = a_send.clone();
+                                move |send_pan| {
+                                    a_send
+                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                            guid: track_guid.clone(),
+                                            direction: Direction::Downstream,
+                                            data: DataPayload::SendPan(SendPan {
+                                                send_index,
+                                                pan: send_pan.pan,
+                                            }),
+                                        }))
+                                        .unwrap();
+                                    println!(
+                                        "Track {} send {} pan initial value: {:?}",
+                                        track_guid.clone(),
+                                        send_index,
+                                        send_pan
+                                    )
+                                }
+                            });
                         });
                     }),
             )

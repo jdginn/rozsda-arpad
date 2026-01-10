@@ -103,7 +103,6 @@ trait ContextualDispatcher {
     #[cfg(test)]
     fn test_info(&self, ctx_str: &str) -> HashMap<String, usize>;
 }
-
 /// ContextGate manages all messages whose address is relevant to some particular OscContext, where
 /// an OscContext defines some specific entity whose messages we either want to gate or propagate
 /// depending on some initialization condition.
