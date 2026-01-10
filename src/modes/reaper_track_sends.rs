@@ -12,7 +12,7 @@ use crate::track::track::{
 pub struct TrackSendState {}
 
 pub struct TrackSendsMode {
-    // Maps track send index to trackg guid
+    // Maps track send index to track guid
     track_sends: Arc<Mutex<Vec<Option<String>>>>,
     selected_track_guid: Option<String>,
     to_reaper: Sender<TrackMsg>,
