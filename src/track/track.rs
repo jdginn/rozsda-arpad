@@ -52,6 +52,52 @@ pub struct SendPan {
 }
 
 #[derive(Clone)]
+pub struct FXName {
+    pub fx_index: i32,
+    pub name: String,
+}
+
+#[derive(Clone)]
+pub struct FXGuid {
+    pub fx_index: i32,
+    pub guid: String,
+}
+
+#[derive(Clone)]
+pub struct FXEnabled {
+    pub fx_index: i32,
+    pub enabled: bool,
+}
+
+#[derive(Clone)]
+pub struct FXParamName {
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub name: String,
+}
+
+#[derive(Clone)]
+pub struct FXParamValue {
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub value: f32,
+}
+
+#[derive(Clone)]
+pub struct FXParamMin {
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub min: f32,
+}
+
+#[derive(Clone)]
+pub struct FXParamMax {
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub max: f32,
+}
+
+#[derive(Clone)]
 pub enum DataPayload {
     Name(String),
     ReaperTrackIndex(Option<i32>),
@@ -64,6 +110,13 @@ pub enum DataPayload {
     SendIndex(SendIndex),
     SendLevel(SendLevel),
     SendPan(SendPan),
+    FXGuid(FXGuid),
+    FXName(FXName),
+    FXEnabled(FXEnabled),
+    FXParamName(FXParamName),
+    FXParamValue(FXParamValue),
+    FXParamMin(FXParamMin),
+    FXParamMax(FXParamMax),
     TrackData(TrackData),
 }
 
@@ -73,6 +126,38 @@ pub struct SendData {
     pub send_index: i32,
     pub level: f32,
     pub pan: f32,
+}
+
+#[derive(Clone)]
+pub struct FXData {
+    pub fx_index: i32,
+    pub guid: String,
+    pub name: String,
+    pub enabled: bool,
+    pub params: Vec<FXParamData>,
+}
+
+impl FXData {
+    fn get_param_data(&mut self, param_index: i32) -> Option<&mut FXParamData> {
+        // Ensure the params vector is large enough
+        while self.params.len() <= param_index as usize {
+            self.params.push(FXParamData {
+                param_index: self.params.len() as i32,
+                value: 0.0,
+                min: 0.0,
+                max: 1.0,
+            });
+        }
+        self.params.get_mut(param_index as usize)
+    }
+}
+
+#[derive(Clone)]
+pub struct FXParamData {
+    pub param_index: i32,
+    pub value: f32,
+    pub min: f32,
+    pub max: f32,
 }
 
 /// Maintains state for a given track to the best of our knowledge
@@ -88,6 +173,7 @@ pub struct TrackData {
     volume: f32,
     pan: f32,
     sends: Vec<SendData>,
+    fx: Vec<FXData>,
 }
 
 impl TrackData {
@@ -103,6 +189,7 @@ impl TrackData {
             volume: 0.0,
             pan: 0.0,
             sends: Vec::new(),
+            fx: Vec::new(),
         }
     }
 
@@ -121,6 +208,20 @@ impl TrackData {
             });
         }
         self.sends[send_index.send_index as usize].target_guid = send_index.guid;
+    }
+
+    fn get_fx_data(&mut self, fx_index: i32) -> Option<&mut FXData> {
+        // Ensure the fx vector is large enough
+        while self.fx.len() <= fx_index as usize {
+            self.fx.push(FXData {
+                guid: String::new(),
+                fx_index: self.fx.len() as i32,
+                name: String::new(),
+                enabled: false,
+                params: Vec::new(),
+            });
+        }
+        self.fx.get_mut(fx_index as usize)
     }
 }
 
@@ -230,6 +331,89 @@ impl TrackManager {
                                     "Track {} send {} pan set to {}",
                                     msg.guid, send.send_index, send_pan.pan
                                 );
+                            }
+                        }
+                        DataPayload::FXGuid(fx_guid) => {
+                            if let Some(fx) = track.get_fx_data(fx_guid.fx_index) {
+                                fx.guid = fx_guid.guid.clone();
+                                println!(
+                                    "Track {} FX {} GUID set to {}",
+                                    msg.guid, fx_guid.fx_index, fx_guid.guid
+                                );
+                            }
+                        }
+                        DataPayload::FXName(fx_name) => {
+                            if let Some(fx) = track.get_fx_data(fx_name.fx_index) {
+                                fx.name = fx_name.name.clone();
+                                println!(
+                                    "Track {} FX {} name set to {}",
+                                    msg.guid, fx_name.fx_index, fx_name.name
+                                );
+                            }
+                        }
+                        DataPayload::FXEnabled(fx_enabled) => {
+                            if let Some(fx) = track.get_fx_data(fx_enabled.fx_index) {
+                                fx.enabled = fx_enabled.enabled;
+                                println!(
+                                    "Track {} FX {} enabled set to {}",
+                                    msg.guid, fx_enabled.fx_index, fx_enabled.enabled
+                                );
+                            }
+                        }
+                        DataPayload::FXParamName(fx_param_name) => {
+                            if let Some(fx) = track.get_fx_data(fx_param_name.fx_index) {
+                                if let Some(param) = fx.get_param_data(fx_param_name.param_index) {
+                                    // We don't store the name in FXParamData currently
+                                    println!(
+                                        "Track {} FX {} Param {} name set to {}",
+                                        msg.guid,
+                                        fx_param_name.fx_index,
+                                        fx_param_name.param_index,
+                                        fx_param_name.name
+                                    );
+                                }
+                            }
+                        }
+                        DataPayload::FXParamValue(fx_param_value) => {
+                            if let Some(fx) = track.get_fx_data(fx_param_value.fx_index) {
+                                if let Some(param) = fx.get_param_data(fx_param_value.param_index) {
+                                    param.value = fx_param_value.value;
+                                    println!(
+                                        "Track {} FX {} Param {} value set to {}",
+                                        msg.guid,
+                                        fx_param_value.fx_index,
+                                        fx_param_value.param_index,
+                                        fx_param_value.value
+                                    );
+                                }
+                            }
+                        }
+                        DataPayload::FXParamMin(fx_param_min) => {
+                            if let Some(fx) = track.get_fx_data(fx_param_min.fx_index) {
+                                if let Some(param) = fx.get_param_data(fx_param_min.param_index) {
+                                    param.min = fx_param_min.min;
+                                    println!(
+                                        "Track {} FX {} Param {} min set to {}",
+                                        msg.guid,
+                                        fx_param_min.fx_index,
+                                        fx_param_min.param_index,
+                                        fx_param_min.min
+                                    );
+                                }
+                            }
+                        }
+                        DataPayload::FXParamMax(fx_param_max) => {
+                            if let Some(fx) = track.get_fx_data(fx_param_max.fx_index) {
+                                if let Some(param) = fx.get_param_data(fx_param_max.param_index) {
+                                    param.max = fx_param_max.max;
+                                    println!(
+                                        "Track {} FX {} Param {} max set to {}",
+                                        msg.guid,
+                                        fx_param_max.fx_index,
+                                        fx_param_max.param_index,
+                                        fx_param_max.max
+                                    );
+                                }
                             }
                         }
                     }

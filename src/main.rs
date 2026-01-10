@@ -312,6 +312,34 @@ fn main() {
                     }),
             )
         })
+        .add_layer({
+            let reaper = reaper.clone();
+            let a_send = a_send.clone();
+            Box::new(
+                ContextGateBuilder::<context_kind::TrackFx>::new()
+                    .add_key_route("/track/{guid}/fx/{fx_idx}/guid")
+                    .with_initialization_callback(move |ctx, key_messages| {
+                        let track_guid = ctx.track_guid.clone();
+                        let a_send = a_send.clone();
+                        println!(
+                            "Initialized track fxcontext: {:?} with messages: {:?}",
+                            ctx, key_messages
+                        );
+                        reaper.with_mut(|reaper| {
+                            // Track FX guid
+                            reaper.track_fx_guid(track_guid.clone(), ctx.fx_idx).bind({
+                                let track_guid = track_guid.clone();
+                                move |fx_guid| {
+                                    a_send.try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                        guid: track_guid.clone(),
+                                        direction: Direction::Downstream,
+                                    }))
+                                }
+                            })
+                        })
+                    }),
+            )
+        })
         .build()
         .unwrap();
 
