@@ -1,39 +1,13 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::midi::xtouch;
 use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
-use crate::modes::reaper_vol_pan::VolumePanMode;
 use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, SendLevel, TrackDataMsg, TrackMsg, TrackQuery,
 };
-
-struct Button {
-    state: bool,
-}
-
-impl Button {
-    fn new() -> Self {
-        Button { state: false }
-    }
-
-    fn is_on(&self) -> bool {
-        self.state
-    }
-
-    fn set(&mut self, new_state: bool) {
-        self.state = new_state;
-    }
-
-    fn toggle(&mut self) -> bool {
-        self.state = !self.state;
-        self.state
-    }
-}
 
 pub struct TrackSendState {}
 
