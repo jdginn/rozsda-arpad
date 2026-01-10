@@ -3,14 +3,14 @@
 // These tests verify the behavior of the VolumePanMode, which manages the mapping
 // between Reaper tracks and XTouch controller hardware (faders, buttons, LEDs).
 
-use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
-use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
 use arpad_rust::midi::xtouch::{
     ArmLEDMsg, ArmPress, FaderAbsMsg, LEDState, MuteLEDMsg, MutePress, SoloLEDMsg, SoloPress,
     XTouchDownstreamMsg, XTouchUpstreamMsg,
 };
+use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
+use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
 use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use std::time::Duration;
 
 /// Helper to create a VolumePanMode instance for testing
@@ -150,10 +150,7 @@ fn test_vol_pan_mode_mute_button_toggles() {
     );
 
     // Simulate mute button press
-    let msg = XTouchUpstreamMsg::MutePress(MutePress {
-        idx: hw_channel,
-        velocity: 127,
-    });
+    let msg = XTouchUpstreamMsg::MutePress(MutePress { idx: hw_channel });
 
     mode.handle_upstream_messages(msg, curr_mode);
 
@@ -162,7 +159,10 @@ fn test_vol_pan_mode_mute_button_toggles() {
     // 2. LED update to XTouch showing mute is on
 
     let track_msg_result = to_reaper_rx.recv_timeout(Duration::from_millis(100));
-    assert!(track_msg_result.is_ok(), "Should send mute message to Reaper");
+    assert!(
+        track_msg_result.is_ok(),
+        "Should send mute message to Reaper"
+    );
 
     if let Ok(TrackMsg::TrackDataMsg(msg)) = track_msg_result {
         assert_eq!(msg.guid, test_guid);
@@ -253,7 +253,10 @@ fn test_vol_pan_mode_barrier_forwarding() {
     let result_mode = mode.handle_downstream_messages(TrackMsg::Barrier(barrier), curr_mode);
 
     // Should transition to WaitingBarrierFromDownstream
-    assert_eq!(result_mode.state, State::WaitingBarrierFromDownstream(barrier));
+    assert_eq!(
+        result_mode.state,
+        State::WaitingBarrierFromDownstream(barrier)
+    );
 
     // Barrier should be forwarded to XTouch
     let result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
@@ -281,7 +284,11 @@ fn test_vol_pan_mode_barrier_reflection() {
     let result_mode = mode.handle_upstream_messages(XTouchUpstreamMsg::Barrier(barrier), curr_mode);
 
     // Should transition back to Active state
-    assert_eq!(result_mode.state, State::Active, "Should return to Active state after barrier completes");
+    assert_eq!(
+        result_mode.state,
+        State::Active,
+        "Should return to Active state after barrier completes"
+    );
 }
 
 // TODO: Test solo and arm buttons (similar to mute test)
