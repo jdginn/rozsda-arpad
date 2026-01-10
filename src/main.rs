@@ -14,7 +14,8 @@ use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
 use arpad_rust::track::track::{
-    DataPayload, Direction, SendIndex, SendLevel, SendPan, TrackDataMsg, TrackManager, TrackMsg,
+    DataPayload, Direction, FXEnabled, FXGuid, FXName, FXParamMax, FXParamMin, FXParamName,
+    FXParamValue, SendIndex, SendLevel, SendPan, TrackDataMsg, TrackManager, TrackMsg,
 };
 
 use crate::shared::Shared;
@@ -329,13 +330,194 @@ fn main() {
                             // Track FX guid
                             reaper.track_fx_guid(track_guid.clone(), ctx.fx_idx).bind({
                                 let track_guid = track_guid.clone();
+                                let a_send = a_send.clone();
                                 move |fx_guid| {
-                                    a_send.try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                        guid: track_guid.clone(),
-                                        direction: Direction::Downstream,
-                                    }))
+                                    a_send
+                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                            guid: track_guid.clone(),
+                                            direction: Direction::Downstream,
+                                            data: DataPayload::FXGuid(FXGuid {
+                                                fx_index: ctx.fx_idx,
+                                                guid: fx_guid.guid.clone(),
+                                            }),
+                                        }))
+                                        .unwrap();
                                 }
-                            })
+                            });
+                            // Track FX Name
+                            reaper.track_fx_name(track_guid.clone(), ctx.fx_idx).bind({
+                                let track_guid = track_guid.clone();
+                                let a_send = a_send.clone();
+                                move |fx_name| {
+                                    a_send
+                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                            guid: track_guid.clone(),
+                                            direction: Direction::Downstream,
+                                            data: DataPayload::FXName(FXName {
+                                                fx_index: ctx.fx_idx,
+                                                name: fx_name.name.clone(),
+                                            }),
+                                        }))
+                                        .unwrap();
+                                    println!(
+                                        "Track {} fx {} name initial value: {:?}",
+                                        track_guid.clone(),
+                                        ctx.fx_idx,
+                                        fx_name
+                                    )
+                                }
+                            });
+                            // Track FX Enabled
+                            reaper
+                                .track_fx_enabled(track_guid.clone(), ctx.fx_idx)
+                                .bind({
+                                    let track_guid = track_guid.clone();
+                                    let a_send = a_send.clone();
+                                    move |fx_enabled| {
+                                        a_send
+                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                                guid: track_guid.clone(),
+                                                direction: Direction::Downstream,
+                                                data: DataPayload::FXEnabled(FXEnabled {
+                                                    fx_index: ctx.fx_idx,
+                                                    enabled: fx_enabled.enabled,
+                                                }),
+                                            }))
+                                            .unwrap();
+                                        println!(
+                                            "Track {} fx {} enabled initial value: {:?}",
+                                            track_guid.clone(),
+                                            ctx.fx_idx,
+                                            fx_enabled
+                                        )
+                                    }
+                                });
+                        })
+                    }),
+            )
+        })
+        .add_layer({
+            let reaper = reaper.clone();
+            let a_send = a_send.clone();
+            Box::new(
+                ContextGateBuilder::<context_kind::TrackFxParam>::new()
+                    .add_key_route("/track/{guid}/fx/{fx_idx}/param/{param_idx}/name")
+                    .with_initialization_callback(move |ctx, key_messages| {
+                        let track_guid = ctx.track_guid.clone();
+                        let a_send = a_send.clone();
+                        println!(
+                            "Initialized track fx param context: {:?} with messages: {:?}",
+                            ctx, key_messages
+                        );
+                        reaper.with_mut(|reaper| {
+                            // Track FX Param Name
+                            reaper
+                                .track_fx_param_name(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .bind({
+                                    let track_guid = track_guid.clone();
+                                    let a_send = a_send.clone();
+                                    move |fx_param_name| {
+                                        a_send
+                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                                guid: track_guid.clone(),
+                                                direction: Direction::Downstream,
+                                                data: DataPayload::FXParamName(FXParamName {
+                                                    fx_index: ctx.fx_idx,
+                                                    param_index: ctx.param_idx,
+                                                    name: fx_param_name.param_name.clone(),
+                                                }),
+                                            }))
+                                            .unwrap();
+                                        println!(
+                                            "Track {} fx {} param {} name initial value: {:?}",
+                                            track_guid.clone(),
+                                            ctx.fx_idx,
+                                            ctx.param_idx,
+                                            fx_param_name
+                                        )
+                                    }
+                                });
+                            // Track FX Param Value
+                            reaper
+                                .track_fx_param_value(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .bind({
+                                    let track_guid = track_guid.clone();
+                                    let a_send = a_send.clone();
+                                    move |fx_param_value| {
+                                        a_send
+                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                                guid: track_guid.clone(),
+                                                direction: Direction::Downstream,
+                                                data: DataPayload::FXParamValue(FXParamValue {
+                                                    fx_index: ctx.fx_idx,
+                                                    param_index: ctx.param_idx,
+                                                    value: fx_param_value.value,
+                                                }),
+                                            }))
+                                            .unwrap();
+                                        println!(
+                                            "Track {} fx {} param {} value initial value: {:?}",
+                                            track_guid.clone(),
+                                            ctx.fx_idx,
+                                            ctx.param_idx,
+                                            fx_param_value
+                                        )
+                                    }
+                                });
+                            // Track FX Param Min
+                            reaper
+                                .track_fx_param_min(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .bind({
+                                    let track_guid = track_guid.clone();
+                                    let a_send = a_send.clone();
+                                    move |fx_param_min| {
+                                        a_send
+                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                                guid: track_guid.clone(),
+                                                direction: Direction::Downstream,
+                                                data: DataPayload::FXParamMin(FXParamMin {
+                                                    fx_index: ctx.fx_idx,
+                                                    param_index: ctx.param_idx,
+                                                    min: fx_param_min.min,
+                                                }),
+                                            }))
+                                            .unwrap();
+                                        println!(
+                                            "Track {} fx {} param {} min initial value: {:?}",
+                                            track_guid.clone(),
+                                            ctx.fx_idx,
+                                            ctx.param_idx,
+                                            fx_param_min
+                                        )
+                                    }
+                                });
+                            // Track FX Param Max
+                            reaper
+                                .track_fx_param_max(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .bind({
+                                    let track_guid = track_guid.clone();
+                                    let a_send = a_send.clone();
+                                    move |fx_param_max| {
+                                        a_send
+                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
+                                                guid: track_guid.clone(),
+                                                direction: Direction::Downstream,
+                                                data: DataPayload::FXParamMax(FXParamMax {
+                                                    fx_index: ctx.fx_idx,
+                                                    param_index: ctx.param_idx,
+                                                    max: fx_param_max.max,
+                                                }),
+                                            }))
+                                            .unwrap();
+                                        println!(
+                                            "Track {} fx {} param {} max initial value: {:?}",
+                                            track_guid.clone(),
+                                            ctx.fx_idx,
+                                            ctx.param_idx,
+                                            fx_param_max
+                                        )
+                                    }
+                                });
                         })
                     }),
             )
