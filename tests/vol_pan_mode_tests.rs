@@ -684,20 +684,13 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     );
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
     
-    // Remap to different channel
-    // IDEAL: Old mapping should be cleared when track is reassigned
+    // Remap to different channel - old mapping should be cleared
     assign_track_to_channel(&mut mode, &test_guid, hw_channel_2, curr_mode);
-    
-    // TODO: BUG - Implementation doesn't clear old mappings when reassigning tracks.
-    // When a track is assigned to hw_channel_2, the old assignment to hw_channel_1
-    // should be cleared, but currently both channels point to the same track.
-    // Expected: find_hw_channel returns hw_channel_2 (4)
-    // Actual: find_hw_channel returns hw_channel_1 (2) - the first match
     
     // Verify the track can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(&test_guid);
     assert!(found_channel.is_some(), "Track should be found after remapping");
-    // IDEAL: Should return the new channel (hw_channel_2)
+    // Should return the new channel (hw_channel_2)
     assert_eq!(found_channel.unwrap(), hw_channel_2 as usize, 
         "find_hw_channel returns the remapped channel");
     
@@ -712,12 +705,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         curr_mode,
     );
     
-    // TODO: BUG - Volume messages go to first matching channel (hw_channel_1)
-    // instead of the newly assigned channel (hw_channel_2).
-    // Expected: Message sent to hw_channel_2 (4)
-    // Actual: Message sent to hw_channel_1 (2)
-    
-    // IDEAL: Volume update should go to the new channel (hw_channel_2)
+    // Volume update should go to the new channel (hw_channel_2)
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
 }
 
