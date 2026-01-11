@@ -11,6 +11,9 @@ use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
+// Threshold for filtering out insignificant volume/pan changes
+const EPSILON: f32 = 0.01;
+
 struct Button {
     state: bool,
 }
@@ -55,6 +58,9 @@ pub struct VolumePanMode {
     // Maps each channel on the hardware controller to a Reaper track
     track_hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
     track_states: HashMap<String, ButtonState>,
+    // Store last sent volume/pan values to avoid sending updates for tiny changes
+    last_sent_volume: HashMap<String, f32>,
+    last_sent_pan: HashMap<String, f32>,
     to_reaper: Sender<TrackMsg>,
     from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
@@ -75,6 +81,8 @@ impl VolumePanMode {
         VolumePanMode {
             track_hw_assignments,
             track_states: button_states,
+            last_sent_volume: HashMap::new(),
+            last_sent_pan: HashMap::new(),
             to_reaper,
             from_reaper,
             to_xtouch,
@@ -149,20 +157,26 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 TrackDataPayload::Volume(value) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        // TODO: TESTS - Add EPSILON threshold filtering to avoid sending messages
-                        // for tiny volume changes. Test test_17_volume_changes_below_epsilon_threshold_ignored
-                        // expects that volume changes smaller than EPSILON (0.01) should not send
-                        // fader updates to the hardware. Store the last sent volume for each channel
-                        // and only send an update if abs(new_value - last_value) >= EPSILON.
+                        // Check if the change is significant enough to send
+                        let should_send = if let Some(&last_value) = self.last_sent_volume.get(&msg.guid) {
+                            (value - last_value).abs() >= EPSILON
+                        } else {
+                            true // Always send if we haven't sent before
+                        };
                         
-                        // Send volume update to XTouch for the corresponding fader
-                        let fader_value = value; // TODO: scale appropriately
-                        let _ = self
-                            .to_xtouch
-                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
-                                idx: hw_channel as i32,
-                                value: fader_value as f64,
-                            }));
+                        if should_send {
+                            // Store the value we're sending
+                            self.last_sent_volume.insert(msg.guid.clone(), value);
+                            
+                            // Send volume update to XTouch for the corresponding fader
+                            let fader_value = value; // TODO: scale appropriately
+                            let _ = self
+                                .to_xtouch
+                                .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                    idx: hw_channel as i32,
+                                    value: fader_value as f64,
+                                }));
+                        }
                     }
                     return curr_mode;
                 }
@@ -207,20 +221,26 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 TrackDataPayload::Pan(value) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        // TODO: TESTS - Add EPSILON threshold filtering to avoid sending messages
-                        // for tiny pan changes. Test test_18_pan_changes_below_epsilon_threshold_ignored
-                        // expects that pan changes smaller than EPSILON (0.01) should not send
-                        // encoder LED updates to the hardware. Store the last sent pan value for each
-                        // channel and only send an update if abs(new_value - last_value) >= EPSILON.
+                        // Check if the change is significant enough to send
+                        let should_send = if let Some(&last_value) = self.last_sent_pan.get(&msg.guid) {
+                            (value - last_value).abs() >= EPSILON
+                        } else {
+                            true // Always send if we haven't sent before
+                        };
                         
-                        // Send pan update to XTouch for the corresponding encoder
-                        let pan_value = value; // TODO: scale appropriately
-                        let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
-                            xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                idx: hw_channel as i32,
-                                pos: pan_value,
-                            }),
-                        ));
+                        if should_send {
+                            // Store the value we're sending
+                            self.last_sent_pan.insert(msg.guid.clone(), value);
+                            
+                            // Send pan update to XTouch for the corresponding encoder
+                            let pan_value = value; // TODO: scale appropriately
+                            let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
+                                xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                    idx: hw_channel as i32,
+                                    pos: pan_value,
+                                }),
+                            ));
+                        }
                     }
                     return curr_mode;
                 }
