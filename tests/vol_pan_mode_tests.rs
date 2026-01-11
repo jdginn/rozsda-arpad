@@ -685,18 +685,17 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
     
     // Remap to different channel
-    // Note: The current implementation doesn't clear old mappings, so both channels
-    // now point to the same track. The find_hw_channel method returns the first match.
+    // IDEAL: Old mapping should be cleared when track is reassigned
     assign_track_to_channel(&mut mode, &test_guid, hw_channel_2, curr_mode);
     
     // Verify the track can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(&test_guid);
     assert!(found_channel.is_some(), "Track should be found after remapping");
-    // The first match will be returned (hw_channel_1)
-    assert_eq!(found_channel.unwrap(), hw_channel_1 as usize, 
-        "find_hw_channel returns first matching channel");
+    // IDEAL: Should return the new channel (hw_channel_2)
+    assert_eq!(found_channel.unwrap(), hw_channel_2 as usize, 
+        "find_hw_channel returns the remapped channel");
     
-    // Send another volume update - goes to first matching channel (hw_channel_1)
+    // Send another volume update - should go to new channel (hw_channel_2)
     let volume_3 = 0.9;
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -707,8 +706,8 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         curr_mode,
     );
     
-    // Volume update goes to the first matching channel (hw_channel_1)
-    assert_fader_abs_msg(&to_xtouch_rx, hw_channel_1, volume_3 as f64);
+    // IDEAL: Volume update should go to the new channel (hw_channel_2)
+    assert_fader_abs_msg(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
 }
 
 #[test]
@@ -883,30 +882,48 @@ fn test_10_arm_button_sends_correct_messages() {
 
 #[test]
 fn test_11_pan_encoder_changes_forward_correctly() {
-    // Note: The current implementation doesn't handle encoder inc/dec messages
-    // This test documents the expected behavior when it's implemented
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
+    // IDEAL: Encoder inc/dec messages should adjust pan and send updates to Reaper
+    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
     let test_guid = "track-guid-encoder".to_string();
     let hw_channel = 5;
+    let initial_pan = 0.5;
     
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
     };
     
-    // Assign track to hardware channel
+    // Assign track to hardware channel and set initial pan
     assign_track_to_channel(&mut mode, &test_guid, hw_channel, curr_mode);
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: test_guid.clone(),
+            direction: Direction::Downstream,
+            data: DataPayload::Pan(initial_pan),
+        }),
+        curr_mode,
+    );
+    // Clear the initial pan message
+    let _ = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     
-    // Simulate encoder turn clockwise (using EncoderTurnInc which is the actual message type)
+    // Simulate encoder turn clockwise
     let result_mode = mode.handle_upstream_messages(
         XTouchUpstreamMsg::EncoderTurnInc(EncoderTurnCW { idx: hw_channel }),
         curr_mode,
     );
     
-    // Mode should remain active (even though encoder handling is not yet implemented)
+    // IDEAL: Mode should remain active and send pan update to Reaper
     assert_eq!(result_mode.state, State::Active);
+    
+    // IDEAL: Should receive a pan update message sent to Reaper
+    let msg = to_reaper_rx.recv_timeout(Duration::from_millis(100));
+    assert!(msg.is_ok(), "Should send pan update to Reaper");
+    
+    // IDEAL: Should receive an encoder LED update showing new pan position
+    let led_msg = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
+    assert!(led_msg.is_ok(), "Should send encoder LED update");
 }
 
 // ----------------------------------------------------------------------------
@@ -1128,9 +1145,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
 
 #[test]
 fn test_17_volume_changes_below_epsilon_threshold_ignored() {
-    // Note: This test documents the expected behavior for EPSILON threshold checking
-    // The current implementation does not filter by EPSILON, so this test verifies
-    // current behavior. Future implementations should add threshold checking.
+    // IDEAL: Volume changes smaller than EPSILON should not send updates to hardware
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
@@ -1155,7 +1170,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     );
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel, initial_volume as f64);
     
-    // Send volume change smaller than EPSILON (current implementation will send this)
+    // Send volume change smaller than EPSILON
     let small_change = initial_volume + (EPSILON / 2.0);
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -1166,17 +1181,13 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
         curr_mode,
     );
     
-    // Current implementation: message is sent even for small changes
-    // Future implementation: should not send message if change < EPSILON
-    // For now, we verify the current behavior
-    let result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    // Currently this will pass; future implementation should make this fail
-    let _accepts_small_changes = result.is_ok();
+    // IDEAL: Should NOT send message for changes smaller than EPSILON
+    assert_no_message(&to_xtouch_rx, 100);
 }
 
 #[test]
 fn test_18_pan_changes_below_epsilon_threshold_ignored() {
-    // Note: Similar to test_17, this documents expected EPSILON behavior
+    // IDEAL: Pan changes smaller than EPSILON should not send updates to hardware
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
@@ -1212,8 +1223,6 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         curr_mode,
     );
     
-    // Current implementation: message is sent even for small changes
-    // Future implementation: should not send message if change < EPSILON
-    let result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    let _accepts_small_changes = result.is_ok();
+    // IDEAL: Should NOT send message for changes smaller than EPSILON
+    assert_no_message(&to_xtouch_rx, 100);
 }
