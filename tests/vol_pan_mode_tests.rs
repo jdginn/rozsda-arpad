@@ -688,6 +688,12 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     // IDEAL: Old mapping should be cleared when track is reassigned
     assign_track_to_channel(&mut mode, &test_guid, hw_channel_2, curr_mode);
     
+    // TODO: BUG - Implementation doesn't clear old mappings when reassigning tracks.
+    // When a track is assigned to hw_channel_2, the old assignment to hw_channel_1
+    // should be cleared, but currently both channels point to the same track.
+    // Expected: find_hw_channel returns hw_channel_2 (4)
+    // Actual: find_hw_channel returns hw_channel_1 (2) - the first match
+    
     // Verify the track can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(&test_guid);
     assert!(found_channel.is_some(), "Track should be found after remapping");
@@ -705,6 +711,11 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         }),
         curr_mode,
     );
+    
+    // TODO: BUG - Volume messages go to first matching channel (hw_channel_1)
+    // instead of the newly assigned channel (hw_channel_2).
+    // Expected: Message sent to hw_channel_2 (4)
+    // Actual: Message sent to hw_channel_1 (2)
     
     // IDEAL: Volume update should go to the new channel (hw_channel_2)
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
@@ -907,6 +918,15 @@ fn test_11_pan_encoder_changes_forward_correctly() {
     );
     // Clear the initial pan message
     let _ = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
+    
+    // TODO: BUG - Encoder inc/dec messages are not implemented.
+    // When EncoderTurnInc is received, the implementation should:
+    // 1. Look up which track is assigned to the hardware channel
+    // 2. Increment the pan value (e.g., by a step like 0.05)
+    // 3. Send pan update upstream to Reaper
+    // 4. Send encoder ring LED update downstream to hardware
+    // Expected: Pan message sent to Reaper, LED update sent to hardware
+    // Actual: Messages are ignored (no pan update or LED update)
     
     // Simulate encoder turn clockwise
     let result_mode = mode.handle_upstream_messages(
@@ -1170,6 +1190,12 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     );
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel, initial_volume as f64);
     
+    // TODO: BUG - No EPSILON threshold filtering for volume changes.
+    // When volume changes by less than EPSILON (0.01), the implementation should
+    // not send a fader update to the hardware to reduce message spam.
+    // Expected: No message sent for change of EPSILON/2 (0.005)
+    // Actual: Fader message sent even for tiny changes
+    
     // Send volume change smaller than EPSILON
     let small_change = initial_volume + (EPSILON / 2.0);
     mode.handle_downstream_messages(
@@ -1211,6 +1237,12 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         curr_mode,
     );
     assert_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, initial_pan);
+    
+    // TODO: BUG - No EPSILON threshold filtering for pan changes.
+    // When pan changes by less than EPSILON (0.01), the implementation should
+    // not send an encoder LED update to the hardware to reduce message spam.
+    // Expected: No message sent for change of EPSILON/2 (0.005)
+    // Actual: Encoder LED message sent even for tiny changes
     
     // Send pan change smaller than EPSILON
     let small_change = initial_pan + (EPSILON / 2.0);
