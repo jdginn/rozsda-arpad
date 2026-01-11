@@ -134,15 +134,17 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             match msg.data {
                 // We use track index according to reaper to assign tracks to hardware channels
                 TrackDataPayload::ReaperTrackIndex(Some(index)) => {
-                    // TODO: TESTS - Clear old mappings when reassigning a track to a new channel.
-                    // Test test_05_volume_state_reflects_latest_value_when_remapped expects that
-                    // when a track is assigned to a new channel, the old channel assignment is cleared.
-                    // Currently, the old mapping remains, causing find_hw_channel to return the first
-                    // match instead of the most recent assignment. Need to iterate through
-                    // track_hw_assignments and set any existing entries with this guid to None
-                    // before setting the new assignment.
-                    self.track_hw_assignments.lock().unwrap()[index as usize] =
-                        Some(msg.guid.clone());
+                    // Clear any existing assignment for this track GUID before setting the new one
+                    let mut assignments = self.track_hw_assignments.lock().unwrap();
+                    for slot in assignments.iter_mut() {
+                        if let Some(guid) = slot {
+                            if guid == &msg.guid {
+                                *slot = None;
+                            }
+                        }
+                    }
+                    // Now set the new assignment
+                    assignments[index as usize] = Some(msg.guid.clone());
                     return curr_mode;
                 }
                 TrackDataPayload::Volume(value) => {
