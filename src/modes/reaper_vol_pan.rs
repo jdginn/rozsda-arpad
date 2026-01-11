@@ -134,12 +134,25 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             match msg.data {
                 // We use track index according to reaper to assign tracks to hardware channels
                 TrackDataPayload::ReaperTrackIndex(Some(index)) => {
+                    // TODO: TESTS - Clear old mappings when reassigning a track to a new channel.
+                    // Test test_05_volume_state_reflects_latest_value_when_remapped expects that
+                    // when a track is assigned to a new channel, the old channel assignment is cleared.
+                    // Currently, the old mapping remains, causing find_hw_channel to return the first
+                    // match instead of the most recent assignment. Need to iterate through
+                    // track_hw_assignments and set any existing entries with this guid to None
+                    // before setting the new assignment.
                     self.track_hw_assignments.lock().unwrap()[index as usize] =
                         Some(msg.guid.clone());
                     return curr_mode;
                 }
                 TrackDataPayload::Volume(value) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                        // TODO: TESTS - Add EPSILON threshold filtering to avoid sending messages
+                        // for tiny volume changes. Test test_17_volume_changes_below_epsilon_threshold_ignored
+                        // expects that volume changes smaller than EPSILON (0.01) should not send
+                        // fader updates to the hardware. Store the last sent volume for each channel
+                        // and only send an update if abs(new_value - last_value) >= EPSILON.
+                        
                         // Send volume update to XTouch for the corresponding fader
                         let fader_value = value; // TODO: scale appropriately
                         let _ = self
@@ -192,6 +205,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 TrackDataPayload::Pan(value) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                        // TODO: TESTS - Add EPSILON threshold filtering to avoid sending messages
+                        // for tiny pan changes. Test test_18_pan_changes_below_epsilon_threshold_ignored
+                        // expects that pan changes smaller than EPSILON (0.01) should not send
+                        // encoder LED updates to the hardware. Store the last sent pan value for each
+                        // channel and only send an update if abs(new_value - last_value) >= EPSILON.
+                        
                         // Send pan update to XTouch for the corresponding encoder
                         let pan_value = value; // TODO: scale appropriately
                         let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
@@ -328,7 +347,15 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 curr_mode
             }
-            // TODO: implement encoder inc/dec
+            // TODO: TESTS - Implement encoder inc/dec message handling.
+            // Test test_11_pan_encoder_changes_forward_correctly expects that when
+            // EncoderTurnInc or EncoderTurnDec messages are received:
+            // 1. Look up which track is assigned to the hardware channel (idx)
+            // 2. Get the current pan value for that track from track state
+            // 3. Adjust the pan value (e.g., increment by 0.05 for Inc, decrement for Dec)
+            // 4. Send TrackDataMsg with Pan payload upstream to Reaper
+            // 5. Send EncoderRingLED message downstream to update the hardware display
+            // 6. Clamp pan values to valid range (typically 0.0 to 1.0)
             _ => curr_mode,
         }
     }
