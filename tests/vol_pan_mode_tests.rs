@@ -881,7 +881,7 @@ fn test_10_arm_button_sends_correct_messages() {
 
 #[test]
 fn test_11_pan_encoder_changes_forward_correctly() {
-    // IDEAL: Encoder inc/dec messages should adjust pan and send updates to Reaper
+    // Encoder inc/dec messages should adjust pan and send updates to Reaper
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
@@ -907,29 +907,20 @@ fn test_11_pan_encoder_changes_forward_correctly() {
     // Clear the initial pan message
     let _ = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     
-    // TODO: BUG - Encoder inc/dec messages are not implemented.
-    // When EncoderTurnInc is received, the implementation should:
-    // 1. Look up which track is assigned to the hardware channel
-    // 2. Increment the pan value (e.g., by a step like 0.05)
-    // 3. Send pan update upstream to Reaper
-    // 4. Send encoder ring LED update downstream to hardware
-    // Expected: Pan message sent to Reaper, LED update sent to hardware
-    // Actual: Messages are ignored (no pan update or LED update)
-    
     // Simulate encoder turn clockwise
     let result_mode = mode.handle_upstream_messages(
         XTouchUpstreamMsg::EncoderTurnInc(EncoderTurnCW { idx: hw_channel }),
         curr_mode,
     );
     
-    // IDEAL: Mode should remain active and send pan update to Reaper
+    // Mode should remain active and send pan update to Reaper
     assert_eq!(result_mode.state, State::Active);
     
-    // IDEAL: Should receive a pan update message sent to Reaper
+    // Should receive a pan update message sent to Reaper
     let msg = to_reaper_rx.recv_timeout(Duration::from_millis(100));
     assert!(msg.is_ok(), "Should send pan update to Reaper");
     
-    // IDEAL: Should receive an encoder LED update showing new pan position
+    // Should receive an encoder LED update showing new pan position
     let led_msg = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     assert!(led_msg.is_ok(), "Should send encoder LED update");
 }
