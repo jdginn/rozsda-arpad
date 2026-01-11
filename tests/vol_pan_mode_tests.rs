@@ -1153,7 +1153,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
 
 #[test]
 fn test_17_volume_changes_below_epsilon_threshold_ignored() {
-    // IDEAL: Volume changes smaller than EPSILON should not send updates to hardware
+    // Volume changes smaller than EPSILON should not send updates to hardware
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
@@ -1178,12 +1178,6 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     );
     assert_fader_abs_msg(&to_xtouch_rx, hw_channel, initial_volume as f64);
     
-    // TODO: BUG - No EPSILON threshold filtering for volume changes.
-    // When volume changes by less than EPSILON (0.01), the implementation should
-    // not send a fader update to the hardware to reduce message spam.
-    // Expected: No message sent for change of EPSILON/2 (0.005)
-    // Actual: Fader message sent even for tiny changes
-    
     // Send volume change smaller than EPSILON
     let small_change = initial_volume + (EPSILON / 2.0);
     mode.handle_downstream_messages(
@@ -1195,13 +1189,13 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
         curr_mode,
     );
     
-    // IDEAL: Should NOT send message for changes smaller than EPSILON
+    // Should NOT send message for changes smaller than EPSILON
     assert_no_message(&to_xtouch_rx, 100);
 }
 
 #[test]
 fn test_18_pan_changes_below_epsilon_threshold_ignored() {
-    // IDEAL: Pan changes smaller than EPSILON should not send updates to hardware
+    // Pan changes smaller than EPSILON should not send updates to hardware
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
@@ -1226,12 +1220,6 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     );
     assert_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, initial_pan);
     
-    // TODO: BUG - No EPSILON threshold filtering for pan changes.
-    // When pan changes by less than EPSILON (0.01), the implementation should
-    // not send an encoder LED update to the hardware to reduce message spam.
-    // Expected: No message sent for change of EPSILON/2 (0.005)
-    // Actual: Encoder LED message sent even for tiny changes
-    
     // Send pan change smaller than EPSILON
     let small_change = initial_pan + (EPSILON / 2.0);
     mode.handle_downstream_messages(
@@ -1243,6 +1231,6 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         curr_mode,
     );
     
-    // IDEAL: Should NOT send message for changes smaller than EPSILON
+    // Should NOT send message for changes smaller than EPSILON
     assert_no_message(&to_xtouch_rx, 100);
 }
