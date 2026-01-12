@@ -14,6 +14,9 @@ use crate::track::track::{
 // Threshold for filtering out insignificant volume/pan changes
 const EPSILON: f32 = 0.01;
 
+pub const FADER_0DB: f32 = 0.72; // Placeholder value for 0dB on fader scale
+
+#[derive(Clone)]
 struct Button {
     state: bool,
 }
@@ -40,6 +43,7 @@ impl Button {
 // Collection of state for the buttons repeated for each channel on the hw controller
 //
 // TODO: this might be too implementation-specific to live here?
+#[derive(Clone)]
 struct ButtonState {
     mute: Button,
     solo: Button,
@@ -47,9 +51,11 @@ struct ButtonState {
 }
 
 // Track the current pan value for each track to support encoder inc/dec
+#[derive(Clone)]
 struct TrackState {
     buttons: ButtonState,
     pan: f32,
+    volume: f32,
 }
 
 /// Implements a mode where that "basic" reaper functionality is mapped to the channel strips on
@@ -63,6 +69,7 @@ struct TrackState {
 pub struct VolumePanMode {
     // Maps each channel on the hardware controller to a Reaper track
     track_hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
+    // Store state for each track by track GUID
     track_states: HashMap<String, TrackState>,
     // Store last sent volume/pan values to avoid sending updates for tiny changes
     last_sent_volume: HashMap<String, f32>,
@@ -103,7 +110,8 @@ impl VolumePanMode {
                 solo: Button::new(),
                 arm: Button::new(),
             },
-            pan: 0.5, // Default center pan
+            pan: 0.5,          // Default center pan
+            volume: FADER_0DB, // Default volume at 0dB
         })
     }
 
@@ -151,47 +159,101 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             match msg.data {
                 // We use track index according to reaper to assign tracks to hardware channels
                 TrackDataPayload::ReaperTrackIndex(Some(index)) => {
-                    // Clear any existing assignment for this track GUID before setting the new one
-                    let mut assignments = self.track_hw_assignments.lock().unwrap();
-                    for slot in assignments.iter_mut() {
-                        if let Some(guid) = slot {
-                            if guid == &msg.guid {
-                                *slot = None;
-                            }
+                    // First, check if the assignment is changing. If not changing, do nothing.
+                    if let Some(current_guid) =
+                        &self.track_hw_assignments.lock().unwrap()[index as usize]
+                    {
+                        if current_guid == &msg.guid {
+                            return curr_mode; // No change in assignment
                         }
                     }
-                    // Now set the new assignment
-                    assignments[index as usize] = Some(msg.guid.clone());
+                    {
+                        // Clear any existing assignment for this track GUID before setting the new one
+                        let mut assignments = self.track_hw_assignments.lock().unwrap();
+                        for slot in assignments.iter_mut() {
+                            if let Some(guid) = slot {
+                                if guid == &msg.guid {
+                                    *slot = None;
+                                }
+                            }
+                        }
+                        // Now set the new assignment
+                        assignments[index as usize] = Some(msg.guid.clone());
+                    }
+                    // Now, send the current state of the track to the hardware for this channel
+                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                        let track_state = self.get_track_state(msg.guid.clone()).clone();
+                        // Send volume
+                        let _ = self
+                            .to_xtouch
+                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                idx: hw_channel as i32,
+                                value: track_state.volume as f64,
+                            }));
+                        // Send mute LED
+                        let _ =
+                            self.to_xtouch
+                                .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
+                                    idx: hw_channel as i32,
+                                    state: LEDState::from(track_state.buttons.mute.is_on()),
+                                }));
+                        // Send solo LED
+                        let _ =
+                            self.to_xtouch
+                                .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
+                                    idx: hw_channel as i32,
+                                    state: LEDState::from(track_state.buttons.solo.is_on()),
+                                }));
+                        // Send arm LED
+                        let _ =
+                            self.to_xtouch
+                                .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
+                                    idx: hw_channel as i32,
+                                    state: LEDState::from(track_state.buttons.arm.is_on()),
+                                }));
+                        // Send pan
+                        let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
+                            xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                idx: hw_channel as i32,
+                                pos: track_state.pan,
+                            }),
+                        ));
+                    }
                     return curr_mode;
                 }
                 TrackDataPayload::Volume(value) => {
+                    self.get_track_state(msg.guid.clone()).volume = value;
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
                         // Check if the change is significant enough to send
-                        let should_send = if let Some(&last_value) = self.last_sent_volume.get(&msg.guid) {
-                            (value - last_value).abs() >= EPSILON
-                        } else {
-                            true // Always send if we haven't sent before
-                        };
-                        
+                        let should_send =
+                            if let Some(&last_value) = self.last_sent_volume.get(&msg.guid) {
+                                (value - last_value).abs() >= EPSILON
+                            } else {
+                                true // Always send if we haven't sent before
+                            };
+
                         if should_send {
                             // Store the value we're sending
                             self.last_sent_volume.insert(msg.guid.clone(), value);
-                            
+
                             // Send volume update to XTouch for the corresponding fader
                             let fader_value = value; // TODO: scale appropriately
-                            let _ = self
-                                .to_xtouch
-                                .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
-                                    idx: hw_channel as i32,
-                                    value: fader_value as f64,
-                                }));
+                            let _ =
+                                self.to_xtouch
+                                    .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                        idx: hw_channel as i32,
+                                        value: fader_value as f64,
+                                    }));
                         }
                     }
                     return curr_mode;
                 }
                 TrackDataPayload::Muted(muted) => {
+                    self.get_track_state(msg.guid.clone())
+                        .buttons
+                        .mute
+                        .set(muted);
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.get_track_state(msg.guid.clone()).buttons.mute.set(muted);
                         // Send mute LED update to XTouch
                         let _ =
                             self.to_xtouch
@@ -204,7 +266,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 TrackDataPayload::Soloed(soloed) => {
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.get_track_state(msg.guid.clone()).buttons.solo.set(soloed);
+                        self.get_track_state(msg.guid.clone())
+                            .buttons
+                            .solo
+                            .set(soloed);
                         // Send solo LED update to XTouch
                         let _ =
                             self.to_xtouch
@@ -216,8 +281,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Armed(armed) => {
+                    self.get_track_state(msg.guid.clone())
+                        .buttons
+                        .arm
+                        .set(armed);
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.get_track_state(msg.guid.clone()).buttons.arm.set(armed);
                         // Send arm LED update to XTouch
                         let _ =
                             self.to_xtouch
@@ -229,28 +297,29 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Pan(value) => {
+                    self.get_track_state(msg.guid.clone()).pan = value;
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        // Store the pan value in track state
-                        self.get_track_state(msg.guid.clone()).pan = value;
-                        
                         // Check if the change is significant enough to send
-                        let should_send = if let Some(&last_value) = self.last_sent_pan.get(&msg.guid) {
-                            (value - last_value).abs() >= EPSILON
-                        } else {
-                            true // Always send if we haven't sent before
-                        };
-                        
+                        let should_send =
+                            if let Some(&last_value) = self.last_sent_pan.get(&msg.guid) {
+                                (value - last_value).abs() >= EPSILON
+                            } else {
+                                true // Always send if we haven't sent before
+                            };
+
                         if should_send {
                             // Store the value we're sending
                             self.last_sent_pan.insert(msg.guid.clone(), value);
-                            
+
                             // Send pan update to XTouch for the corresponding encoder
                             let pan_value = value; // TODO: scale appropriately
                             let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
-                                xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                    idx: hw_channel as i32,
-                                    pos: pan_value,
-                                }),
+                                xtouch::EncoderRingLEDMsg::RangePoint(
+                                    EncoderRingLEDRangePointMsg {
+                                        idx: hw_channel as i32,
+                                        pos: pan_value,
+                                    },
+                                ),
                             ));
                         }
                     }
@@ -386,10 +455,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // Get current pan value and increment it
                     let current_pan = self.get_track_state(guid.clone()).pan;
                     let new_pan = (current_pan + 0.05).min(1.0); // Clamp to max 1.0
-                    
+
                     // Update stored pan value
                     self.get_track_state(guid.clone()).pan = new_pan;
-                    
+
                     // Send pan update upstream to Reaper
                     self.to_reaper
                         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -398,7 +467,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             data: TrackDataPayload::Pan(new_pan),
                         }))
                         .unwrap();
-                    
+
                     // Send encoder LED update downstream to hardware
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::EncoderRingLED(
@@ -416,10 +485,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // Get current pan value and decrement it
                     let current_pan = self.get_track_state(guid.clone()).pan;
                     let new_pan = (current_pan - 0.05).max(0.0); // Clamp to min 0.0
-                    
+
                     // Update stored pan value
                     self.get_track_state(guid.clone()).pan = new_pan;
-                    
+
                     // Send pan update upstream to Reaper
                     self.to_reaper
                         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -428,7 +497,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             data: TrackDataPayload::Pan(new_pan),
                         }))
                         .unwrap();
-                    
+
                     // Send encoder LED update downstream to hardware
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::EncoderRingLED(
