@@ -73,7 +73,7 @@ fn assert_downstream_fader_abs_msg(
 }
 
 /// Helper to assert an EncoderRingLED message is received with the expected values
-fn assert_encoder_ring_led_msg(
+fn assert_downstream_encoder_ring_led_msg(
     rx: &Receiver<XTouchDownstreamMsg>,
     expected_idx: i32,
     expected_pos: f32,
@@ -139,7 +139,7 @@ fn assert_downstream_solo_led_msg(
 }
 
 /// Helper to assert an ArmLED message is received
-fn assert_arm_led_msg(
+fn assert_downstream_arm_led_msg(
     rx: &Receiver<XTouchDownstreamMsg>,
     expected_idx: i32,
     expected_state: LEDState,
@@ -762,36 +762,106 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
         }),
         curr_mode,
     );
-    assert_arm_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_arm_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
 }
 
 #[test]
-fn test_07_pan_state_accumulates_and_applies_on_mapping() {
+fn test_pan_state_accumulates_and_applies_on_mapping() {
+    // NOTE: Current implementation limitation - pan state is only stored for mapped tracks.
+    // Ideally, state should accumulate for unmapped tracks and be sent when they're mapped.
+    // This test documents current behavior.
+    
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
     
     let track_guid = "track-guid-pan".to_string();
     let hw_channel = 1;
-    let pan_value = 0.7;
+    let pan_value_1 = 0.3;
+    let pan_value_2 = 0.7;  // Most recent value
     
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
     };
     
-    // Assign track and send pan value
+    // First assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    
+    // Send pan values - they should accumulate
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
             direction: Direction::Downstream,
-            data: DataPayload::Pan(pan_value),
+            data: DataPayload::Pan(pan_value_1),
         }),
         curr_mode,
     );
     
-    // Assert encoder ring LED message
-    assert_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value);
+    // First value should be sent
+    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value_1);
+    
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: track_guid.clone(),
+            direction: Direction::Downstream,
+            data: DataPayload::Pan(pan_value_2),
+        }),
+        curr_mode,
+    );
+    
+    // Updated value should be sent
+    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value_2);
+}
+
+#[test]
+#[ignore] // TODO: Implementation limitation - state not accumulated for unmapped tracks
+fn test_pan_state_accumulates_before_mapping() {
+    // This test demonstrates IDEAL behavior: state should accumulate for unmapped tracks
+    // and be sent downstream when the track is mapped.
+    
+    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_vol_pan_mode();
+    
+    let track_guid = "track-guid-pan-accumulate".to_string();
+    let hw_channel = 1;
+    let pan_value_1 = 0.3;
+    let pan_value_2 = 0.7;  // Most recent value should be sent
+    
+    let curr_mode = ModeState {
+        mode: Mode::ReaperVolPan,
+        state: State::Active,
+    };
+    
+    // Send pan values BEFORE mapping - they should be accumulated but not sent downstream yet
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: track_guid.clone(),
+            direction: Direction::Downstream,
+            data: DataPayload::Pan(pan_value_1),
+        }),
+        curr_mode,
+    );
+    
+    // No message should be sent yet (track not mapped)
+    assert_no_message(&to_xtouch_rx, 100);
+    
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: track_guid.clone(),
+            direction: Direction::Downstream,
+            data: DataPayload::Pan(pan_value_2),
+        }),
+        curr_mode,
+    );
+    
+    // Still no message (track not mapped)
+    assert_no_message(&to_xtouch_rx, 100);
+    
+    // NOW assign track to hardware channel
+    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    
+    // IDEAL: The accumulated state (most recent pan value) should be sent downstream
+    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value_2);
 }
 
 // ----------------------------------------------------------------------------
@@ -882,7 +952,7 @@ fn test_10_arm_button_sends_correct_messages() {
     assert_upstream_armed_track_msg(&to_reaper_rx, &track_guid, true);
     
     // Should send LED update to hardware
-    assert_arm_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_arm_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
 }
 
 #[test]
@@ -1215,7 +1285,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         }),
         curr_mode,
     );
-    assert_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, initial_pan);
+    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, initial_pan);
     
     // Send pan change smaller than EPSILON
     let small_change = initial_pan + (EPSILON / 2.0);
