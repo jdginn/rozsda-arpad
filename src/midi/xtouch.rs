@@ -76,7 +76,7 @@ pub struct EncoderRingLEDEdges {
     pub idx: i32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LEDState {
     Off,
     On,
