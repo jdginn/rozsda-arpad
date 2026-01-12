@@ -16,7 +16,7 @@ use arpad_rust::midi::xtouch::{
     ArmPress, EncoderTurnCW, FaderAbsMsg, LEDState, MutePress, SoloPress, XTouchDownstreamMsg,
     XTouchUpstreamMsg,
 };
-use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
+use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_vol_pan::{FADER_0DB, VolumePanMode};
 use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
 
@@ -1316,34 +1316,30 @@ fn test_complex_multi_track_integration() {
     check_no_message!(&to_xtouch_rx, 100); // No hardware assigned yet
 
     // === PHASE 2: Map tracks to hardware channels ===
-    // Map track 1 to channel 1
+    // Map all tracks first, then verify messages were sent in correct order
     assign_track_to_channel(&mut mode, &track1_guid, 1, curr_mode);
-    // Should send accumulated volume state
+    assign_track_to_channel(&mut mode, &track2_guid, 2, curr_mode);
+    assign_track_to_channel(&mut mode, &track3_guid, 3, curr_mode);
+
+    // Verify track 1 accumulated volume state sent to channel 1
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.75);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 1, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 1, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 1, LEDState::Off);
     assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 1, 0.5); // Default pan
 
-    // Map track 2 to channel 2
-    assign_track_to_channel(&mut mode, &track2_guid, 2, curr_mode);
-    // Should send all accumulated state
+    // Verify track 2 all accumulated state sent to channel 2
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 2, 0.9);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 2, LEDState::On); // Muted
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 2, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 2, LEDState::Off);
     assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 2, 0.3); // Pan set
 
-    // Map track 3 to channel 3
-    assign_track_to_channel(&mut mode, &track3_guid, 3, curr_mode);
-    // Implementation partially accumulates button states before mapping
+    // Verify track 3 accumulated state sent to channel 3
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 3, FADER_0DB as f64); // Default volume
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 3, LEDState::Off);
-    // TODO: CURRENT LIMITATION - Solo state NOT accumulated before mapping
-    // IDEAL: Solo LED should be On (track was soloed before mapping)
-    // CURRENT: Solo LED is Off (solo state not saved for unmapped tracks)
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, 3, LEDState::Off); // IDEAL: LEDState::On
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, 3, LEDState::On); // Armed - correctly accumulated!
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, 3, LEDState::On); // Solo accumulated!
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, 3, LEDState::On); // Armed accumulated!
     assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, 0.5); // Default pan
 
     // === PHASE 3: Send updates to mapped tracks ===
@@ -1390,6 +1386,15 @@ fn test_complex_multi_track_integration() {
     // Should only send to new channel (4), not old channel (1)
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 4, 0.5);
     check_no_message!(&to_xtouch_rx, 100); // No additional messages
+
+    // Verify upstream messages from old channel (1) have no effect
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::MutePress(MutePress { idx: 1 }),
+        curr_mode,
+    );
+    // Should have no effect since track 1 is no longer mapped to channel 1
+    check_no_message!(&to_reaper_rx, 100);
+    check_no_message!(&to_xtouch_rx, 100);
 
     // === PHASE 5: Send updates to still-unmapped track 4, then map it ===
     // Track 4 gets multiple updates while unmapped

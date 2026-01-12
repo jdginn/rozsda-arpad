@@ -265,11 +265,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Soloed(soloed) => {
+                    self.get_track_state(msg.guid.clone())
+                        .buttons
+                        .solo
+                        .set(soloed);
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
-                        self.get_track_state(msg.guid.clone())
-                            .buttons
-                            .solo
-                            .set(soloed);
                         // Send solo LED update to XTouch
                         let _ =
                             self.to_xtouch
