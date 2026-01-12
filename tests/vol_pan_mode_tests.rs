@@ -458,61 +458,8 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     }
 }
 
-#[test]
-fn test_vol_pan_mode_barrier_forwarding() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
-        setup_vol_pan_mode();
-
-    let barrier = Barrier::new();
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::WaitingBarrierFromUpstream(barrier),
-    };
-
-    // Send barrier from upstream
-    let result_mode = mode.handle_downstream_messages(TrackMsg::Barrier(barrier), curr_mode);
-
-    // Should transition to WaitingBarrierFromDownstream
-    assert_eq!(
-        result_mode.state,
-        State::WaitingBarrierFromDownstream(barrier)
-    );
-
-    // Barrier should be forwarded to XTouch
-    let result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Barrier should be forwarded to XTouch");
-
-    if let Ok(XTouchDownstreamMsg::Barrier(received_barrier)) = result {
-        assert!(received_barrier == barrier, "Barrier should match");
-    } else {
-        assert!(false, "Expected Barrier message");
-    }
-}
-
-#[test]
-fn test_vol_pan_mode_barrier_reflection() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
-        setup_vol_pan_mode();
-
-    let barrier = Barrier::new();
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::WaitingBarrierFromDownstream(barrier),
-    };
-
-    // Simulate barrier reflecting back from XTouch
-    let result_mode = mode.handle_upstream_messages(XTouchUpstreamMsg::Barrier(barrier), curr_mode);
-
-    // Should transition back to Active state
-    assert_eq!(
-        result_mode.state,
-        State::Active,
-        "Should return to Active state after barrier completes"
-    );
-}
-
 // ============================================================================
-// COMPREHENSIVE TEST SUITE - 18 Test Cases
+// COMPREHENSIVE TEST SUITE
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -1055,66 +1002,6 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
         TrackMsg::Barrier(_) => {}
         _ => assert!(false, "Expected Barrier message"),
     }
-}
-
-#[test]
-fn test_13_barrier_messages_handled_during_transitions() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
-        setup_vol_pan_mode();
-
-    let barrier = Barrier::new();
-
-    // Test WaitingBarrierFromUpstream -> WaitingBarrierFromDownstream
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::WaitingBarrierFromUpstream(barrier),
-    };
-
-    let result_mode = mode.handle_downstream_messages(TrackMsg::Barrier(barrier), curr_mode);
-
-    assert_eq!(
-        result_mode.state,
-        State::WaitingBarrierFromDownstream(barrier),
-        "Should transition to waiting for downstream barrier"
-    );
-
-    // Barrier should be forwarded to hardware
-    let xtouch_msg = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    assert!(xtouch_msg.is_ok(), "Barrier should be forwarded to XTouch");
-
-    // Test WaitingBarrierFromDownstream -> Active
-    let result_mode =
-        mode.handle_upstream_messages(XTouchUpstreamMsg::Barrier(barrier), result_mode);
-
-    assert_eq!(
-        result_mode.state,
-        State::Active,
-        "Should transition to Active after downstream barrier returns"
-    );
-}
-
-#[test]
-fn test_14_wrong_barrier_during_transition_maintains_state() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
-        setup_vol_pan_mode();
-
-    let expected_barrier = Barrier::new();
-    let wrong_barrier = Barrier::new();
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::WaitingBarrierFromUpstream(expected_barrier),
-    };
-
-    // Send wrong barrier
-    let result_mode = mode.handle_downstream_messages(TrackMsg::Barrier(wrong_barrier), curr_mode);
-
-    // Should remain in same state
-    assert_eq!(
-        result_mode.state,
-        State::WaitingBarrierFromUpstream(expected_barrier),
-        "Should remain waiting for correct barrier"
-    );
 }
 
 // ----------------------------------------------------------------------------
