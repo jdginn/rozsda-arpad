@@ -297,6 +297,19 @@ fn assign_track_to_channel(
     )
 }
 
+/// Helper function to assert default track state messages after mapping
+/// Expects: fader at 0dB, all buttons off (LEDs off), pan at center (0.5)
+fn assert_downstream_default_track_mapping(
+    to_xtouch_rx: &Receiver<XTouchDownstreamMsg>,
+    hw_channel: i32,
+) {
+    assert_downstream_fader_abs_msg!(to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(to_xtouch_rx, hw_channel, 0.5);
+}
+
 #[test]
 fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
@@ -522,11 +535,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Send volume update
     mode.handle_downstream_messages(
@@ -724,11 +733,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Send mute state
     mode.handle_downstream_messages(
@@ -785,11 +790,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
 
     // First assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Send pan values - they should accumulate
     mode.handle_downstream_messages(
@@ -888,11 +889,7 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Simulate mute button press
     mode.handle_upstream_messages(
@@ -922,12 +919,7 @@ fn test_09_solo_button_sends_correct_messages() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Simulate solo button press
     mode.handle_upstream_messages(
@@ -957,11 +949,7 @@ fn test_10_arm_button_sends_correct_messages() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Simulate arm button press
     mode.handle_upstream_messages(
@@ -993,11 +981,7 @@ fn test_11_pan_encoder_changes_forward_correctly() {
 
     // Assign track to hardware channel and set initial pan
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
