@@ -17,7 +17,7 @@ use arpad_rust::midi::xtouch::{
     XTouchUpstreamMsg,
 };
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
-use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
+use arpad_rust::modes::reaper_vol_pan::{FADER_0DB, VolumePanMode};
 use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
 
 // EPSILON constant for floating-point threshold testing
@@ -61,7 +61,7 @@ const FLOAT_EPSILON: f64 = 0.0001;
 
 /// Helper to assert a FaderAbs message is received with the expected values
 #[macro_export]
-macro_rules! check_downstream_fader_abs_msg {
+macro_rules! assert_downstream_fader_abs_msg {
     ($rx:expr, $expected_idx:expr, $expected_value:expr) => {{
         let msg = $rx
             .recv_timeout(Duration::from_millis(100))
@@ -81,14 +81,14 @@ macro_rules! check_downstream_fader_abs_msg {
                 fader_msg.value
             );
         } else {
-            panic!("Expected XTouchDownstreamMsg::FaderAbs, but got another message type.");
+            panic!("Expected XTouchDownstreamMsg::FaderAbs, but got {:?}", msg);
         }
     }};
 }
 
 /// Macro to assert an EncoderRingLED message is received with the expected values
 #[macro_export]
-macro_rules! check_downstream_encoder_ring_led_msg {
+macro_rules! assert_downstream_encoder_ring_led_msg {
     ($rx:expr, $expected_idx:expr, $expected_pos:expr) => {{
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(
@@ -96,10 +96,10 @@ macro_rules! check_downstream_encoder_ring_led_msg {
             "Should receive XTouch encoder ring LED message"
         );
 
-        match result.unwrap() {
-            XTouchDownstreamMsg::EncoderRingLED(
+        match result {
+            Ok(XTouchDownstreamMsg::EncoderRingLED(
                 arpad_rust::midi::xtouch::EncoderRingLEDMsg::RangePoint(msg),
-            ) => {
+            )) => {
                 check!(msg.idx == $expected_idx, "Encoder index should match");
                 check!(
                     approx_eq!(f32, msg.pos, $expected_pos, epsilon = EPSILON),
@@ -108,7 +108,10 @@ macro_rules! check_downstream_encoder_ring_led_msg {
                     msg.pos
                 );
             }
-            _ => panic!("Expected EncoderRingLED RangePoint message"),
+            _ => panic!(
+                "Expected EncoderRingLED RangePoint message but got {:?}",
+                result
+            ),
         }
     }};
 }
@@ -120,15 +123,15 @@ macro_rules! assert_downstream_mute_led_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive MuteLED message");
 
-        match result.unwrap() {
-            XTouchDownstreamMsg::MuteLED(msg) => {
+        match result {
+            Ok(XTouchDownstreamMsg::MuteLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Mute LED index should match");
                 check!(
                     &msg.state == &$expected_state,
                     "Mute LED state should match"
                 );
             }
-            _ => panic!("Expected MuteLED message"),
+            _ => panic!("Expected MuteLED message but got {:?}", result),
         }
     }};
 }
@@ -140,15 +143,15 @@ macro_rules! assert_downstream_solo_led_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive SoloLED message");
 
-        match result.unwrap() {
-            XTouchDownstreamMsg::SoloLED(msg) => {
+        match result {
+            Ok(XTouchDownstreamMsg::SoloLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Solo LED index should match");
                 check!(
                     &msg.state == &$expected_state,
                     "Solo LED state should match"
                 );
             }
-            _ => panic!("Expected SoloLED message"),
+            _ => panic!("Expected SoloLED message but got {:?}", result),
         }
     }};
 }
@@ -160,12 +163,12 @@ macro_rules! assert_downstream_arm_led_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive ArmLED message");
 
-        match result.unwrap() {
-            XTouchDownstreamMsg::ArmLED(msg) => {
+        match result {
+            Ok(XTouchDownstreamMsg::ArmLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Arm LED index should match");
                 check!(&msg.state == &$expected_state, "Arm LED state should match");
             }
-            _ => panic!("Expected ArmLED message"),
+            _ => panic!("Expected ArmLED message but got {:?}", result),
         }
     }};
 }
@@ -177,8 +180,8 @@ macro_rules! assert_volume_track_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive volume message to Reaper");
 
-        match result.unwrap() {
-            TrackMsg::TrackDataMsg(msg) => {
+        match result {
+            Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
                 check!(msg.direction == Direction::Upstream, "Should be upstream");
                 match msg.data {
@@ -193,7 +196,7 @@ macro_rules! assert_volume_track_msg {
                     _ => panic!("Expected Volume payload"),
                 }
             }
-            _ => panic!("Expected TrackDataMsg"),
+            _ => panic!("Expected TrackDataMsg but got {:?}", result),
         }
     }};
 }
@@ -205,8 +208,8 @@ macro_rules! assert_upstream_muted_track_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive muted message to Reaper");
 
-        match result.unwrap() {
-            TrackMsg::TrackDataMsg(msg) => {
+        match result {
+            Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
                 match msg.data {
                     DataPayload::Muted(muted) => {
@@ -215,7 +218,7 @@ macro_rules! assert_upstream_muted_track_msg {
                     _ => panic!("Expected Muted payload"),
                 }
             }
-            _ => panic!("Expected TrackDataMsg"),
+            _ => panic!("Expected TrackDataMsg but got {:?}", result),
         }
     }};
 }
@@ -227,8 +230,8 @@ macro_rules! assert_upstream_soloed_track_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive soloed message to Reaper");
 
-        match result.unwrap() {
-            TrackMsg::TrackDataMsg(msg) => {
+        match result {
+            Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
                 match msg.data {
                     DataPayload::Soloed(soloed) => {
@@ -237,7 +240,7 @@ macro_rules! assert_upstream_soloed_track_msg {
                     _ => panic!("Expected Soloed payload"),
                 }
             }
-            _ => panic!("Expected TrackDataMsg"),
+            _ => panic!("Expected TrackDataMsg but got {:?}", result),
         }
     }};
 }
@@ -249,8 +252,8 @@ macro_rules! assert_upstream_armed_track_msg {
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive armed message to Reaper");
 
-        match result.unwrap() {
-            TrackMsg::TrackDataMsg(msg) => {
+        match result {
+            Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
                 match msg.data {
                     DataPayload::Armed(armed) => {
@@ -259,7 +262,7 @@ macro_rules! assert_upstream_armed_track_msg {
                     _ => panic!("Expected Armed payload"),
                 }
             }
-            _ => panic!("Expected TrackDataMsg"),
+            _ => panic!("Expected TrackDataMsg but got {:?}", result),
         }
     }};
 }
@@ -271,7 +274,8 @@ macro_rules! check_no_message {
         let result = $rx.recv_timeout(std::time::Duration::from_millis($timeout_ms));
         check!(
             result.is_err(),
-            "Should not receive any message, but got one!"
+            "Should not receive any message, but got {:?}!",
+            result
         );
     }};
 }
@@ -351,6 +355,8 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
         curr_mode,
     );
 
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+
     // Now send a volume update
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -382,66 +388,6 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
         );
     } else {
         // else case handled by check! above
-    }
-}
-
-#[test]
-fn test_vol_pan_mode_mute_button_toggles() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
-        setup_vol_pan_mode();
-
-    let track_guid = "track-guid-3".to_string();
-    let hw_channel = 1;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-    };
-
-    // Assign track to hardware channel
-    mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.clone(),
-            direction: Direction::Downstream,
-            data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
-        }),
-        curr_mode,
-    );
-
-    // Simulate mute button press
-    let msg = XTouchUpstreamMsg::MutePress(MutePress { idx: hw_channel });
-
-    mode.handle_upstream_messages(msg, curr_mode);
-
-    // Should receive:
-    // 1. TrackMsg to Reaper setting mute to true
-    // 2. LED update to XTouch showing mute is on
-
-    let track_msg_result = to_reaper_rx.recv_timeout(Duration::from_millis(100));
-    check!(
-        track_msg_result.is_ok(),
-        "Should send mute message to Reaper"
-    );
-
-    if let Ok(TrackMsg::TrackDataMsg(msg)) = track_msg_result {
-        assert_eq!(msg.guid, track_guid);
-        if let DataPayload::Muted(muted) = msg.data {
-            check!(muted, "First toggle should mute the track");
-        } else {
-            panic!("Expected Muted payload");
-        }
-    } else {
-        // else case handled by check! above
-    }
-
-    let led_msg_result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    check!(led_msg_result.is_ok(), "Should send LED update to XTouch");
-
-    if let Ok(XTouchDownstreamMsg::MuteLED(led_msg)) = led_msg_result {
-        check!(led_msg.state == LEDState::On, "LED should be on after mute");
-        check!(led_msg.state == LEDState::On, "LED should be on after mute");
-    } else {
-        panic!("Expected MuteLED message");
     }
 }
 
@@ -576,6 +522,11 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
     // Send volume update
     mode.handle_downstream_messages(
@@ -588,7 +539,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     );
 
     // Assert fader message is sent to hardware
-    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, test_volume as f64);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, test_volume as f64);
 }
 
 #[test]
@@ -696,6 +647,11 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
 
     // Assign track to first hardware channel and send volume
     assign_track_to_channel(&mut mode, &track_guid, hw_channel_1, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_1, 0.5);
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
@@ -704,7 +660,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         }),
         curr_mode,
     );
-    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_1 as f64);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_1 as f64);
 
     // Update volume
     mode.handle_downstream_messages(
@@ -715,10 +671,15 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         }),
         curr_mode,
     );
-    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
 
     // Remap to different channel - old mapping should be cleared
     assign_track_to_channel(&mut mode, &track_guid, hw_channel_2, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_2, volume_2 as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_2, 0.5);
 
     // Verify the track can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(&track_guid);
@@ -745,7 +706,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     );
 
     // Volume update should go to the new channel (hw_channel_2)
-    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
 }
 
 #[test]
@@ -763,6 +724,11 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
     // Send mute state
     mode.handle_downstream_messages(
@@ -819,6 +785,11 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
 
     // First assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
     // Send pan values - they should accumulate
     mode.handle_downstream_messages(
@@ -831,7 +802,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     );
 
     // First value should be sent
-    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_1);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_1);
 
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -843,11 +814,10 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     );
 
     // Updated value should be sent
-    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
 }
 
 #[test]
-#[ignore] // TODO: Implementation limitation - state not accumulated for unmapped tracks
 fn test_pan_state_accumulates_before_mapping() {
     // This test demonstrates IDEAL behavior: state should accumulate for unmapped tracks
     // and be sent downstream when the track is mapped.
@@ -892,9 +862,11 @@ fn test_pan_state_accumulates_before_mapping() {
 
     // NOW assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
-
-    // IDEAL: The accumulated state (most recent pan value) should be sent downstream
-    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
 }
 
 // ----------------------------------------------------------------------------
@@ -916,6 +888,11 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
     // Simulate mute button press
     mode.handle_upstream_messages(
@@ -946,6 +923,12 @@ fn test_09_solo_button_sends_correct_messages() {
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
 
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+
     // Simulate solo button press
     mode.handle_upstream_messages(
         XTouchUpstreamMsg::SoloPress(SoloPress { idx: hw_channel }),
@@ -974,6 +957,11 @@ fn test_10_arm_button_sends_correct_messages() {
 
     // Assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
     // Simulate arm button press
     mode.handle_upstream_messages(
@@ -1005,6 +993,12 @@ fn test_11_pan_encoder_changes_forward_correctly() {
 
     // Assign track to hardware channel and set initial pan
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
@@ -1158,6 +1152,11 @@ fn test_15_downstream_messages_sent_in_correct_order() {
 
     // Assign track
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
     // Send multiple messages in order
     mode.handle_downstream_messages(
@@ -1222,6 +1221,11 @@ fn test_16_upstream_messages_processed_in_correct_order() {
 
     // Assign track
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&_to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&_to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&_to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&_to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&_to_xtouch_rx, hw_channel, 0.5);
 
     // Send multiple upstream messages in order
     mode.handle_upstream_messages(
@@ -1278,6 +1282,12 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
 
     // Assign track and set initial volume
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
@@ -1286,7 +1296,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
         }),
         curr_mode,
     );
-    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, initial_volume as f64);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, initial_volume as f64);
 
     // Send volume change smaller than EPSILON
     let small_change = initial_volume + (EPSILON / 2.0);
@@ -1320,6 +1330,12 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
 
     // Assign track and set initial pan
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
@@ -1328,7 +1344,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         }),
         curr_mode,
     );
-    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, initial_pan);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, initial_pan);
 
     // Send pan change smaller than EPSILON
     let small_change = initial_pan + (EPSILON / 2.0);
