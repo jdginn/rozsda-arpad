@@ -1,17 +1,12 @@
-use arpad_rust::track::track::{
-    DataPayload, Direction, SendIndex, SendLevel, TrackDataMsg, TrackManager, TrackMsg,
-    TrackQuery,
-};
 use arpad_rust::modes::mode_manager::Barrier;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use arpad_rust::track::track::{
+    DataPayload, Direction, SendIndex, SendLevel, TrackDataMsg, TrackManager, TrackMsg, TrackQuery,
+};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use std::time::Duration;
 
 /// Helper to create a test TrackManager setup with channels
-fn setup_track_manager() -> (
-    Sender<TrackMsg>,
-    Receiver<TrackMsg>,
-    Receiver<TrackMsg>,
-) {
+fn setup_track_manager() -> (Sender<TrackMsg>, Receiver<TrackMsg>, Receiver<TrackMsg>) {
     let (input_tx, input_rx) = bounded(128);
     let (upstream_tx, upstream_rx) = bounded(128);
     let (downstream_tx, downstream_rx) = bounded(128);
@@ -34,7 +29,7 @@ fn test_track_manager_forwards_barriers() {
     // Barrier should be forwarded downstream
     let result = downstream_rx.recv_timeout(Duration::from_millis(100));
     assert!(result.is_ok(), "Barrier should be forwarded downstream");
-    
+
     if let Ok(TrackMsg::Barrier(received_barrier)) = result {
         assert_eq!(received_barrier, barrier, "Barrier ID should match");
     } else {
@@ -302,7 +297,10 @@ fn test_track_manager_query_nonexistent_track() {
     // Option 2: Receive a TrackData with default/empty values
     // Option 3: Receive an error message
     let result = upstream_rx.recv_timeout(Duration::from_millis(100));
-    
+
     // Currently, the implementation doesn't send anything if track doesn't exist
-    assert!(result.is_err(), "Query for nonexistent track currently returns nothing");
+    assert!(
+        result.is_err(),
+        "Query for nonexistent track currently returns nothing"
+    );
 }

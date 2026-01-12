@@ -1,14 +1,12 @@
 // Integration tests for mode transitions
 //
-// These tests verify the complete mode transition flow involving ModeManager, 
+// These tests verify the complete mode transition flow involving ModeManager,
 // VolumePanMode, and TrackSendsMode working together.
 
+use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeManager, ModeState, State};
-use arpad_rust::midi::xtouch::{
-    FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg,
-};
 use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use std::time::Duration;
 
 /// Helper to set up channels for mode transition testing
@@ -60,19 +58,17 @@ fn test_mode_transition_vol_pan_to_sends() {
 
     // Initiate mode transition by sending MIDITracksPress
     // This should trigger a transition from ReaperVolPan to ReaperSends
-    xtouch_tx
-        .send(XTouchUpstreamMsg::MIDITracksPress)
-        .unwrap();
+    xtouch_tx.send(XTouchUpstreamMsg::MIDITracksPress).unwrap();
 
     // We should expect:
     // 1. TrackQuery for the selected track
     // 2. Barrier message sent upstream (would go to TrackManager in real system)
     // NOTE: The barrier doesn't directly go to XTouch in this test setup because
     // we're missing TrackManager which would normally forward it.
-    
+
     let mut saw_track_query = false;
     let mut saw_barrier = false;
-    
+
     let timeout = std::time::Instant::now();
     while timeout.elapsed() < Duration::from_millis(200) {
         if let Ok(msg) = to_reaper_rx.recv_timeout(Duration::from_millis(10)) {
@@ -91,11 +87,16 @@ fn test_mode_transition_vol_pan_to_sends() {
             }
         }
     }
-    
-    println!("Test results: query={}, barrier={}", 
-             saw_track_query, saw_barrier);
-    
-    assert!(saw_track_query, "Should send TrackQuery during mode transition");
+
+    println!(
+        "Test results: query={}, barrier={}",
+        saw_track_query, saw_barrier
+    );
+
+    assert!(
+        saw_track_query,
+        "Should send TrackQuery during mode transition"
+    );
     assert!(saw_barrier, "Should send Barrier during mode transition");
 }
 
@@ -103,7 +104,7 @@ fn test_mode_transition_vol_pan_to_sends() {
 fn test_mode_transition_sends_to_vol_pan() {
     // This test verifies that we can transition from Sends mode back to VolPan mode.
     // With the fix to handle_transitions, the barrier cycle now completes properly.
-    
+
     let (reaper_tx, to_reaper_rx, xtouch_tx, _to_xtouch_rx) = setup_mode_transition_test();
 
     // Setup: Assign track and mark as selected
@@ -115,9 +116,9 @@ fn test_mode_transition_sends_to_vol_pan() {
             data: DataPayload::ReaperTrackIndex(Some(0)),
         }))
         .unwrap();
-        
+
     std::thread::sleep(Duration::from_millis(50));
-    
+
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: test_guid.clone(),
@@ -129,12 +130,10 @@ fn test_mode_transition_sends_to_vol_pan() {
     std::thread::sleep(Duration::from_millis(50));
 
     // First transition to sends mode
-    xtouch_tx
-        .send(XTouchUpstreamMsg::MIDITracksPress)
-        .unwrap();
+    xtouch_tx.send(XTouchUpstreamMsg::MIDITracksPress).unwrap();
 
     std::thread::sleep(Duration::from_millis(50));
-    
+
     // Verify first transition initiated
     let mut saw_first_query = false;
     while let Ok(msg) = to_reaper_rx.recv_timeout(Duration::from_millis(10)) {
@@ -142,22 +141,20 @@ fn test_mode_transition_sends_to_vol_pan() {
             saw_first_query = true;
         }
     }
-    
+
     assert!(saw_first_query, "First transition should initiate");
-    
+
     // NOTE: In a real system with TrackManager, we would complete the barrier cycle here.
     // For this test, we just verify that sending GlobalPress doesn't panic and does
     // request a transition (even if the full cycle doesn't complete).
-    
+
     std::thread::sleep(Duration::from_millis(100));
 
     // Try to transition back - this should not panic
-    xtouch_tx
-        .send(XTouchUpstreamMsg::GlobalPress)
-        .unwrap();
+    xtouch_tx.send(XTouchUpstreamMsg::GlobalPress).unwrap();
 
     std::thread::sleep(Duration::from_millis(100));
-    
+
     // System should still be responsive
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -166,7 +163,7 @@ fn test_mode_transition_sends_to_vol_pan() {
             data: DataPayload::Volume(0.5),
         }))
         .unwrap();
-    
+
     std::thread::sleep(Duration::from_millis(50));
 }
 
@@ -174,7 +171,7 @@ fn test_mode_transition_sends_to_vol_pan() {
 fn test_messages_during_barrier_synchronization() {
     // This test verifies that upstream messages (from XTouch) are properly blocked
     // during the WaitingBarrierFromDownstream phase of a mode transition
-    
+
     let (reaper_tx, to_reaper_rx, xtouch_tx, to_xtouch_rx) = setup_mode_transition_test();
 
     // Setup a track
@@ -192,7 +189,7 @@ fn test_messages_during_barrier_synchronization() {
     // Send a barrier which will put us in WaitingBarrierFromDownstream state
     let barrier = Barrier::new();
     reaper_tx.send(TrackMsg::Barrier(barrier)).unwrap();
-    
+
     std::thread::sleep(Duration::from_millis(50));
 
     // Now try to send upstream messages from XTouch before the barrier is reflected
@@ -218,13 +215,15 @@ fn test_messages_during_barrier_synchronization() {
                 // Expected during transition initiation
             }
             TrackMsg::TrackDataMsg(msg) => {
-                if matches!(msg.data, DataPayload::Volume(_)) && msg.direction == Direction::Upstream {
+                if matches!(msg.data, DataPayload::Volume(_))
+                    && msg.direction == Direction::Upstream
+                {
                     saw_volume_from_fader = true;
                 }
             }
         }
     }
-    
+
     // The behavior depends on the exact state. The test documents the actual behavior.
     // In practice, the ModeManager blocks upstream messages in WaitingBarrierFromDownstream state
     // but the exact timing depends on when the barrier transitions the state.
@@ -236,7 +235,7 @@ fn test_messages_during_barrier_synchronization() {
 fn test_downstream_messages_during_transition() {
     // Test that downstream messages (from Reaper) are still processed during transitions
     // This is important because Reaper state updates should always be authoritative
-    
+
     let (reaper_tx, to_reaper_rx, xtouch_tx, to_xtouch_rx) = setup_mode_transition_test();
 
     // Setup a track
@@ -266,7 +265,7 @@ fn test_downstream_messages_during_transition() {
 
     // The volume update should be forwarded to XTouch even during transition
     // because downstream (Reaper) is always authoritative
-    
+
     let mut found_volume_update = false;
     let timeout = std::time::Instant::now();
     while timeout.elapsed() < Duration::from_millis(200) {
@@ -292,7 +291,7 @@ fn test_downstream_messages_during_transition() {
 #[test]
 fn test_barrier_reflection_completes_transition() {
     // Test the full barrier synchronization cycle
-    
+
     let (reaper_tx, to_reaper_rx, xtouch_tx, to_xtouch_rx) = setup_mode_transition_test();
 
     // Setup a track
@@ -319,7 +318,7 @@ fn test_barrier_reflection_completes_transition() {
             if let XTouchDownstreamMsg::Barrier(recv_barrier) = msg {
                 if recv_barrier == barrier {
                     barrier_forwarded = true;
-                    
+
                     // Reflect the barrier back upstream
                     xtouch_tx.send(XTouchUpstreamMsg::Barrier(barrier)).unwrap();
                     break;
@@ -334,7 +333,7 @@ fn test_barrier_reflection_completes_transition() {
 
     // After barrier reflection, system should be back in Active state
     // and normal message processing should resume
-    
+
     // Send a fader message
     xtouch_tx
         .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
@@ -367,7 +366,7 @@ fn test_barrier_reflection_completes_transition() {
 fn test_rapid_mode_transitions() {
     // Test what happens with rapid mode transition requests
     // This is an edge case that could expose race conditions
-    
+
     let (reaper_tx, _to_reaper_rx, _xtouch_tx, to_xtouch_rx) = setup_mode_transition_test();
 
     // Setup a track with index (Selected isn't handled by VolumePanMode)
@@ -392,7 +391,7 @@ fn test_rapid_mode_transitions() {
     // 1. The system doesn't crash or deadlock
     // 2. Only the final mode transition completes
     // 3. Intermediate barriers are properly handled/ignored
-    
+
     // For now, just verify the system is still responsive
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -403,17 +402,21 @@ fn test_rapid_mode_transitions() {
         .unwrap();
 
     std::thread::sleep(Duration::from_millis(100));
-    
+
     // System should still be processing messages
-    assert!(to_xtouch_rx.recv_timeout(Duration::from_millis(100)).is_ok(),
-            "System should still be responsive after rapid transition attempts");
+    assert!(
+        to_xtouch_rx
+            .recv_timeout(Duration::from_millis(100))
+            .is_ok(),
+        "System should still be responsive after rapid transition attempts"
+    );
 }
 
 #[test]
 fn test_mode_transition_without_selected_track() {
     // Test attempting to transition to TrackSends mode when no track is selected
     // This should be handled gracefully
-    
+
     let (reaper_tx, to_reaper_rx, xtouch_tx, to_xtouch_rx) = setup_mode_transition_test();
 
     std::thread::sleep(Duration::from_millis(50));
@@ -426,9 +429,9 @@ fn test_mode_transition_without_selected_track() {
     // 1. The transition is not initiated (no barrier sent)
     // 2. System remains in VolPan mode
     // 3. No error/panic occurs
-    
+
     std::thread::sleep(Duration::from_millis(50));
-    
+
     // System should still be functional - send a regular message
     let test_guid = "test-track-7".to_string();
     reaper_tx
@@ -440,7 +443,7 @@ fn test_mode_transition_without_selected_track() {
         .unwrap();
 
     std::thread::sleep(Duration::from_millis(50));
-    
+
     // Just verify system is still running (doesn't assert specific behavior until implemented)
 }
 
