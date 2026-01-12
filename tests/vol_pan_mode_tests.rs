@@ -6,6 +6,11 @@
 // This comprehensive test suite implements all 18 test cases from the test plan,
 // covering mapping, state accumulation, message flow, mode transitions, ordering,
 // and threshold testing.
+use std::time::Duration;
+
+use assert2::{assert, check};
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use float_cmp::approx_eq;
 
 use arpad_rust::midi::xtouch::{
     ArmPress, EncoderTurnCW, FaderAbsMsg, LEDState, MutePress, SoloPress, XTouchDownstreamMsg,
@@ -14,8 +19,6 @@ use arpad_rust::midi::xtouch::{
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
 use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
-use crossbeam_channel::{Receiver, Sender, unbounded};
-use std::time::Duration;
 
 // EPSILON constant for floating-point threshold testing
 const EPSILON: f32 = 0.01;
@@ -54,218 +57,223 @@ fn setup_vol_pan_mode() -> (
 // Helper Functions for Asserting Messages
 // ============================================================================
 
+const FLOAT_EPSILON: f64 = 0.0001;
+
 /// Helper to assert a FaderAbs message is received with the expected values
-fn assert_downstream_fader_abs_msg(
-    rx: &Receiver<XTouchDownstreamMsg>,
-    expected_idx: i32,
-    expected_value: f64,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive XTouch fader message");
+#[macro_export]
+macro_rules! check_downstream_fader_abs_msg {
+    ($rx:expr, $expected_idx:expr, $expected_value:expr) => {{
+        let msg = $rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("Expected to receive a FaderAbs message.");
 
-    match result.unwrap() {
-        XTouchDownstreamMsg::FaderAbs(fader_msg) => {
-            assert_eq!(fader_msg.idx, expected_idx, "Fader index should match");
-            assert_eq!(fader_msg.value, expected_value, "Fader value should match");
-        }
-        _ => panic!("Expected FaderAbs message"),
-    }
-}
-
-/// Helper to assert an EncoderRingLED message is received with the expected values
-fn assert_downstream_encoder_ring_led_msg(
-    rx: &Receiver<XTouchDownstreamMsg>,
-    expected_idx: i32,
-    expected_pos: f32,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(
-        result.is_ok(),
-        "Should receive XTouch encoder ring LED message"
-    );
-
-    match result.unwrap() {
-        XTouchDownstreamMsg::EncoderRingLED(
-            arpad_rust::midi::xtouch::EncoderRingLEDMsg::RangePoint(msg),
-        ) => {
-            assert_eq!(msg.idx, expected_idx, "Encoder index should match");
-            assert_eq!(msg.pos, expected_pos, "Encoder position should match");
-        }
-        _ => panic!("Expected EncoderRingLED RangePoint message"),
-    }
-}
-
-/// Helper to assert a MuteLED message is received
-fn assert_downstream_mute_led_msg(
-    rx: &Receiver<XTouchDownstreamMsg>,
-    expected_idx: i32,
-    expected_state: LEDState,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive MuteLED message");
-
-    match result.unwrap() {
-        XTouchDownstreamMsg::MuteLED(msg) => {
-            assert_eq!(msg.idx, expected_idx, "Mute LED index should match");
-            match (&msg.state, &expected_state) {
-                (LEDState::On, LEDState::On)
-                | (LEDState::Off, LEDState::Off)
-                | (LEDState::Flash, LEDState::Flash) => {}
-                _ => panic!(
-                    "Mute LED state should match expected: {:?}, got: {:?}",
-                    expected_state, msg.state
+        if let XTouchDownstreamMsg::FaderAbs(fader_msg) = msg {
+            check!(fader_msg.idx == $expected_idx);
+            check!(
+                approx_eq!(
+                    f64,
+                    fader_msg.value,
+                    $expected_value,
+                    epsilon = FLOAT_EPSILON
                 ),
-            }
+                "Fader value should match approximately\nExpected: {}, Got: {}",
+                $expected_value,
+                fader_msg.value
+            );
+        } else {
+            panic!("Expected XTouchDownstreamMsg::FaderAbs, but got another message type.");
         }
-        _ => panic!("Expected MuteLED message"),
-    }
+    }};
 }
 
-/// Helper to assert a SoloLED message is received
-fn assert_downstream_solo_led_msg(
-    rx: &Receiver<XTouchDownstreamMsg>,
-    expected_idx: i32,
-    expected_state: LEDState,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive SoloLED message");
+/// Macro to assert an EncoderRingLED message is received with the expected values
+#[macro_export]
+macro_rules! check_downstream_encoder_ring_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_pos:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(
+            result.is_ok(),
+            "Should receive XTouch encoder ring LED message"
+        );
 
-    match result.unwrap() {
-        XTouchDownstreamMsg::SoloLED(msg) => {
-            assert_eq!(msg.idx, expected_idx, "Solo LED index should match");
-            match (&msg.state, &expected_state) {
-                (LEDState::On, LEDState::On)
-                | (LEDState::Off, LEDState::Off)
-                | (LEDState::Flash, LEDState::Flash) => {}
-                _ => panic!(
-                    "Solo LED state should match expected: {:?}, got: {:?}",
-                    expected_state, msg.state
-                ),
+        match result.unwrap() {
+            XTouchDownstreamMsg::EncoderRingLED(
+                arpad_rust::midi::xtouch::EncoderRingLEDMsg::RangePoint(msg),
+            ) => {
+                check!(msg.idx == $expected_idx, "Encoder index should match");
+                check!(
+                    approx_eq!(f32, msg.pos, $expected_pos, epsilon = EPSILON),
+                    "Encoder position should match approximately\nExpected: {}, Got: {}",
+                    $expected_pos,
+                    msg.pos
+                );
             }
+            _ => panic!("Expected EncoderRingLED RangePoint message"),
         }
-        _ => panic!("Expected SoloLED message"),
-    }
+    }};
 }
 
-/// Helper to assert an ArmLED message is received
-fn assert_downstream_arm_led_msg(
-    rx: &Receiver<XTouchDownstreamMsg>,
-    expected_idx: i32,
-    expected_state: LEDState,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive ArmLED message");
+/// Macro to assert a MuteLED message is received
+#[macro_export]
+macro_rules! assert_downstream_mute_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_state:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive MuteLED message");
 
-    match result.unwrap() {
-        XTouchDownstreamMsg::ArmLED(msg) => {
-            assert_eq!(msg.idx, expected_idx, "Arm LED index should match");
-            match (&msg.state, &expected_state) {
-                (LEDState::On, LEDState::On)
-                | (LEDState::Off, LEDState::Off)
-                | (LEDState::Flash, LEDState::Flash) => {}
-                _ => panic!(
-                    "Arm LED state should match expected: {:?}, got: {:?}",
-                    expected_state, msg.state
-                ),
+        match result.unwrap() {
+            XTouchDownstreamMsg::MuteLED(msg) => {
+                check!(msg.idx == $expected_idx, "Mute LED index should match");
+                check!(
+                    &msg.state == &$expected_state,
+                    "Mute LED state should match"
+                );
             }
+            _ => panic!("Expected MuteLED message"),
         }
-        _ => panic!("Expected ArmLED message"),
-    }
+    }};
 }
 
-/// Helper to assert a Volume TrackDataMsg is received upstream
-fn assert_volume_track_msg(rx: &Receiver<TrackMsg>, expected_guid: &str, expected_value: f32) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive volume message to Reaper");
+/// Macro to assert a SoloLED message is received
+#[macro_export]
+macro_rules! assert_downstream_solo_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_state:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive SoloLED message");
 
-    match result.unwrap() {
-        TrackMsg::TrackDataMsg(msg) => {
-            assert_eq!(msg.guid, expected_guid, "Track GUID should match");
-            assert_eq!(msg.direction, Direction::Upstream, "Should be upstream");
-            match msg.data {
-                DataPayload::Volume(volume) => {
-                    assert_eq!(volume, expected_value, "Volume should match");
+        match result.unwrap() {
+            XTouchDownstreamMsg::SoloLED(msg) => {
+                check!(msg.idx == $expected_idx, "Solo LED index should match");
+                check!(
+                    &msg.state == &$expected_state,
+                    "Solo LED state should match"
+                );
+            }
+            _ => panic!("Expected SoloLED message"),
+        }
+    }};
+}
+
+/// Macro to assert an ArmLED message is received
+#[macro_export]
+macro_rules! assert_downstream_arm_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_state:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive ArmLED message");
+
+        match result.unwrap() {
+            XTouchDownstreamMsg::ArmLED(msg) => {
+                check!(msg.idx == $expected_idx, "Arm LED index should match");
+                check!(&msg.state == &$expected_state, "Arm LED state should match");
+            }
+            _ => panic!("Expected ArmLED message"),
+        }
+    }};
+}
+
+/// Macro to assert a Volume TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_volume_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_value:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive volume message to Reaper");
+
+        match result.unwrap() {
+            TrackMsg::TrackDataMsg(msg) => {
+                check!(&msg.guid == $expected_guid, "Track GUID should match");
+                check!(msg.direction == Direction::Upstream, "Should be upstream");
+                match msg.data {
+                    DataPayload::Volume(volume) => {
+                        check!(
+                            approx_eq!(f32, volume, $expected_value, epsilon = EPSILON),
+                            "Volume should match approximately\nExpected: {}, Got: {}",
+                            $expected_value,
+                            volume
+                        );
+                    }
+                    _ => panic!("Expected Volume payload"),
                 }
-                _ => panic!("Expected Volume payload"),
             }
+            _ => panic!("Expected TrackDataMsg"),
         }
-        _ => panic!("Expected TrackDataMsg"),
-    }
+    }};
 }
 
-/// Helper to assert a Muted TrackDataMsg is received upstream
-fn assert_upstream_muted_track_msg(
-    rx: &Receiver<TrackMsg>,
-    expected_guid: &str,
-    expected_muted: bool,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive muted message to Reaper");
+/// Macro to assert a Muted TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_upstream_muted_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_muted:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive muted message to Reaper");
 
-    match result.unwrap() {
-        TrackMsg::TrackDataMsg(msg) => {
-            assert_eq!(msg.guid, expected_guid, "Track GUID should match");
-            match msg.data {
-                DataPayload::Muted(muted) => {
-                    assert_eq!(muted, expected_muted, "Muted state should match");
+        match result.unwrap() {
+            TrackMsg::TrackDataMsg(msg) => {
+                check!(&msg.guid == $expected_guid, "Track GUID should match");
+                match msg.data {
+                    DataPayload::Muted(muted) => {
+                        check!(muted == $expected_muted, "Muted state should match");
+                    }
+                    _ => panic!("Expected Muted payload"),
                 }
-                _ => panic!("Expected Muted payload"),
             }
+            _ => panic!("Expected TrackDataMsg"),
         }
-        _ => panic!("Expected TrackDataMsg"),
-    }
+    }};
 }
 
-/// Helper to assert a Soloed TrackDataMsg is received upstream
-fn assert_upstream_soloed_track_msg(
-    rx: &Receiver<TrackMsg>,
-    expected_guid: &str,
-    expected_soloed: bool,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive soloed message to Reaper");
+/// Macro to assert a Soloed TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_upstream_soloed_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_soloed:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive soloed message to Reaper");
 
-    match result.unwrap() {
-        TrackMsg::TrackDataMsg(msg) => {
-            assert_eq!(msg.guid, expected_guid, "Track GUID should match");
-            match msg.data {
-                DataPayload::Soloed(soloed) => {
-                    assert_eq!(soloed, expected_soloed, "Soloed state should match");
+        match result.unwrap() {
+            TrackMsg::TrackDataMsg(msg) => {
+                check!(&msg.guid == $expected_guid, "Track GUID should match");
+                match msg.data {
+                    DataPayload::Soloed(soloed) => {
+                        check!(soloed == $expected_soloed, "Soloed state should match");
+                    }
+                    _ => panic!("Expected Soloed payload"),
                 }
-                _ => panic!("Expected Soloed payload"),
             }
+            _ => panic!("Expected TrackDataMsg"),
         }
-        _ => panic!("Expected TrackDataMsg"),
-    }
+    }};
 }
 
-/// Helper to assert an Armed TrackDataMsg is received upstream
-fn assert_upstream_armed_track_msg(
-    rx: &Receiver<TrackMsg>,
-    expected_guid: &str,
-    expected_armed: bool,
-) {
-    let result = rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive armed message to Reaper");
+/// Macro to assert an Armed TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_upstream_armed_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_armed:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive armed message to Reaper");
 
-    match result.unwrap() {
-        TrackMsg::TrackDataMsg(msg) => {
-            assert_eq!(msg.guid, expected_guid, "Track GUID should match");
-            match msg.data {
-                DataPayload::Armed(armed) => {
-                    assert_eq!(armed, expected_armed, "Armed state should match");
+        match result.unwrap() {
+            TrackMsg::TrackDataMsg(msg) => {
+                check!(&msg.guid == $expected_guid, "Track GUID should match");
+                match msg.data {
+                    DataPayload::Armed(armed) => {
+                        check!(armed == $expected_armed, "Armed state should match");
+                    }
+                    _ => panic!("Expected Armed payload"),
                 }
-                _ => panic!("Expected Armed payload"),
             }
+            _ => panic!("Expected TrackDataMsg"),
         }
-        _ => panic!("Expected TrackDataMsg"),
-    }
+    }};
 }
 
-/// Helper to assert no message is received within timeout
-fn assert_no_message<T>(rx: &Receiver<T>, timeout_ms: u64) {
-    let result = rx.recv_timeout(Duration::from_millis(timeout_ms));
-    assert!(result.is_err(), "Should not receive any message");
+/// Macro to assert no message is received within timeout
+#[macro_export]
+macro_rules! check_no_message {
+    ($rx:expr, $timeout_ms:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis($timeout_ms));
+        check!(
+            result.is_err(),
+            "Should not receive any message, but got one!"
+        );
+    }};
 }
 
 /// Helper function to assign a track to a hardware channel
@@ -357,14 +365,23 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     let result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     assert!(result.is_ok(), "Should receive XTouch fader message");
 
+    check!(result.is_ok(), "Should receive XTouch fader message");
+
     if let Ok(XTouchDownstreamMsg::FaderAbs(fader_msg)) = result {
-        assert_eq!(fader_msg.idx, hw_channel, "Fader index should match");
-        assert_eq!(
-            fader_msg.value, test_volume as f64,
-            "Fader value should match volume"
+        check!(fader_msg.idx == hw_channel, "Fader index should match");
+        check!(
+            approx_eq!(
+                f64,
+                fader_msg.value,
+                test_volume as f64,
+                epsilon = FLOAT_EPSILON
+            ),
+            "Fader value should match approximately\nExpected: {}, Got: {}",
+            test_volume as f64,
+            fader_msg.value
         );
     } else {
-        panic!("Expected FaderAbs message");
+        // else case handled by check! above
     }
 }
 
@@ -401,7 +418,7 @@ fn test_vol_pan_mode_mute_button_toggles() {
     // 2. LED update to XTouch showing mute is on
 
     let track_msg_result = to_reaper_rx.recv_timeout(Duration::from_millis(100));
-    assert!(
+    check!(
         track_msg_result.is_ok(),
         "Should send mute message to Reaper"
     );
@@ -409,23 +426,20 @@ fn test_vol_pan_mode_mute_button_toggles() {
     if let Ok(TrackMsg::TrackDataMsg(msg)) = track_msg_result {
         assert_eq!(msg.guid, track_guid);
         if let DataPayload::Muted(muted) = msg.data {
-            assert!(muted, "First toggle should mute the track");
+            check!(muted, "First toggle should mute the track");
         } else {
             panic!("Expected Muted payload");
         }
     } else {
-        panic!("Expected TrackDataMsg");
+        // else case handled by check! above
     }
 
     let led_msg_result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    assert!(led_msg_result.is_ok(), "Should send LED update to XTouch");
+    check!(led_msg_result.is_ok(), "Should send LED update to XTouch");
 
     if let Ok(XTouchDownstreamMsg::MuteLED(led_msg)) = led_msg_result {
-        assert_eq!(led_msg.idx, hw_channel);
-        assert!(
-            matches!(led_msg.state, LEDState::On),
-            "LED should be on after mute"
-        );
+        check!(led_msg.state == LEDState::On, "LED should be on after mute");
+        check!(led_msg.state == LEDState::On, "LED should be on after mute");
     } else {
         panic!("Expected MuteLED message");
     }
@@ -468,15 +482,20 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     assert!(result.is_ok(), "Should send volume message to Reaper");
 
     if let Ok(TrackMsg::TrackDataMsg(msg)) = result {
-        assert_eq!(msg.guid, track_guid);
-        assert_eq!(msg.direction, Direction::Upstream);
+        check!(msg.guid == track_guid, "Track GUID should match");
+        check!(msg.direction == Direction::Upstream, "Should be upstream");
         if let DataPayload::Volume(volume) = msg.data {
-            assert_eq!(volume, new_volume as f32, "Volume should match fader value");
+            assert!(
+                approx_eq!(f32, volume, new_volume as f32, epsilon = EPSILON),
+                "Volume should match approximately\nExpected: {}, Got: {}",
+                volume,
+                new_volume,
+            );
         } else {
-            panic!("Expected Volume payload");
+            assert!(false, "Expected Volume payload");
         }
     } else {
-        panic!("Expected TrackDataMsg");
+        assert!(false, "Expected TrackDataMsg");
     }
 }
 
@@ -505,9 +524,9 @@ fn test_vol_pan_mode_barrier_forwarding() {
     assert!(result.is_ok(), "Barrier should be forwarded to XTouch");
 
     if let Ok(XTouchDownstreamMsg::Barrier(received_barrier)) = result {
-        assert_eq!(received_barrier, barrier);
+        assert!(received_barrier == barrier, "Barrier should match");
     } else {
-        panic!("Expected Barrier message");
+        assert!(false, "Expected Barrier message");
     }
 }
 
@@ -569,7 +588,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     );
 
     // Assert fader message is sent to hardware
-    assert_downstream_fader_abs_msg(&to_xtouch_rx, hw_channel, test_volume as f64);
+    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, test_volume as f64);
 }
 
 #[test]
@@ -596,7 +615,7 @@ fn test_02_volume_message_for_unmapped_track_is_ignored() {
     );
 
     // Assert no message is sent to hardware
-    assert_no_message(&to_xtouch_rx, 100);
+    check_no_message!(&to_xtouch_rx, 100);
 }
 
 #[test]
@@ -626,7 +645,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     );
 
     // Assert volume message is sent to Reaper
-    assert_volume_track_msg(&to_reaper_rx, &track_guid, new_volume as f32);
+    assert_volume_track_msg!(&to_reaper_rx, &track_guid, new_volume as f32);
 }
 
 #[test]
@@ -652,7 +671,7 @@ fn test_04_upstream_fader_for_unmapped_channel_is_ignored() {
     );
 
     // Assert no message is sent to Reaper
-    assert_no_message(&to_reaper_rx, 100);
+    check_no_message!(&to_reaper_rx, 100);
 }
 
 // ----------------------------------------------------------------------------
@@ -685,7 +704,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         }),
         curr_mode,
     );
-    assert_downstream_fader_abs_msg(&to_xtouch_rx, hw_channel_1, volume_1 as f64);
+    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_1 as f64);
 
     // Update volume
     mode.handle_downstream_messages(
@@ -696,7 +715,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
         }),
         curr_mode,
     );
-    assert_downstream_fader_abs_msg(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
+    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
 
     // Remap to different channel - old mapping should be cleared
     assign_track_to_channel(&mut mode, &track_guid, hw_channel_2, curr_mode);
@@ -726,7 +745,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     );
 
     // Volume update should go to the new channel (hw_channel_2)
-    assert_downstream_fader_abs_msg(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
+    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_2, volume_3 as f64);
 }
 
 #[test]
@@ -754,7 +773,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
         }),
         curr_mode,
     );
-    assert_downstream_mute_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::On);
 
     // Send solo state
     mode.handle_downstream_messages(
@@ -765,7 +784,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
         }),
         curr_mode,
     );
-    assert_downstream_solo_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::On);
 
     // Send armed state
     mode.handle_downstream_messages(
@@ -776,7 +795,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
         }),
         curr_mode,
     );
-    assert_downstream_arm_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::On);
 }
 
 #[test]
@@ -812,7 +831,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     );
 
     // First value should be sent
-    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value_1);
+    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_1);
 
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -824,7 +843,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     );
 
     // Updated value should be sent
-    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value_2);
+    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
 }
 
 #[test]
@@ -857,7 +876,7 @@ fn test_pan_state_accumulates_before_mapping() {
     );
 
     // No message should be sent yet (track not mapped)
-    assert_no_message(&to_xtouch_rx, 100);
+    check_no_message!(&to_xtouch_rx, 100);
 
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -869,13 +888,13 @@ fn test_pan_state_accumulates_before_mapping() {
     );
 
     // Still no message (track not mapped)
-    assert_no_message(&to_xtouch_rx, 100);
+    check_no_message!(&to_xtouch_rx, 100);
 
     // NOW assign track to hardware channel
     assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
 
     // IDEAL: The accumulated state (most recent pan value) should be sent downstream
-    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, pan_value_2);
+    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
 }
 
 // ----------------------------------------------------------------------------
@@ -905,10 +924,10 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
     );
 
     // Should send mute message to Reaper (upstream)
-    assert_upstream_muted_track_msg(&to_reaper_rx, &track_guid, true);
+    assert_upstream_muted_track_msg!(&to_reaper_rx, &track_guid, true);
 
     // Should send LED update to hardware (downstream)
-    assert_downstream_mute_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::On);
 }
 
 #[test]
@@ -934,10 +953,10 @@ fn test_09_solo_button_sends_correct_messages() {
     );
 
     // Should send solo message to Reaper
-    assert_upstream_soloed_track_msg(&to_reaper_rx, &track_guid, true);
+    assert_upstream_soloed_track_msg!(&to_reaper_rx, &track_guid, true);
 
     // Should send LED update to hardware
-    assert_downstream_solo_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::On);
 }
 
 #[test]
@@ -963,10 +982,10 @@ fn test_10_arm_button_sends_correct_messages() {
     );
 
     // Should send arm message to Reaper
-    assert_upstream_armed_track_msg(&to_reaper_rx, &track_guid, true);
+    assert_upstream_armed_track_msg!(&to_reaper_rx, &track_guid, true);
 
     // Should send LED update to hardware
-    assert_downstream_arm_led_msg(&to_xtouch_rx, hw_channel, LEDState::On);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::On);
 }
 
 #[test]
@@ -1056,7 +1075,7 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
     assert!(barrier_msg.is_ok(), "Should send barrier message upstream");
     match barrier_msg.unwrap() {
         TrackMsg::Barrier(_) => {}
-        _ => panic!("Expected Barrier message"),
+        _ => assert!(false, "Expected Barrier message"),
     }
 }
 
@@ -1267,7 +1286,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
         }),
         curr_mode,
     );
-    assert_downstream_fader_abs_msg(&to_xtouch_rx, hw_channel, initial_volume as f64);
+    check_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, initial_volume as f64);
 
     // Send volume change smaller than EPSILON
     let small_change = initial_volume + (EPSILON / 2.0);
@@ -1281,7 +1300,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     );
 
     // Should NOT send message for changes smaller than EPSILON
-    assert_no_message(&to_xtouch_rx, 100);
+    check_no_message!(&to_xtouch_rx, 100);
 }
 
 #[test]
@@ -1309,7 +1328,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         }),
         curr_mode,
     );
-    assert_downstream_encoder_ring_led_msg(&to_xtouch_rx, hw_channel, initial_pan);
+    check_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, initial_pan);
 
     // Send pan change smaller than EPSILON
     let small_change = initial_pan + (EPSILON / 2.0);
@@ -1323,5 +1342,5 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     );
 
     // Should NOT send message for changes smaller than EPSILON
-    assert_no_message(&to_xtouch_rx, 100);
+    check_no_message!(&to_xtouch_rx, 100);
 }
