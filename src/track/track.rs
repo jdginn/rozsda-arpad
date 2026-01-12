@@ -13,91 +13,91 @@ pub enum Direction {
 }
 
 /// Set of messages that TrackManager can handle
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TrackMsg {
     Barrier(Barrier),
     TrackDataMsg(TrackDataMsg),
     TrackQuery(TrackQuery),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrackDataMsg {
     pub guid: String,
     pub direction: Direction,
     pub data: DataPayload,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrackQuery {
     pub guid: String,
     pub direction: Direction,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SendIndex {
     pub send_index: i32,
     pub guid: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SendLevel {
     pub send_index: i32,
     pub level: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SendPan {
     pub send_index: i32,
     pub pan: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXName {
     pub fx_index: i32,
     pub name: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXGuid {
     pub fx_index: i32,
     pub guid: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXEnabled {
     pub fx_index: i32,
     pub enabled: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXParamName {
     pub fx_index: i32,
     pub param_index: i32,
     pub name: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXParamValue {
     pub fx_index: i32,
     pub param_index: i32,
     pub value: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXParamMin {
     pub fx_index: i32,
     pub param_index: i32,
     pub min: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXParamMax {
     pub fx_index: i32,
     pub param_index: i32,
     pub max: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum DataPayload {
     Name(String),
     ReaperTrackIndex(Option<i32>),
@@ -120,7 +120,7 @@ pub enum DataPayload {
     TrackData(TrackData),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SendData {
     pub target_guid: String,
     pub send_index: i32,
@@ -128,7 +128,7 @@ pub struct SendData {
     pub pan: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXData {
     pub fx_index: i32,
     pub guid: String,
@@ -152,7 +152,7 @@ impl FXData {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FXParamData {
     pub param_index: i32,
     pub value: f32,
@@ -161,7 +161,7 @@ pub struct FXParamData {
 }
 
 /// Maintains state for a given track to the best of our knowledge
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrackData {
     guid: String,
     name: String,
