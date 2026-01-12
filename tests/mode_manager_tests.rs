@@ -4,12 +4,10 @@
 // ModeManager coordinates between upstream (Reaper) and downstream (XTouch) endpoints,
 // managing different control modes and ensuring proper state synchronization during transitions.
 
+use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Barrier, ModeManager};
-use arpad_rust::midi::xtouch::{
-    FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg,
-};
 use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use std::time::Duration;
 
 /// Helper to set up channels for mode manager testing
@@ -55,7 +53,7 @@ fn test_mode_manager_forwards_track_messages_downstream() {
     //
     // Expected behavior: VolumePanMode should receive the TrackMsg and convert
     // it to a FaderAbs message for the corresponding hardware channel.
-    
+
     // For now, we'll just verify that no panic occurs
     std::thread::sleep(Duration::from_millis(100));
 }
@@ -94,10 +92,10 @@ fn test_mode_manager_barrier_propagation() {
 
     // Barrier should be forwarded downstream to XTouch
     let result = to_xtouch_rx.recv_timeout(Duration::from_millis(200));
-    
+
     // TODO: Verify that barrier is actually forwarded by the mode handlers.
     // The VolumePanMode should forward barriers it receives.
-    
+
     if let Ok(XTouchDownstreamMsg::Barrier(received_barrier)) = result {
         assert_eq!(received_barrier, barrier, "Barrier should match");
     } else {
@@ -123,8 +121,7 @@ fn test_mode_transition_state_management() {
 }
 
 #[test]
-fn test_messages_blocked_during_transition() {
-}
+fn test_messages_blocked_during_transition() {}
 
 // Edge case: What happens if we send messages while ModeManager is starting up?
 #[test]
@@ -138,5 +135,8 @@ fn test_messages_during_startup() {
         data: DataPayload::Volume(0.5),
     }));
 
-    assert!(result.is_ok(), "Should be able to send messages during startup");
+    assert!(
+        result.is_ok(),
+        "Should be able to send messages during startup"
+    );
 }
