@@ -3,7 +3,7 @@
 // These tests verify the behavior of the VolumePanMode, which manages the mapping
 // between Reaper tracks and XTouch controller hardware (faders, buttons, LEDs).
 //
-// This comprehensive test suite implements all 18 test cases from the test plan,
+// This comprehensive test suite implements all 21 test cases from the test plan,
 // covering mapping, state accumulation, message flow, mode transitions, ordering,
 // and threshold testing.
 use std::time::Duration;
@@ -1207,18 +1207,19 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
 
+    // Send pan change to different value (0.7) - should send because it's > EPSILON from 0.5
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
             direction: Direction::Downstream,
-            data: DataPayload::Pan(initial_pan),
+            data: DataPayload::Pan(0.7),
         }),
         curr_mode,
     );
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, initial_pan);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.7);
 
-    // Send pan change smaller than EPSILON
-    let small_change = initial_pan + (EPSILON / 2.0);
+    // Send pan change smaller than EPSILON (0.7 + EPSILON/2)
+    let small_change = 0.7 + (EPSILON / 2.0);
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
@@ -1546,4 +1547,78 @@ fn test_complex_multi_track_integration() {
         curr_mode,
     );
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track4_guid, true); // Track 4 on channel 5
+}
+
+#[test]
+fn test_epsilon_tracking_reset_on_remapping() {
+    // When a track is remapped to a different channel, EPSILON tracking should be cleared
+    // to ensure the full state is sent to the new channel
+    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_vol_pan_mode();
+
+    let track_guid = "track-epsilon-remap".to_string();
+    let channel_1 = 0i32;
+    let channel_2 = 1i32;
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperVolPan,
+        state: State::Active,
+    };
+
+    // Assign track to channel 1
+    assign_track_to_channel(&mut mode, &track_guid, channel_1, curr_mode);
+    assert_downstream_default_track_mapping(&to_xtouch_rx, channel_1);
+
+    // Send volume update (0.8)
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            direction: Direction::Downstream,
+            guid: track_guid.clone(),
+            data: DataPayload::Volume(0.8),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_1, 0.8);
+
+    // Send small volume update (0.805) - should be filtered by EPSILON
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            direction: Direction::Downstream,
+            guid: track_guid.clone(),
+            data: DataPayload::Volume(0.805),
+        }),
+        curr_mode,
+    );
+    check_no_message!(&to_xtouch_rx, 100); // Filtered - change is < EPSILON
+
+    // Now remap track to channel 2
+    assign_track_to_channel(&mut mode, &track_guid, channel_2, curr_mode);
+    // Should send full state to channel 2, including current volume of 0.805
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_2, 0.805);
+    assert_downstream_mute_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, channel_2, 0.5);
+
+    // Send another small volume update (0.81) - should be filtered again
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            direction: Direction::Downstream,
+            guid: track_guid.clone(),
+            data: DataPayload::Volume(0.81),
+        }),
+        curr_mode,
+    );
+    check_no_message!(&to_xtouch_rx, 100); // Filtered - change is < EPSILON
+
+    // Send larger volume update (0.82) - should not be filtered
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            direction: Direction::Downstream,
+            guid: track_guid.clone(),
+            data: DataPayload::Volume(0.82),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_2, 0.82);
 }
