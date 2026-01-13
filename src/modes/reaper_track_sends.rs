@@ -83,7 +83,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             match msg.data {
                 TrackDataPayload::SendIndex(msg) => {
                     let mut assignments = self.track_sends.lock().unwrap();
-                    assignments[msg.send_index as usize] = Some(msg.guid);
+                    // Add bounds checking to prevent panic on invalid send_index
+                    if (msg.send_index as usize) < assignments.len() {
+                        assignments[msg.send_index as usize] = Some(msg.guid);
+                    }
+                    // If out of bounds, silently ignore (could log error in production)
                 }
                 TrackDataPayload::SendLevel(msg) => {
                     // Only send fader update if the send index is mapped to a target
