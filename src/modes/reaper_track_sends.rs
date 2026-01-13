@@ -140,8 +140,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         }
                     }
                     _ => {
-                        // Ignore barrier messages we weren't waiting for.
-                        // These are from old state transitions that have been superseded.
+                        // TODO: This is a barrier message we don't care about. Do we need to do
+                        // anything with it?
+                        //
+                        // Presumably if a barrier comes back that we weren't looking for, it's for
+                        // some old irrelevant state transition that has already been superseded.
                         curr_mode
                     }
                 }
