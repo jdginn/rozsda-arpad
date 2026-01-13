@@ -116,41 +116,39 @@ Implement pan support for sends, similar to how `SendLevel` is handled:
 4. Consider EPSILON filtering for pan values
 
 ### Issue #4: Unused struct TrackSendState
-**Status**: 📝 DOCUMENTED  
+**Status**: ✅ FIXED (commit 0f9e8dd)
 **Severity**: Very Low  
 
 **Description**:
-Line 12 defines an empty struct `TrackSendState` that is never used.
+Line 12 defined an empty struct `TrackSendState` that was never used.
 
-**Recommendation**:
-Either:
-1. Remove the unused struct, or
-2. Implement it to store accumulated send state (addresses Issue #2)
+**Fix**:
+Removed the unused struct to clean up the codebase.
 
 ### Issue #5: Missing bounds checking
-**Status**: 📝 DOCUMENTED  
+**Status**: ✅ FIXED (commit fed27a8)
 **Severity**: Medium  
 
 **Description**:
-When accessing `assignments[msg.send_index as usize]`, there's no explicit bounds checking before the array access at line 88 in `SendIndex` handling.
+When accessing `assignments[msg.send_index as usize]`, there was no explicit bounds checking before the array access at line 88 in `SendIndex` handling.
 
-**Current Behavior**:
-If `send_index` is >= `num_channels`, the code will panic.
+**Previous Behavior**:
+If `send_index` was >= `num_channels`, the code would panic.
 
-**Recommendation**:
-Add bounds checking:
+**Fix**:
+Added bounds checking:
 ```rust
 TrackDataPayload::SendIndex(msg) => {
     let mut assignments = self.track_sends.lock().unwrap();
+    // Add bounds checking to prevent panic on invalid send_index
     if (msg.send_index as usize) < assignments.len() {
         assignments[msg.send_index as usize] = Some(msg.guid);
-    } else {
-        // Log error or handle gracefully
     }
+    // If out of bounds, silently ignore (could log error in production)
 }
 ```
 
-Note: The `SendLevel` handler added in the bug fix uses `.get()` which is safe and returns `None` for out-of-bounds indices.
+Note: The `SendLevel` handler already uses `.get()` which is safe and returns `None` for out-of-bounds indices.
 
 ## Test Coverage
 
@@ -168,12 +166,18 @@ The test suite includes 16 tests covering:
 ### Tests Documenting Known Issues
 
 - `test_17_send_level_changes_below_epsilon_threshold_ignored` - Documents Issue #1 (EPSILON filtering)
-- Comments in test file reference state accumulation limitations
+- `test_04_state_accumulation_for_unmapped_sends` - Documents Issue #2 (state accumulation)
 
 ## Summary
 
-- **Fixed**: 1 bug (unmapped send handling)
-- **Documented**: 5 issues for future enhancement
-- **Test Coverage**: 16 comprehensive tests
+- **Fixed**: 3 bugs
+  1. Unmapped send handling (commit 046a1ef)
+  2. Unused TrackSendState struct (commit 0f9e8dd)
+  3. Missing bounds checking (commit fed27a8)
+- **Documented**: 3 issues for future enhancement
+  1. Missing EPSILON threshold filtering
+  2. Missing state accumulation for unmapped sends
+  3. Missing pan support
+- **Test Coverage**: 23 comprehensive tests
 
-All tests currently pass with the bug fix applied.
+All tests currently pass with the bug fixes applied.
