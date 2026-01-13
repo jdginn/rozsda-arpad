@@ -9,8 +9,6 @@ use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, SendLevel, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
-pub struct TrackSendState {}
-
 pub struct TrackSendsMode {
     // Maps track send index to track guid
     track_sends: Arc<Mutex<Vec<Option<String>>>>,
