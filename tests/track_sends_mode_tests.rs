@@ -14,7 +14,7 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use float_cmp::approx_eq;
 
 use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
-use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
+use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
 use arpad_rust::track::track::{DataPayload, Direction, SendIndex, SendLevel, TrackDataMsg, TrackMsg};
 
@@ -221,7 +221,6 @@ fn test_track_sends_mode_send_level_updates_sent_to_faders() {
 
     // Should receive a fader update on XTouch
     let result = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
-    assert!(result.is_ok(), "Should receive XTouch fader message");
 
     check!(result.is_ok(), "Should receive XTouch fader message");
 
@@ -282,10 +281,10 @@ fn test_track_sends_mode_fader_sends_level_upstream() {
                 new_level,
             );
         } else {
-            assert!(false, "Expected SendLevel payload");
+            panic!("Expected SendLevel payload");
         }
     } else {
-        assert!(false, "Expected TrackDataMsg");
+        panic!("Expected TrackDataMsg");
     }
 }
 
@@ -954,8 +953,6 @@ fn test_12_mode_transition_requests_track_query() {
 fn test_barrier_forwarded_downstream_and_reflected_upstream() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_track_sends_mode();
-
-    use arpad_rust::modes::mode_manager::Barrier;
 
     let barrier = Barrier::new();
     let curr_mode = ModeState {
