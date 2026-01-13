@@ -88,13 +88,21 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     assignments[msg.send_index as usize] = Some(msg.guid);
                 }
                 TrackDataPayload::SendLevel(msg) => {
-                    let fader_value = msg.level; // TODO: scale appropriately
-                    self.to_xtouch
-                        .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
-                            idx: msg.send_index,
-                            value: fader_value as f64,
-                        }))
-                        .unwrap();
+                    // Only send fader update if the send index is mapped to a target
+                    let assignments = self.track_sends.lock().unwrap();
+                    if assignments
+                        .get(msg.send_index as usize)
+                        .and_then(|opt| opt.as_ref())
+                        .is_some()
+                    {
+                        let fader_value = msg.level; // TODO: scale appropriately
+                        self.to_xtouch
+                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                idx: msg.send_index,
+                                value: fader_value as f64,
+                            }))
+                            .unwrap();
+                    }
                 }
                 // TODO: pan
                 _ => {
