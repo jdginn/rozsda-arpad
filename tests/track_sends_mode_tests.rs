@@ -21,11 +21,6 @@ use arpad_rust::track::track::{DataPayload, Direction, SendIndex, SendLevel, Tra
 // EPSILON constant for floating-point threshold testing
 const EPSILON: f32 = 0.01;
 
-// Test value constants
-const TEST_SEND_LEVEL_LOW: f64 = 0.3;
-const TEST_SEND_LEVEL_HIGH: f64 = 0.75;
-const SELECTED_TRACK_GUID: &str = "selected-track";
-
 /// Helper to create a TrackSendsMode instance for testing
 fn setup_track_sends_mode() -> (
     TrackSendsMode,
@@ -137,14 +132,13 @@ macro_rules! check_no_message {
 /// Helper function to assign a send to a hardware channel
 fn assign_send_to_channel(
     mode: &mut TrackSendsMode,
-    track_guid: &str,
     send_guid: &str,
     send_index: i32,
     curr_mode: ModeState,
 ) -> ModeState {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.to_string(),
+            guid: "selected-track".to_string(),
             direction: Direction::Downstream,
             data: DataPayload::SendIndex(SendIndex {
                 send_index,
@@ -210,7 +204,7 @@ fn test_track_sends_mode_send_level_updates_sent_to_faders() {
     };
 
     // First, assign the send to a hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Now send a send level update
     mode.handle_downstream_messages(
@@ -260,7 +254,7 @@ fn test_track_sends_mode_fader_sends_level_upstream() {
     };
 
     // Assign send to hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Simulate fader movement
     let msg = XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
@@ -312,7 +306,7 @@ fn test_01_send_level_for_mapped_send_forwards_to_hardware() {
     };
 
     // Assign send to hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Send level update
     mode.handle_downstream_messages(
@@ -376,7 +370,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     };
 
     // Assign send to hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Simulate fader movement from hardware
     mode.handle_upstream_messages(
@@ -439,7 +433,7 @@ fn test_05_send_level_state_reflects_latest_value_when_remapped() {
     };
 
     // Assign first send to hardware channel and send level
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_1, send_index_1, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_1, send_index_1, curr_mode);
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
@@ -468,7 +462,7 @@ fn test_05_send_level_state_reflects_latest_value_when_remapped() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index_1, level_2 as f64);
 
     // Remap to different channel - this should assign a new send to a different slot
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_2, send_index_2, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_2, send_index_2, curr_mode);
 
     // Send level update to new send
     mode.handle_downstream_messages(
@@ -505,9 +499,9 @@ fn test_06_multiple_sends_can_be_mapped_simultaneously() {
     };
 
     // Assign multiple sends
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_1, send_index_1, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_2, send_index_2, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_3, send_index_3, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_1, send_index_1, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_2, send_index_2, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_3, send_index_3, curr_mode);
 
     // Send levels to all three
     mode.handle_downstream_messages(
@@ -561,6 +555,7 @@ fn test_08_fader_movement_sends_correct_upstream_message() {
 
     let target_guid = "target-fader-flow".to_string();
     let send_index = 2;
+    let test_value = 0.75;
 
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
@@ -568,19 +563,19 @@ fn test_08_fader_movement_sends_correct_upstream_message() {
     };
 
     // Assign send to hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Simulate fader movement
     mode.handle_upstream_messages(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
-            value: TEST_SEND_LEVEL_HIGH,
+            value: test_value,
         }),
         curr_mode,
     );
 
     // Should send level message to Reaper (upstream)
-    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, TEST_SEND_LEVEL_HIGH as f32);
+    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, test_value as f32);
 }
 
 // ----------------------------------------------------------------------------
@@ -601,7 +596,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     };
 
     // Assign send
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Send multiple messages in order
     mode.handle_downstream_messages(
@@ -674,7 +669,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     };
 
     // Assign send
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Send multiple upstream messages in order
     mode.handle_upstream_messages(
@@ -738,7 +733,7 @@ fn test_17_send_level_changes_below_epsilon_threshold_ignored() {
     };
 
     // Assign send and set initial level
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
@@ -795,9 +790,9 @@ fn test_complex_multi_send_integration() {
     let send3_guid = "send-target-3".to_string();
 
     // === PHASE 1: Map multiple sends ===
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &send1_guid, 0, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &send2_guid, 1, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &send3_guid, 2, curr_mode);
+    assign_send_to_channel(&mut mode, &send1_guid, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &send2_guid, 1, curr_mode);
+    assign_send_to_channel(&mut mode, &send3_guid, 2, curr_mode);
 
     // === PHASE 2: Send levels to all sends ===
     mode.handle_downstream_messages(
@@ -1048,7 +1043,7 @@ fn test_04_state_accumulation_for_unmapped_sends() {
     check_no_message!(&to_xtouch_rx, 100);
 
     // NOW assign send to hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // NOTE: Current implementation does NOT accumulate state for unmapped sends
     // This test documents expected behavior (state should be sent) vs actual behavior
@@ -1072,7 +1067,7 @@ fn test_08_simultaneous_upstream_downstream_messages() {
     };
 
     // Assign send to hardware channel
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
 
     // Send downstream level update from Reaper
     mode.handle_downstream_messages(
@@ -1139,7 +1134,7 @@ fn test_13_send_level_changes_above_epsilon_propagate() {
     };
 
     // Assign send and set initial level
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid, send_index, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
@@ -1187,8 +1182,8 @@ fn test_14_multiple_tracks_and_switching_selections() {
     };
 
     // Set up sends for track 1
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track1_send1, 0, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track1_send2, 1, curr_mode);
+    assign_send_to_channel(&mut mode, &track1_send1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track1_send2, 1, curr_mode);
 
     // Send levels for track 1 sends
     mode.handle_downstream_messages(
@@ -1218,7 +1213,7 @@ fn test_14_multiple_tracks_and_switching_selections() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.6);
 
     // Simulate switching to track 2 (different sends get mapped to same channels)
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track2_send1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track2_send1, 0, curr_mode);
 
     // Send level for track 2 send 1
     mode.handle_downstream_messages(
@@ -1235,7 +1230,7 @@ fn test_14_multiple_tracks_and_switching_selections() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.9);
 
     // Switch back to track 1 by reassigning track1_send1
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track1_send1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track1_send1, 0, curr_mode);
 
     // Send level should update correctly
     mode.handle_downstream_messages(
@@ -1269,7 +1264,7 @@ fn test_15_remapping_sends_across_hardware_channels() {
     };
 
     // Assign first send to channel 1
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_1, channel_1, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_1, channel_1, curr_mode);
 
     // Send level update to channel 1
     mode.handle_downstream_messages(
@@ -1296,7 +1291,7 @@ fn test_15_remapping_sends_across_hardware_channels() {
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid_1, channel_1, 0.7);
 
     // Assign second send to channel 2
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_2, channel_2, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_2, channel_2, curr_mode);
 
     // Send level to second channel should work
     mode.handle_downstream_messages(
@@ -1313,7 +1308,7 @@ fn test_15_remapping_sends_across_hardware_channels() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_2, 0.8);
 
     // Now reassign channel 1 to a different target
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &target_guid_2, channel_1, curr_mode);
+    assign_send_to_channel(&mut mode, &target_guid_2, channel_1, curr_mode);
 
     // Channel 1 should now control target_guid_2
     mode.handle_upstream_messages(
@@ -1352,9 +1347,9 @@ fn test_17_expanded_real_world_integration() {
     let track_a_send_2 = "track-a-send-2".to_string();
     let track_a_send_3 = "track-a-send-3".to_string();
 
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_a_send_1, 0, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_a_send_2, 1, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_a_send_3, 2, curr_mode);
+    assign_send_to_channel(&mut mode, &track_a_send_1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track_a_send_2, 1, curr_mode);
+    assign_send_to_channel(&mut mode, &track_a_send_3, 2, curr_mode);
 
     // Set initial levels
     for (idx, level) in [(0, 0.3), (1, 0.5), (2, 0.7)] {
@@ -1389,8 +1384,8 @@ fn test_17_expanded_real_world_integration() {
     let track_b_send_1 = "track-b-send-1".to_string();
     let track_b_send_2 = "track-b-send-2".to_string();
 
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_b_send_1, 0, curr_mode);
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_b_send_2, 1, curr_mode);
+    assign_send_to_channel(&mut mode, &track_b_send_1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track_b_send_2, 1, curr_mode);
 
     // Track B levels
     for (idx, level) in [(0, 0.2), (1, 0.9)] {
@@ -1409,7 +1404,7 @@ fn test_17_expanded_real_world_integration() {
     }
 
     // === SCENARIO 4: Remap Track B send 1 to different channel ===
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_b_send_1, 5, curr_mode);
+    assign_send_to_channel(&mut mode, &track_b_send_1, 5, curr_mode);
 
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
@@ -1437,7 +1432,7 @@ fn test_17_expanded_real_world_integration() {
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &track_b_send_1, 0, 0.1);
 
     // === SCENARIO 6: Switch back to Track A ===
-    assign_send_to_channel(&mut mode, SELECTED_TRACK_GUID, &track_a_send_1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track_a_send_1, 0, curr_mode);
 
     // Track A send 1 should work on channel 0 again
     mode.handle_downstream_messages(
