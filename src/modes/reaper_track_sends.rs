@@ -1,19 +1,30 @@
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
+use crate::midi::xtouch::{
+    EncoderRingLEDMsg, EncoderRingLEDRangePointMsg, FaderAbsMsg, XTouchDownstreamMsg,
+    XTouchUpstreamMsg,
+};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, SendLevel, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
-pub struct TrackSendState {}
+#[derive(Clone, Default)]
+pub struct TrackSendInfo {
+    pub guid: String,
+    pub level: f32,
+    pub pan: f32,
+}
 
 pub struct TrackSendsMode {
-    // Maps track send index to track guid
-    track_sends: Arc<Mutex<Vec<Option<String>>>>,
+    // Maps track send index to send guid
+    hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
+    // Maps guid to info about the send it designates
+    track_send_states: Arc<Mutex<BTreeMap<String, TrackSendInfo>>>,
     selected_track_guid: Option<String>,
     to_reaper: Sender<TrackMsg>,
     from_reaper: Receiver<TrackMsg>,
@@ -30,7 +41,8 @@ impl TrackSendsMode {
         to_xtouch: Sender<XTouchDownstreamMsg>,
     ) -> Self {
         TrackSendsMode {
-            track_sends: Arc::new(Mutex::new(vec![None; num_channels])),
+            hw_assignments: Arc::new(Mutex::new(vec![None; num_channels])),
+            track_send_states: Arc::new(Mutex::new(BTreeMap::new())),
             selected_track_guid: None,
             to_reaper,
             from_reaper,
@@ -40,12 +52,11 @@ impl TrackSendsMode {
     }
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<String> {
-        let assignments = self.track_sends.lock().unwrap();
+        let assignments = self.hw_assignments.lock().unwrap();
         assignments[hw_channel].clone()
     }
 
-    fn find_hw_channel_for_guid(&self, guid: &str) -> Option<usize> {
-        let assignments = self.track_sends.lock().unwrap();
+    fn find_hw_channel_for_guid(guid: &str, assignments: Vec<Option<String>>) -> Option<usize> {
         for (hw_channel, assigned_guid) in assignments.iter().enumerate() {
             if let Some(assigned_guid) = assigned_guid {
                 if assigned_guid == guid {
@@ -84,17 +95,90 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
         if let TrackMsg::TrackDataMsg(msg) = msg {
             match msg.data {
                 TrackDataPayload::SendIndex(msg) => {
-                    let mut assignments = self.track_sends.lock().unwrap();
-                    assignments[msg.send_index as usize] = Some(msg.guid);
-                }
-                TrackDataPayload::SendLevel(msg) => {
-                    let fader_value = msg.level; // TODO: scale appropriately
+                    let mut assignments = self.hw_assignments.lock().unwrap();
+
+                    if let Some(index) =
+                        TrackSendsMode::find_hw_channel_for_guid(&msg.guid, assignments.to_vec())
+                    {
+                        if index as i32 == msg.send_index {
+                            // No change, skip
+                            return curr_mode;
+                        }
+                        // Clear previous assignment
+                        //
+                        // TODO: are we sure this is the correct behavior?
+                        assignments[index] = None;
+                    }
+                    // Add bounds checking to prevent panic on invalid send_index
+                    // If out of bounds, silently ignore (could log error in production)
+                    if (msg.send_index as usize) < assignments.len() {
+                        assignments[msg.send_index as usize] = Some(msg.guid.clone());
+                    }
+                    // Insert default state into self.track_send_states if not already present
+                    let state = self
+                        .track_send_states
+                        .lock()
+                        .unwrap()
+                        .entry(msg.guid.clone())
+                        .or_default()
+                        .clone();
+                    // Send current state to hardware for this send index
                     self.to_xtouch
                         .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
                             idx: msg.send_index,
-                            value: fader_value as f64,
+                            value: state.level as f64, // TODO: scale appropriately
                         }))
                         .unwrap();
+                    self.to_xtouch
+                        .send(XTouchDownstreamMsg::EncoderRingLED(
+                            EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                idx: msg.send_index,
+                                pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
+                            }),
+                        ))
+                        .unwrap();
+                }
+                TrackDataPayload::SendLevel(msg) => {
+                    // Only send fader update if the send index is mapped to a target
+                    let assignments = self.hw_assignments.lock().unwrap();
+                    if let Some(Some(guid)) = assignments.get(msg.send_index as usize) {
+                        self.track_send_states
+                            .lock()
+                            .unwrap()
+                            .entry(guid.clone())
+                            .or_default()
+                            .level = msg.level;
+
+                        let fader_value = msg.level; // TODO: scale appropriately
+                        self.to_xtouch
+                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                idx: msg.send_index,
+                                value: fader_value as f64,
+                            }))
+                            .unwrap();
+                    }
+                }
+                TrackDataPayload::SendPan(msg) => {
+                    // Only send encoder update if the send index is mapped to a target
+                    let assignments = self.hw_assignments.lock().unwrap();
+                    if let Some(Some(guid)) = assignments.get(msg.send_index as usize) {
+                        self.track_send_states
+                            .lock()
+                            .unwrap()
+                            .entry(guid.clone())
+                            .or_default()
+                            .pan = msg.pan;
+
+                        let encoder_pos = (msg.pan + 1.0) / 2.0; // Scale -1.0 to 1.0 into 0.0 to 1.0
+                        self.to_xtouch
+                            .send(XTouchDownstreamMsg::EncoderRingLED(
+                                EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                    idx: msg.send_index,
+                                    pos: encoder_pos,
+                                }),
+                            ))
+                            .unwrap();
+                    }
                 }
                 // TODO: pan
                 _ => {
