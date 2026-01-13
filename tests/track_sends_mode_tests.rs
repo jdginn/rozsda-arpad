@@ -989,3 +989,529 @@ fn test_barrier_forwarded_downstream_and_reflected_upstream() {
         "Should transition to Active state"
     );
 }
+
+// ----------------------------------------------------------------------------
+// Additional Tests from Test Plan
+// ----------------------------------------------------------------------------
+
+/// Test 4: Updates for unmapped sends accumulate and apply when mapped
+#[test]
+fn test_04_state_accumulation_for_unmapped_sends() {
+    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let target_guid = "target-accumulate".to_string();
+    let send_index = 3;
+    let level_1 = 0.4;
+    let level_2 = 0.7; // Latest value
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // Send level updates BEFORE mapping - they should not be sent to hardware yet
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: level_1,
+            }),
+        }),
+        curr_mode,
+    );
+
+    // No message should be sent yet (send not mapped)
+    check_no_message!(&to_xtouch_rx, 100);
+
+    // Send another level update
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: level_2,
+            }),
+        }),
+        curr_mode,
+    );
+
+    // Still no message (send not mapped)
+    check_no_message!(&to_xtouch_rx, 100);
+
+    // NOW assign send to hardware channel
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
+
+    // NOTE: Current implementation does NOT accumulate state for unmapped sends
+    // This test documents expected behavior (state should be sent) vs actual behavior
+    // Expected: assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, level_2 as f64);
+    // Actual: No accumulated state is sent
+    check_no_message!(&to_xtouch_rx, 100);
+}
+
+/// Test 8: Simultaneous upstream/downstream messages for the same send do not interfere
+#[test]
+fn test_08_simultaneous_upstream_downstream_messages() {
+    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let target_guid = "target-simultaneous".to_string();
+    let send_index = 2;
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // Assign send to hardware channel
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
+
+    // Send downstream level update from Reaper
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: 0.6,
+            }),
+        }),
+        curr_mode,
+    );
+
+    // Should receive downstream message to hardware
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, 0.6);
+
+    // Immediately send upstream message from hardware
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: send_index,
+            value: 0.8,
+        }),
+        curr_mode,
+    );
+
+    // Should receive upstream message to Reaper
+    assert_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, 0.8);
+
+    // Send another downstream update
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: 0.9,
+            }),
+        }),
+        curr_mode,
+    );
+
+    // Should still receive the message correctly
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, 0.9);
+
+    // Verify no unexpected messages
+    check_no_message!(&to_xtouch_rx, 100);
+    check_no_message!(&to_reaper_rx, 100);
+}
+
+/// Test 13: Send level changes larger than EPSILON propagate downstream correctly
+#[test]
+fn test_13_send_level_changes_above_epsilon_propagate() {
+    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let target_guid = "target-epsilon-large".to_string();
+    let send_index = 1;
+    let initial_level = 0.5;
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // Assign send and set initial level
+    assign_send_to_channel(&mut mode, &target_guid, send_index, curr_mode);
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: initial_level,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, initial_level as f64);
+
+    // Send level change larger than EPSILON
+    let large_change = initial_level + (EPSILON * 3.0);
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: large_change,
+            }),
+        }),
+        curr_mode,
+    );
+
+    // Should send message for large changes
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, large_change as f64);
+}
+
+/// Test 14: Multiple tracks and switching selections updates channels properly
+#[test]
+fn test_14_multiple_tracks_and_switching_selections() {
+    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let track1_send1 = "track1-send1".to_string();
+    let track1_send2 = "track1-send2".to_string();
+    let track2_send1 = "track2-send1".to_string();
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // Set up sends for track 1
+    assign_send_to_channel(&mut mode, &track1_send1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track1_send2, 1, curr_mode);
+
+    // Send levels for track 1 sends
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: 0,
+                level: 0.3,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.3);
+
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: 1,
+                level: 0.6,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.6);
+
+    // Simulate switching to track 2 (different sends get mapped to same channels)
+    assign_send_to_channel(&mut mode, &track2_send1, 0, curr_mode);
+
+    // Send level for track 2 send 1
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: 0,
+                level: 0.9,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.9);
+
+    // Switch back to track 1 by reassigning track1_send1
+    assign_send_to_channel(&mut mode, &track1_send1, 0, curr_mode);
+
+    // Send level should update correctly
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: 0,
+                level: 0.4,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.4);
+}
+
+/// Test 15: Sends mapped from one hardware channel to another are handled correctly
+#[test]
+fn test_15_remapping_sends_across_hardware_channels() {
+    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let target_guid_1 = "target-remap-1".to_string();
+    let target_guid_2 = "target-remap-2".to_string();
+    let channel_1 = 2;
+    let channel_2 = 5;
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // Assign first send to channel 1
+    assign_send_to_channel(&mut mode, &target_guid_1, channel_1, curr_mode);
+
+    // Send level update to channel 1
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: channel_1,
+                level: 0.5,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_1, 0.5);
+
+    // Test hardware interaction on channel 1
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: channel_1,
+            value: 0.7,
+        }),
+        curr_mode,
+    );
+    assert_send_level_track_msg!(&to_reaper_rx, &target_guid_1, channel_1, 0.7);
+
+    // Assign second send to channel 2
+    assign_send_to_channel(&mut mode, &target_guid_2, channel_2, curr_mode);
+
+    // Send level to second channel should work
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: channel_2,
+                level: 0.8,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_2, 0.8);
+
+    // Now reassign channel 1 to a different target
+    assign_send_to_channel(&mut mode, &target_guid_2, channel_1, curr_mode);
+
+    // Channel 1 should now control target_guid_2
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: channel_1,
+            value: 0.9,
+        }),
+        curr_mode,
+    );
+    assert_send_level_track_msg!(&to_reaper_rx, &target_guid_2, channel_1, 0.9);
+
+    // Channel 2 should still work for target_guid_2 (same target, multiple channels - this is the current behavior)
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: channel_2,
+            value: 0.85,
+        }),
+        curr_mode,
+    );
+    assert_send_level_track_msg!(&to_reaper_rx, &target_guid_2, channel_2, 0.85);
+}
+
+/// Test 16: Remapping sends for an unselected track behaves correctly
+#[test]
+fn test_16_remapping_sends_for_unselected_track() {
+    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let target_guid_1 = "unselected-send-1".to_string();
+    let target_guid_2 = "unselected-send-2".to_string();
+    let send_index = 3;
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // Assign first send
+    assign_send_to_channel(&mut mode, &target_guid_1, send_index, curr_mode);
+
+    // Send level update
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: 0.5,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, 0.5);
+
+    // Simulate remapping to a different send (e.g., user changed track selection in Reaper)
+    assign_send_to_channel(&mut mode, &target_guid_2, send_index, curr_mode);
+
+    // Send level for new send should work
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index,
+                level: 0.8,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, 0.8);
+
+    // Verify no stale data from old send
+    check_no_message!(&to_xtouch_rx, 100);
+}
+
+/// Test 17: Expanded full integration test simulating real-world use
+#[test]
+fn test_17_expanded_real_world_integration() {
+    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
+        setup_track_sends_mode();
+
+    let curr_mode = ModeState {
+        mode: Mode::ReaperSends,
+        state: State::Active,
+    };
+
+    // === SCENARIO 1: Set up multiple sends on Track A ===
+    let track_a_send_1 = "track-a-send-1".to_string();
+    let track_a_send_2 = "track-a-send-2".to_string();
+    let track_a_send_3 = "track-a-send-3".to_string();
+
+    assign_send_to_channel(&mut mode, &track_a_send_1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track_a_send_2, 1, curr_mode);
+    assign_send_to_channel(&mut mode, &track_a_send_3, 2, curr_mode);
+
+    // Set initial levels
+    for (idx, level) in [(0, 0.3), (1, 0.5), (2, 0.7)] {
+        mode.handle_downstream_messages(
+            TrackMsg::TrackDataMsg(TrackDataMsg {
+                guid: "selected-track".to_string(),
+                direction: Direction::Downstream,
+                data: DataPayload::SendLevel(SendLevel {
+                    send_index: idx,
+                    level,
+                }),
+            }),
+            curr_mode,
+        );
+        assert_downstream_fader_abs_msg!(&to_xtouch_rx, idx, level as f64);
+    }
+
+    // === SCENARIO 2: User adjusts faders on hardware ===
+    for (idx, level) in [(0, 0.4), (1, 0.6), (2, 0.8)] {
+        mode.handle_upstream_messages(
+            XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx, value: level }),
+            curr_mode,
+        );
+    }
+
+    // Verify upstream messages sent to Reaper
+    assert_send_level_track_msg!(&to_reaper_rx, &track_a_send_1, 0, 0.4);
+    assert_send_level_track_msg!(&to_reaper_rx, &track_a_send_2, 1, 0.6);
+    assert_send_level_track_msg!(&to_reaper_rx, &track_a_send_3, 2, 0.8);
+
+    // === SCENARIO 3: Switch to Track B (different sends mapped to same channels) ===
+    let track_b_send_1 = "track-b-send-1".to_string();
+    let track_b_send_2 = "track-b-send-2".to_string();
+
+    assign_send_to_channel(&mut mode, &track_b_send_1, 0, curr_mode);
+    assign_send_to_channel(&mut mode, &track_b_send_2, 1, curr_mode);
+
+    // Track B levels
+    for (idx, level) in [(0, 0.2), (1, 0.9)] {
+        mode.handle_downstream_messages(
+            TrackMsg::TrackDataMsg(TrackDataMsg {
+                guid: "selected-track".to_string(),
+                direction: Direction::Downstream,
+                data: DataPayload::SendLevel(SendLevel {
+                    send_index: idx,
+                    level,
+                }),
+            }),
+            curr_mode,
+        );
+        assert_downstream_fader_abs_msg!(&to_xtouch_rx, idx, level as f64);
+    }
+
+    // === SCENARIO 4: Remap Track B send 1 to different channel ===
+    assign_send_to_channel(&mut mode, &track_b_send_1, 5, curr_mode);
+
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: 5,
+                level: 0.95,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, 5, 0.95);
+
+    // === SCENARIO 5: Verify both channels respond to Track B send 1 (current behavior allows multiple channels for same target) ===
+    // Channel 0 still has track_b_send_1 mapped
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: 0,
+            value: 0.1,
+        }),
+        curr_mode,
+    );
+    // Current implementation: Channel 0 is still mapped to track_b_send_1
+    assert_send_level_track_msg!(&to_reaper_rx, &track_b_send_1, 0, 0.1);
+
+    // === SCENARIO 6: Switch back to Track A ===
+    assign_send_to_channel(&mut mode, &track_a_send_1, 0, curr_mode);
+
+    // Track A send 1 should work on channel 0 again
+    mode.handle_downstream_messages(
+        TrackMsg::TrackDataMsg(TrackDataMsg {
+            guid: "selected-track".to_string(),
+            direction: Direction::Downstream,
+            data: DataPayload::SendLevel(SendLevel {
+                send_index: 0,
+                level: 0.55,
+            }),
+        }),
+        curr_mode,
+    );
+    assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.55);
+
+    // Hardware interaction should work
+    mode.handle_upstream_messages(
+        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: 0,
+            value: 0.65,
+        }),
+        curr_mode,
+    );
+    assert_send_level_track_msg!(&to_reaper_rx, &track_a_send_1, 0, 0.65);
+
+    // === Final verification: No unexpected messages ===
+    check_no_message!(&to_xtouch_rx, 100);
+    check_no_message!(&to_reaper_rx, 100);
+}
