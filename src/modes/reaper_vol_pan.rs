@@ -173,6 +173,9 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         for slot in assignments.iter_mut() {
                             if let Some(guid) = slot {
                                 if guid == &msg.guid {
+                                    // Clear EPSILON tracking for this track since it's being unmapped
+                                    self.last_sent_volume.remove(guid);
+                                    self.last_sent_pan.remove(guid);
                                     *slot = None;
                                 }
                             }
@@ -190,6 +193,9 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 idx: hw_channel as i32,
                                 value: track_state.volume as f64,
                             }));
+                        // Update EPSILON tracking for volume since we just sent it
+                        self.last_sent_volume.insert(msg.guid.clone(), track_state.volume);
+                        
                         // Send mute LED
                         let _ =
                             self.to_xtouch
@@ -218,6 +224,8 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 pos: track_state.pan,
                             }),
                         ));
+                        // Update EPSILON tracking for pan since we just sent it
+                        self.last_sent_pan.insert(msg.guid.clone(), track_state.pan);
                     }
                     return curr_mode;
                 }
