@@ -9,8 +9,6 @@ use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, SendLevel, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
-pub struct TrackSendState {}
-
 pub struct TrackSendsMode {
     // Maps track send index to track guid
     track_sends: Arc<Mutex<Vec<Option<String>>>>,
@@ -85,16 +83,28 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             match msg.data {
                 TrackDataPayload::SendIndex(msg) => {
                     let mut assignments = self.track_sends.lock().unwrap();
-                    assignments[msg.send_index as usize] = Some(msg.guid);
+                    // Add bounds checking to prevent panic on invalid send_index
+                    if (msg.send_index as usize) < assignments.len() {
+                        assignments[msg.send_index as usize] = Some(msg.guid);
+                    }
+                    // If out of bounds, silently ignore (could log error in production)
                 }
                 TrackDataPayload::SendLevel(msg) => {
-                    let fader_value = msg.level; // TODO: scale appropriately
-                    self.to_xtouch
-                        .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
-                            idx: msg.send_index,
-                            value: fader_value as f64,
-                        }))
-                        .unwrap();
+                    // Only send fader update if the send index is mapped to a target
+                    let assignments = self.track_sends.lock().unwrap();
+                    if assignments
+                        .get(msg.send_index as usize)
+                        .and_then(|opt| opt.as_ref())
+                        .is_some()
+                    {
+                        let fader_value = msg.level; // TODO: scale appropriately
+                        self.to_xtouch
+                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                idx: msg.send_index,
+                                value: fader_value as f64,
+                            }))
+                            .unwrap();
+                    }
                 }
                 // TODO: pan
                 _ => {
