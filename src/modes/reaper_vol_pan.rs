@@ -194,8 +194,9 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 value: track_state.volume as f64,
                             }));
                         // Update EPSILON tracking for volume since we just sent it
-                        self.last_sent_volume.insert(msg.guid.clone(), track_state.volume);
-                        
+                        self.last_sent_volume
+                            .insert(msg.guid.clone(), track_state.volume);
+
                         // Send mute LED
                         let _ =
                             self.to_xtouch
@@ -347,35 +348,8 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
         curr_mode: ModeState,
     ) -> ModeState {
         match msg {
-            // If we were already waiting on a barrier from downstream, check if this is the one
-            // we were waiting for. If yes, the state transition is finished.
-            //
-            // Note, we do not need to forward this barrier onward, since the hardware is not
-            // allowed to reflect barriers back upstream.
-            XTouchUpstreamMsg::Barrier(barrier) => {
-                match curr_mode.state {
-                    State::WaitingBarrierFromDownstream(expected_barrier) => {
-                        if barrier == expected_barrier {
-                            ModeState {
-                                mode: curr_mode.mode,
-                                state: State::Active,
-                            }
-                        } else {
-                            curr_mode
-                        }
-                    }
-                    _ => {
-                        // TODO: This is a barrier message we don't care about. Do we need to do
-                        // anything with it?
-                        //
-                        // Presumably if a barrier comes back that we weren't looking for, it's for
-                        // some old irrelevant state transition that has already been superseded.
-                        curr_mode
-                    }
-                }
-                // Handle barrier messages if needed
-            }
-            XTouchUpstreamMsg::GlobalPress => curr_mode, // GlobalPress maps to this mode!
+            // GlobalPress maps to this mode!
+            XTouchUpstreamMsg::GlobalPress => curr_mode,
             // MIDITracksPress maps to ReaperSends mode
             XTouchUpstreamMsg::MIDITracksPress => {
                 // Request transition to ReaperSends mode
@@ -524,7 +498,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 }
 
 impl VolumePanMode {
-    pub fn initiate_mode_transition(&mut self, upstream: Sender<TrackMsg>) -> ModeState {
+    pub fn initiate_mode_transition(
+        &mut self,
+        from_mode: Mode,
+        upstream: Sender<TrackMsg>,
+    ) -> ModeState {
         self.track_hw_assignments
             .lock()
             .unwrap()
@@ -538,11 +516,11 @@ impl VolumePanMode {
                     }));
                 }
             });
-        let barrier = Barrier::new();
+        let barrier = Barrier::new(from_mode, Mode::ReaperVolPan);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
         ModeState {
             mode: Mode::ReaperVolPan,
-            state: State::WaitingBarrierFromDownstream(barrier),
+            state: State::WaitingBarrierFromUpstream(barrier),
         }
     }
 }
