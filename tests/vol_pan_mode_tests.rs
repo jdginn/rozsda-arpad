@@ -175,7 +175,7 @@ macro_rules! assert_downstream_arm_led_msg {
 
 /// Macro to assert a Volume TrackDataMsg is received upstream
 #[macro_export]
-macro_rules! assert_volume_track_msg {
+macro_rules! assert_upstream_volume_track_msg {
     ($rx:expr, $expected_guid:expr, $expected_value:expr) => {{
         let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
         check!(result.is_ok(), "Should receive volume message to Reaper");
@@ -552,7 +552,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     );
 
     // Assert volume message is sent to Reaper
-    assert_volume_track_msg!(&to_reaper_rx, &track_guid, new_volume as f32);
+    assert_upstream_volume_track_msg!(&to_reaper_rx, &track_guid, new_volume as f32);
 }
 
 #[test]
@@ -986,7 +986,7 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
     let (upstream_sender, upstream_receiver) = unbounded();
 
     // Initiate mode transition
-    let _result_mode = mode.initiate_mode_transition(upstream_sender);
+    let _result_mode = mode.initiate_mode_transition(Mode::ReaperSends, upstream_sender);
 
     // Should send TrackQuery for each assigned track
     let msg1 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
@@ -1460,10 +1460,7 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 7: Hardware interaction on multiple channels ===
     // Press arm button on channel 3 (track 3)
-    mode.handle_upstream_messages(
-        XTouchUpstreamMsg::ArmPress(ArmPress { idx: 3 }),
-        curr_mode,
-    );
+    mode.handle_upstream_messages(XTouchUpstreamMsg::ArmPress(ArmPress { idx: 3 }), curr_mode);
     // Should toggle arm state (was on, now off)
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track3_guid, false);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 3, LEDState::Off);
@@ -1486,7 +1483,7 @@ fn test_complex_multi_track_integration() {
         curr_mode,
     );
     // Should send upstream to Reaper
-    assert_volume_track_msg!(&to_reaper_rx, &track4_guid, 0.55);
+    assert_upstream_volume_track_msg!(&to_reaper_rx, &track4_guid, 0.55);
 
     // === PHASE 8: Remap track 2 to channel already mapped (channel 3) ===
     // This should clear track 3's mapping and assign track 2 to channel 3
@@ -1542,10 +1539,7 @@ fn test_complex_multi_track_integration() {
     );
     assert_upstream_soloed_track_msg!(&to_reaper_rx, &track2_guid, true); // Track 2 on channel 3
 
-    mode.handle_upstream_messages(
-        XTouchUpstreamMsg::ArmPress(ArmPress { idx: 5 }),
-        curr_mode,
-    );
+    mode.handle_upstream_messages(XTouchUpstreamMsg::ArmPress(ArmPress { idx: 5 }), curr_mode);
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track4_guid, true); // Track 4 on channel 5
 }
 
