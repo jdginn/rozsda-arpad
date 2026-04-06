@@ -92,12 +92,12 @@ impl From<bool> for LEDState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MutePress {
     pub idx: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MuteRelease {
     pub idx: i32,
 }
@@ -108,12 +108,12 @@ pub struct MuteLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SoloPress {
     pub idx: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SoloRelease {
     pub idx: i32,
 }
@@ -124,12 +124,12 @@ pub struct SoloLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArmPress {
     pub idx: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArmRelease {
     pub idx: i32,
 }
@@ -140,12 +140,12 @@ pub struct ArmLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SelectPress {
     pub idx: i32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SelectRelease {
     pub idx: i32,
 }
@@ -156,7 +156,7 @@ pub struct SelectLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(From)]
+#[derive(From, Debug)]
 pub enum XTouchUpstreamMsg {
     Barrier(Barrier),
 
