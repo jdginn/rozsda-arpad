@@ -20,19 +20,15 @@ static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Barrier {
     id: u64,
+    pub from: Mode,
+    pub to: Mode,
 }
 
 // Generate a new barrier with a unique ID
 impl Barrier {
-    pub fn new() -> Self {
+    pub fn new(from: Mode, to: Mode) -> Self {
         let id = BARRIER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Barrier { id }
-    }
-}
-
-impl Default for Barrier {
-    fn default() -> Self {
-        Barrier::new()
+        Barrier { id, from, to }
     }
 }
 
@@ -88,7 +84,7 @@ pub struct ModeManager {
     to_reaper: Sender<TrackMsg>,
     from_xtouch: Receiver<XTouchUpstreamMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
-    curr_mode: ModeState,
+    pub curr_mode: ModeState,
 
     reaper_currently_selected_track_guid: Option<String>,
 }
@@ -142,7 +138,10 @@ impl ModeManager {
                             manager.curr_mode = reaper_pan_vol_clone
                                 .lock()
                                 .unwrap()
-                                .initiate_mode_transition(manager.to_reaper.clone());
+                                .initiate_mode_transition(
+                                    manager.curr_mode.mode,
+                                    manager.to_reaper.clone(),
+                                );
                         }
                         Mode::ReaperSends => {
                             if let Some(currently_selected_track_guid) =
@@ -152,13 +151,12 @@ impl ModeManager {
                                     .lock()
                                     .unwrap()
                                     .initiate_mode_transition(
+                                        manager.curr_mode.mode,
                                         manager.to_reaper.clone(),
                                         &currently_selected_track_guid,
                                     );
                             } else {
-                                //TODO: log that we won't enter the mode because no track is selected
                                 // If we can't transition, stay in current mode
-                                manager.curr_mode = mode;
                             }
                         }
                         Mode::MotuVolPan => {
@@ -175,7 +173,7 @@ impl ModeManager {
                 select! {
                     recv(manager.from_reaper) -> msg => {
                         if let Ok(track_msg) = msg {
-                        // Track currently selected track for mode transitions
+                        // Keep track of currently selected track for mode transitions
                         if let TrackMsg::TrackDataMsg(ref data_msg) = track_msg {
                             if let crate::track::track::DataPayload::Selected(true) = data_msg.data {
                                 manager.reaper_currently_selected_track_guid = Some(data_msg.guid.clone());
@@ -196,9 +194,9 @@ impl ModeManager {
                                 // correct.
                             handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
                         },
-                            Mode::ReaperSends => {
-                                handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
-                            },
+                        Mode::ReaperSends => {
+                            handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
+                        },
                         _ => {panic!("Inside unknown mode in ModeManager")},
                         }
                     }
@@ -215,8 +213,23 @@ impl ModeManager {
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
-                                        State::WaitingBarrierFromDownstream(_) => {
-                                            // Block
+                                        State::WaitingBarrierFromDownstream(expected_barrier) => {
+                                            match xtouch_msg {
+                                                XTouchUpstreamMsg::Barrier(barrier) => {
+                                                    if barrier == expected_barrier {
+                                                        manager.curr_mode = ModeState {
+                                                            mode: curr_mode.mode,
+                                                            state: State::Active,
+                                                        };
+                                                    } else {
+                                                        // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
+                                                        // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
+                                                    }
+                                                },
+                                                _ => {
+                                                    // Block all non-barrier messages until the barrier comes through
+                                                }
+                                            }
                                         },
                                         State::WaitingBarrierFromUpstream(_) => {
                                             // Block
@@ -232,8 +245,23 @@ impl ModeManager {
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
-                                        State::WaitingBarrierFromDownstream(_) => {
-                                            // Block
+                                        State::WaitingBarrierFromDownstream(expected_barrier) => {
+                                            match xtouch_msg {
+                                                XTouchUpstreamMsg::Barrier(barrier) => {
+                                                    if barrier == expected_barrier {
+                                                        manager.curr_mode = ModeState {
+                                                            mode: curr_mode.mode,
+                                                            state: State::Active,
+                                                        };
+                                                    } else {
+                                                        // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
+                                                        // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
+                                                    }
+                                                },
+                                                _ => {
+                                                    // Block all non-barrier messages until the barrier comes through
+                                                }
+                                            }
                                         },
                                         State::WaitingBarrierFromUpstream(_) => {
                                             // Block

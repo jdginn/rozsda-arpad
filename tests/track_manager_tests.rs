@@ -1,4 +1,4 @@
-use arpad_rust::modes::mode_manager::Barrier;
+use arpad_rust::modes::mode_manager::{Barrier, Mode};
 use arpad_rust::track::track::{
     DataPayload, Direction, SendIndex, SendLevel, TrackDataMsg, TrackManager, TrackMsg, TrackQuery,
 };
@@ -23,7 +23,7 @@ fn setup_track_manager() -> (Sender<TrackMsg>, Receiver<TrackMsg>, Receiver<Trac
 fn test_track_manager_forwards_barriers() {
     let (input_tx, _upstream_rx, downstream_rx) = setup_track_manager();
 
-    let barrier = Barrier::new();
+    let barrier = Barrier::new(Mode::ReaperVolPan, Mode::ReaperSends);
     input_tx.send(TrackMsg::Barrier(barrier)).unwrap();
 
     // Barrier should be forwarded downstream

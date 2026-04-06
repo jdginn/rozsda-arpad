@@ -937,7 +937,8 @@ fn test_mode_transition_requests_track_query() {
     let (upstream_sender, upstream_receiver) = unbounded();
 
     // Initiate mode transition
-    let result_mode = mode.initiate_mode_transition(upstream_sender, &selected_track_guid);
+    let result_mode =
+        mode.initiate_mode_transition(Mode::ReaperVolPan, upstream_sender, &selected_track_guid);
 
     // Should send TrackQuery for the selected track
     let msg1 = upstream_receiver.recv_timeout(Duration::from_millis(1));
@@ -961,9 +962,9 @@ fn test_mode_transition_requests_track_query() {
         _ => panic!("Expected Barrier message"),
     }
 
-    // Should be waiting for barrier from downstream
+    // Should be waiting for barrier from upstream
     match result_mode.state {
-        State::WaitingBarrierFromDownstream(_) => {
+        State::WaitingBarrierFromUpstream(_) => {
             // Success - we're in the expected state
         }
         _ => panic!("Should be waiting for barrier from downstream"),
