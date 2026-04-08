@@ -190,30 +190,58 @@ impl ChannelStripMap {
 /// 1. Turn the encoder without pressing anything
 /// 2. Turn the encoder WHILE holding it down
 /// 3. Turn the encoder WHILE holding down a modifier button (e.g., Shift)
-/// 4. Turn the encoder WHILE holding down both the modifier and pressing down the encoder
+/// 4. Turn the encoder WHILE holding down both the modifier AND pressing down the encoder
 /// 5. Click the encoder (turning does nothing)
+/// 6. Click the encoder WHILE holding down a modifier button (e.g., Shift -- turning does nothing)
 ///
 /// In each case, the behavior updates the scribble strip to indicate what parameter is being controlled and the encoder ring to indicate the current value.
 ///
 /// This mode assumes 16 encoders are available. The encoders have the following functions:
-/// | Encoder Number | Normal                           | Pressed          | Shift          | Shift+Pressed      | Click         |
-/// |----------------|----------------------------------|------------------|----------------|--------------------|---------------|
-/// | 1. HP filter   | slope                            |                  |                |                    |               |
-/// | 2. Low freq    | Low Q (bell)/slope (slope)       | bell/shelf       |                |                    |               |
-/// | 3. Low gain    |                                  |                  |                |                    | zero          |
-/// | 4. LM freq     | LM Q                             |                  |                |                    |               |
-/// | 5. LM gain     |                                  |                  |                |                    | zero          |
-/// | 6. HM freq     | HM Q                             |                  |                |                    |               |
-/// | 7. HM gain     |                                  |                  |                |                    | zero          |
-/// | 8. High freq   | High Q (bell)/slope (slope)/LPF  | bell/shelf       |                |                    |               |
-/// | 9. High gain   |                                  | sides gain       |                |                    | zero          |
-/// | 10. EQ type    | bypass                           | EQ pos           |                |                    |               |
-/// | 11. Comp thresh| SC filter                        | comp 2 thresh    | comp 2 SC filt |                    |               |
-/// | 12. Comp ratio | attack                           | comp 2 ratio     | comp 2 attack  |                    |               |
-/// | 13. Comp makeup| release                          | comp 2 makeup    | comp 2 release |                    |               |
-/// | 14. Comp type  | bypass                           | comp 2 type      | comp 2 bypass  |                    |               |
-/// | 15. Saturation | bypass                           | comp pos         |                |                    |               |
-/// | 16. Gain       | interface gain (only if armed)   | saturation type  | gain type      |                    |               |
+/// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
+/// |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
+/// | 1  | HP filter   | slope                            | EQ type          |                |                |                 |
+/// | 2  | Low freq    | Low Q (bell) / slope (shelf)     | bell/shelf       |                |                |                 |
+/// | 3  | Low gain    |                                  |                  |                | zero Low gain  |                 |
+/// | 4  | LM freq     | LM Q                             |                  |                |                |                 |
+/// | 5  | LM gain     |                                  |                  |                | zero LM gain   |                 |
+/// | 6  | HM freq     | HM Q                             |                  |                |                |                 |
+/// | 7  | HM gain     |                                  |                  |                | zero HM gain   |                 |
+/// | 8  | High freq   | High Q (bell) / slope (slope)    | bell/shelf       |                |                |                 |
+/// | 9  | High gain   |                                  | sides gain       |                | zero High gain | zero sides gain |
+/// | 10 | EQ pos      |                                  | Comp order       |                | bypass EQ      |                 |
+/// | 11 | Comp thresh | Comp SC filter                   | Comp2  thresh    | Comp2 SC filt  |                |                 |
+/// | 12 | Comp ratio  | Comp attack                      | Comp2  ratio     | Comp2 attack   |                |                 |
+/// | 13 | Comp makeup | Comp release                     | Comp2  makeup    | Comp2 release  |                |                 |
+/// | 14 | Comp type   |                                  | Comp2  type      |                | bypass Comp    | bypass Comp2    |
+/// | 15 | Saturation  |                                  | Saturation type  |                | bypass Sat     |                 |
+/// | 16 | Gain        | Interface gain (only if armed    | Trim             |                |                |                 |
+///
+/// Notes on specific controls:
+/// - By default, EQ is engaged, both compressors and saturation are bypassed.
+/// - EQ type selects between EQ plugins with EQUIVALENT features. It may allow e.g. colourless EQ, SSL-style, Neve-style, etc.
+/// - Depending on EQ type, Q may or may not take effect.
+/// - Sides gain applies the "High" band only to the sides in a mid-side EQ. This value is offset from the main high gain.
+/// - EQ pos sets the position of EQ in the signal chain. Modes:
+///    - "FIRST": Gain -> EQ -> Comp -> Comp -> Saturation -> Trim
+///    - "MIDDLE": Gain -> Comp -> Comp -> EQ -> Saturation -> Trim
+///    - "LAST": Gain -> Comp -> Comp -> Saturation -> EQ -> Trim
+/// - Comp order sets the ordering of compressors. Modes:
+///    - "F->S": Comp -> Comp2
+///    - "S->F": Comp2 -> Comp1
+/// - Comp and Comp2 are separate compressors and controlled fully independently.
+/// - Comp is a "fast", FET-style compressor. Comp2 is a "slow" optical-style compressor.
+/// - Comp type selects between comprssors germain to the two categories above. Examples:
+///     - Comp1: 1176, Distressor, Digital, SSL, API
+///     - Comp2: LA2A, LA3A, Vari-MU, etc.
+/// - For compressor types that do not have a threshold control, Comp thresh maps to input gain.
+/// - Some compressor tyeps do not have a ratio control.
+/// - For compressor types that do not have a ratio control, Comp makeup maps to output gain.
+/// - Some compressor types lack attack and release controls.
+/// - Comp SC filter is a high-pass filter on the compressor sidechain.
+/// - Saturation type selects between various console, tape simulators up to full-on distortion.
+/// - Gain adjusts level entering the channel strip, before any processing.
+/// - Trim adjust level leaving the channel strip.
+/// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
 pub struct ChannelStripMode {
     // Maps each channel on the hardware controller to a Reaper track
     track_hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
