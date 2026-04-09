@@ -4,8 +4,10 @@ use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::midi::xtouch;
-use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
+use crate::midi::xtouch::{
+    EncoderPressMsg, EncoderReleaseMsg, FaderAbsMsg, LEDState, XTouchDownstreamMsg,
+    XTouchUpstreamMsg,
+};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
@@ -58,149 +60,268 @@ use crate::track::track::{
 // fallback implementation that does a best-effort mapping based on whatever plugins appear on the
 // track. This is trickier.
 
-enum ChannelLayerMode {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChannelWidgetMode {
     Default,
     Press,
     Shift,
     ShiftPress,
 }
 
-struct ChannelLayer {
-    mode: ChannelLayerMode,
-
-    // Inputs
-    button: Button,
-    encoder: bool, // TODO: what's this?
-
-    // These are all hard-coded at construction/definition/specialization
-    default_label: String,
-    press_label: String,
-    shift_label: String,
-    shift_press_label: String,
-    // RGB, hard-coded at construction
-    default_color: u32, // Or some better datatype
-    press_color: u32,
-    shift_color: u32,
-    shift_press_color: u32,
+#[derive(Clone, Debug)]
+struct ChannelWidgetLabels {
+    default: &'static str,
+    press: &'static str,
+    shift: &'static str,
+    shift_press: &'static str,
 }
 
-// FIXME: Important question! Where are we caching all of these values? Local to the
-// ChannelLayerMode or are we going up to the TrackManager? Do we hit weird lifetime/concurrency
-// issues if we go all the way up? It's probably easier to just maintain our own copies and rely on
-// message passing/filtering to do the rest. Hopefully by the time we've gotten here, we're very
-// good at the message-passing mechanics.
+#[derive(Clone, Copy, Debug)]
+struct ChannelWidgetColors {
+    default: u32, // Or some better datatype
+    press: u32,
+    shift: u32,
+    shift_press: u32,
+}
 
-// This pseudo-implementation represents the common functionality for a ChannelLayer. In reality,
-// there will be 16 of these that "inherit" parts of the base functionality but encapsulate
-// specifics:
-// - Encoder, button message handling (excluding the shift/press logic which is shared)
-// - Const values for labels and colors
-// - Handling for range and numeric value, which are both derived from incoming messages with
-// special mappint
-impl ChannelLayer {
-    fn color(self) -> u32 {
+struct ChannelWidgetCore {
+    mode: ChannelWidgetMode,
+
+    upstream_tx: Sender<TrackMsg>,
+    downstream_tx: Sender<XTouchDownstreamMsg>,
+}
+
+impl ChannelWidgetCore {
+    fn on_mode_change(&mut self) {}
+
+    fn mode_change_button_press(&mut self) {
         match self.mode {
-            ChannelLayerMode::Default => self.default_color,
-            ChannelLayerMode::Press => self.press_color,
-            ChannelLayerMode::Shift => self.shift_color,
-            ChannelLayerMode::ShiftPress => self.shift_press_color,
+            ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Press,
+            ChannelWidgetMode::Press => {}
+            ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::ShiftPress,
+            ChannelWidgetMode::ShiftPress => {}
         }
     }
 
-    // TODO: instead of being a pull, this needs to forward some value that maps itself through
-    // some kind of function based on incoming messages. This needs to run in a thread somewhere
-    fn range(self) -> u32 {
-        0
-    }
-
-    fn label1(self) -> String {
-        match self.mode {
-            ChannelLayerMode::Default => self.default_label,
-            ChannelLayerMode::Press => self.press_label,
-            ChannelLayerMode::Shift => self.shift_label,
-            ChannelLayerMode::ShiftPress => self.shift_press_label,
-        }
-    }
-
-    // TODO: instead of being a pull, this needs to forward some value that maps itself through
-    // some kind of function based on incoming messages. This needs to run in a thread somewhere.
-    fn label2(self) -> String {
-        "".to_string()
-    }
-
-    fn label3(self) -> String {
-        match self.mode {
-            ChannelLayerMode::Default => self.press_label,
-            ChannelLayerMode::Press => "".to_string(),
-            ChannelLayerMode::Shift => self.shift_press_label,
-            ChannelLayerMode::ShiftPress => "".to_string(),
-        }
-    }
-
-    fn label4(self) -> String {
-        match self.mode {
-            ChannelLayerMode::Default => self.shift_label,
-            ChannelLayerMode::Press => self.shift_press_label,
-            _ => "".to_string(),
-        }
-    }
-
-    // TODO: these functions work differently for each implementation
-    fn handle_encoder_turn(self, delta: i32) {
-        // TODO
-    }
-
-    fn handle_button_press(mut self) {
-        match self.mode {
-            ChannelLayerMode::Default => self.mode = ChannelLayerMode::Press,
-            ChannelLayerMode::Press => panic!(
-                "Pressing the button again while in Press mode should be a no-op, but we got another press event"
-            ),
-            ChannelLayerMode::Shift => self.mode = ChannelLayerMode::ShiftPress,
-            ChannelLayerMode::ShiftPress => panic!(
-                "Pressing the button again while in ShiftPress mode should be a no-op, but we got another press event"
-            ),
-        }
-    }
-
-    fn handle_button_release(mut self) {
+    fn mode_change_button_release(&mut self) {
         // TODO: sometimes this sends a message upstream, sometimes it just changes mode.
         match self.mode {
-            ChannelLayerMode::Default => panic!(
-                "Releasing the button while in Default mode should be a no-op, but we got a release event"
-            ),
-            ChannelLayerMode::Press => self.mode = ChannelLayerMode::Default,
-            ChannelLayerMode::Shift => panic!(
-                "Releasing the button while in Shift mode should be a no-op, but we got a release event"
-            ),
-            ChannelLayerMode::ShiftPress => self.mode = ChannelLayerMode::Shift,
+            ChannelWidgetMode::Default => {}
+            ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::Default,
+            ChannelWidgetMode::Shift => {}
+            ChannelWidgetMode::ShiftPress => self.mode = ChannelWidgetMode::Shift,
         }
     }
 
-    fn handle_shift_press(mut self) {
+    fn mode_change_shift_press(&mut self) {
         match self.mode {
-            ChannelLayerMode::Default => self.mode = ChannelLayerMode::Shift,
-            ChannelLayerMode::Press => self.mode = ChannelLayerMode::ShiftPress,
-            ChannelLayerMode::Shift => panic!(
-                "Pressing shift again while in Shift mode should be a no-op, but we got another shift press event"
-            ),
-            ChannelLayerMode::ShiftPress => panic!(
-                "Pressing shift again while in ShiftPress mode should be a no-op, but we got another shift press event"
-            ),
+            ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Shift,
+            ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::ShiftPress,
+            ChannelWidgetMode::Shift => {}
+            ChannelWidgetMode::ShiftPress => {}
         }
     }
 
-    fn handle_shift_release(mut self) {
+    fn mode_change_shift_release(&mut self) {
         match self.mode {
-            ChannelLayerMode::Default => panic!(
-                "Releasing shift while in Default mode should be a no-op, but we got a shift release event"
-            ),
-            ChannelLayerMode::Press => panic!(
-                "Releasing shift while in Press mode should be a no-op, but we got a shift release event"
-            ),
-            ChannelLayerMode::Shift => self.mode = ChannelLayerMode::Default,
-            ChannelLayerMode::ShiftPress => self.mode = ChannelLayerMode::Press,
+            ChannelWidgetMode::Default => {}
+            ChannelWidgetMode::Press => {}
+            ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::Default,
+            ChannelWidgetMode::ShiftPress => self.mode = ChannelWidgetMode::Press,
         }
+    }
+}
+
+trait ChannelWidgetBehavior {
+    // FIXME: sometimes labels and colors need to change depending on the state of the plugin (e.g., EQ type), so we can't truly use static labels.
+    const LABELS: ChannelWidgetLabels;
+    const COLORS: ChannelWidgetColors;
+    const INDEX: usize; // Which encoder this widget is associated with (0-15)
+
+    fn on_encoder_inc(&mut self);
+    fn on_encoder_dec(&mut self);
+    fn on_click(&mut self) -> Option<TrackMsg>;
+    fn handle_downstream_message(&mut self, msg: TrackMsg);
+}
+
+struct ChannelWidget<B: ChannelWidgetBehavior> {
+    core: ChannelWidgetCore,
+    behavior: B,
+}
+
+impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
+    fn color(&self) -> u32 {
+        let colors = B::COLORS;
+        match self.core.mode {
+            ChannelWidgetMode::Default => colors.default,
+            ChannelWidgetMode::Press => colors.press,
+            ChannelWidgetMode::Shift => colors.shift,
+            ChannelWidgetMode::ShiftPress => colors.shift_press,
+        }
+    }
+
+    fn label1(&self) -> &'static str {
+        let labels = B::LABELS;
+        match self.core.mode {
+            ChannelWidgetMode::Default => labels.default,
+            ChannelWidgetMode::Press => labels.press,
+            ChannelWidgetMode::Shift => labels.shift,
+            ChannelWidgetMode::ShiftPress => labels.shift_press,
+        }
+    }
+
+    fn label3(&self) -> &'static str {
+        let labels = B::LABELS;
+        match self.core.mode {
+            ChannelWidgetMode::Default => labels.press,
+            ChannelWidgetMode::Press => "",
+            ChannelWidgetMode::Shift => labels.shift_press,
+            ChannelWidgetMode::ShiftPress => "",
+        }
+    }
+
+    fn label4(&self) -> &'static str {
+        let labels = B::LABELS;
+        match self.core.mode {
+            ChannelWidgetMode::Default => labels.shift,
+            ChannelWidgetMode::Press => labels.shift_press,
+            ChannelWidgetMode::Shift => "",
+            ChannelWidgetMode::ShiftPress => "",
+        }
+    }
+
+    fn mode_change_button_press(&mut self) {
+        self.core.mode_change_button_press();
+    }
+
+    fn mode_change_button_release(&mut self) {
+        self.core.mode_change_button_release();
+    }
+
+    fn mode_change_shift_press(&mut self) {
+        self.core.mode_change_shift_press();
+    }
+
+    fn mode_change_shift_release(&mut self) {
+        self.core.mode_change_shift_release();
+    }
+
+    fn on_encoder_inc(&mut self) {
+        self.behavior.on_encoder_inc();
+    }
+
+    fn on_encoder_dec(&mut self) {
+        self.behavior.on_encoder_dec();
+    }
+
+    fn on_click(&mut self) {
+        self.behavior.on_click();
+    }
+
+    fn handle_downstream_message(&mut self, msg: TrackMsg) {
+        self.behavior.handle_downstream_message(msg);
+    }
+
+    fn handle_upstream_message(&mut self, msg: XTouchUpstreamMsg) {
+        let index = B::INDEX;
+        match msg {
+            XTouchUpstreamMsg::EncoderPress(msg) => {
+                if msg.idx as usize == index {
+                    self.mode_change_button_press();
+                }
+            }
+            XTouchUpstreamMsg::EncoderRelease(msg) => {
+                if msg.idx as usize == index {
+                    self.mode_change_button_release();
+                    self.on_click();
+                }
+            }
+            XTouchUpstreamMsg::EncoderTurnInc(msg) => {
+                if msg.idx as usize == index {
+                    // TODO:
+                }
+            }
+            XTouchUpstreamMsg::EncoderTurnDec(msg) => {
+                if msg.idx as usize == index {
+                    // TODO:
+                }
+            }
+            _ => {
+                // Ignore other messages
+            }
+        }
+    }
+}
+
+struct HPWidgetBehavior {
+    hp_filt_freq: f32,
+}
+
+impl ChannelWidgetBehavior for HPWidgetBehavior {
+    const INDEX: usize = 0;
+    const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        default: "HP Filt",
+        press: "Slope",
+        shift: "EQ Type",
+        shift_press: "",
+    };
+    const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        default: 0xFF0000,
+        press: 0x00FF00,
+        shift: 0x0000FF,
+        shift_press: 0xFFFF00,
+    };
+
+    fn on_encoder_inc(&mut self) {
+        self.hp_filt_freq += 1.0; // TODO: scale appropriately and add limits
+    }
+
+    fn on_encoder_dec(&mut self) {
+        self.hp_filt_freq -= 1.0; // TODO: scale appropriately and add limits
+    }
+
+    fn on_click(&mut self) -> Option<TrackMsg> {
+        None
+    }
+
+    fn handle_downstream_message(&mut self, msg: TrackMsg) {
+        // TODO
+    }
+}
+
+struct LowFreqWidgetBehavior {
+    low_freq: f32,
+}
+
+impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
+    const INDEX: usize = 1;
+    const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        default: "Low Freq",
+        press: "Low Q / Slope",
+        shift: "Bell/Shelf",
+        shift_press: "",
+    };
+    const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        default: 0xFF0000,
+        press: 0x00FF00,
+        shift: 0x0000FF,
+        shift_press: 0xFFFF00,
+    };
+
+    fn on_encoder_inc(&mut self) {
+        self.low_freq += 1.0; // TODO: scale appropriately and add limits
+    }
+
+    fn on_encoder_dec(&mut self) {
+        self.low_freq -= 1.0; // TODO: scale appropriately and add limits
+    }
+
+    fn on_click(&mut self) -> Option<TrackMsg> {
+        None
+    }
+
+    fn handle_downstream_message(&mut self, msg: TrackMsg) {
+        // TODO
     }
 }
 
