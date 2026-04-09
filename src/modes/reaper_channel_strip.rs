@@ -11,6 +11,199 @@ use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
+// Scribble strips:
+//
+// Top displays:
+// - Color is set per function (EQ, Comp, etc)
+// - Range
+// - Top line: function
+// - Second line: numeric
+// - Third line: click-in function
+// - Bottom line: shift function
+//
+// Lower displays:
+// - Top line: track name
+// - Bottom line: ?
+
+// Architecture ideas:
+//
+// In this mode, faders do the same thing as VolPanMode. Faders are the surfaces where being out
+// of step with Reaper can cause us problems, so for the unique channel strip stuff here, we have
+// less stringent requirements around state synchronization.
+//
+// The channel-strip specific stuff here cares about the *top displays*. Each of these displays can
+// implement its own adapter that encapsulates all channel-strip specific behavior:
+//
+// INPUT:
+// - Encoder position
+// - Encode press (used for push-in mode)
+// - Encoder release (used to exit push-in mode or register click)
+// - Shift (comes globally)
+//
+// OUTPUT:
+// - Color
+// - Range
+// - Numeric value
+// - Click-in function
+// - Shift function
+//
+// In shift mode, display the click-in function on line 3 but not the shift function
+//
+// OUTPUTs can simply follow our best-known feedback values. We don't need to gate upstream
+// messages for synchronization because the values shown on the displays do not affect inputs.
+// Inputs are relative anyway.
+//
+// There should be some abstraction for hooking up messages to ChannelLayers. The naive
+// implementation talks to some kind of reaper "compound" plugin. But we also need some kind of
+// fallback implementation that does a best-effort mapping based on whatever plugins appear on the
+// track. This is trickier.
+
+enum ChannelLayerMode {
+    Default,
+    Press,
+    Shift,
+    ShiftPress,
+}
+
+struct ChannelLayer {
+    mode: ChannelLayerMode,
+
+    // Inputs
+    button: Button,
+    encoder: bool, // TODO: what's this?
+
+    // These are all hard-coded at construction/definition/specialization
+    default_label: String,
+    press_label: String,
+    shift_label: String,
+    shift_press_label: String,
+    // RGB, hard-coded at construction
+    default_color: u32, // Or some better datatype
+    press_color: u32,
+    shift_color: u32,
+    shift_press_color: u32,
+}
+
+// FIXME: Important question! Where are we caching all of these values? Local to the
+// ChannelLayerMode or are we going up to the TrackManager? Do we hit weird lifetime/concurrency
+// issues if we go all the way up? It's probably easier to just maintain our own copies and rely on
+// message passing/filtering to do the rest. Hopefully by the time we've gotten here, we're very
+// good at the message-passing mechanics.
+
+// This pseudo-implementation represents the common functionality for a ChannelLayer. In reality,
+// there will be 16 of these that "inherit" parts of the base functionality but encapsulate
+// specifics:
+// - Encoder, button message handling (excluding the shift/press logic which is shared)
+// - Const values for labels and colors
+// - Handling for range and numeric value, which are both derived from incoming messages with
+// special mappint
+impl ChannelLayer {
+    fn color(self) -> u32 {
+        match self.mode {
+            ChannelLayerMode::Default => self.default_color,
+            ChannelLayerMode::Press => self.press_color,
+            ChannelLayerMode::Shift => self.shift_color,
+            ChannelLayerMode::ShiftPress => self.shift_press_color,
+        }
+    }
+
+    // TODO: instead of being a pull, this needs to forward some value that maps itself through
+    // some kind of function based on incoming messages. This needs to run in a thread somewhere
+    fn range(self) -> u32 {
+        0
+    }
+
+    fn label1(self) -> String {
+        match self.mode {
+            ChannelLayerMode::Default => self.default_label,
+            ChannelLayerMode::Press => self.press_label,
+            ChannelLayerMode::Shift => self.shift_label,
+            ChannelLayerMode::ShiftPress => self.shift_press_label,
+        }
+    }
+
+    // TODO: instead of being a pull, this needs to forward some value that maps itself through
+    // some kind of function based on incoming messages. This needs to run in a thread somewhere.
+    fn label2(self) -> String {
+        "".to_string()
+    }
+
+    fn label3(self) -> String {
+        match self.mode {
+            ChannelLayerMode::Default => self.press_label,
+            ChannelLayerMode::Press => "".to_string(),
+            ChannelLayerMode::Shift => self.shift_press_label,
+            ChannelLayerMode::ShiftPress => "".to_string(),
+        }
+    }
+
+    fn label4(self) -> String {
+        match self.mode {
+            ChannelLayerMode::Default => self.shift_label,
+            ChannelLayerMode::Press => self.shift_press_label,
+            _ => "".to_string(),
+        }
+    }
+
+    // TODO: these functions work differently for each implementation
+    fn handle_encoder_turn(self, delta: i32) {
+        // TODO
+    }
+
+    fn handle_button_press(mut self) {
+        match self.mode {
+            ChannelLayerMode::Default => self.mode = ChannelLayerMode::Press,
+            ChannelLayerMode::Press => panic!(
+                "Pressing the button again while in Press mode should be a no-op, but we got another press event"
+            ),
+            ChannelLayerMode::Shift => self.mode = ChannelLayerMode::ShiftPress,
+            ChannelLayerMode::ShiftPress => panic!(
+                "Pressing the button again while in ShiftPress mode should be a no-op, but we got another press event"
+            ),
+        }
+    }
+
+    fn handle_button_release(mut self) {
+        // TODO: sometimes this sends a message upstream, sometimes it just changes mode.
+        match self.mode {
+            ChannelLayerMode::Default => panic!(
+                "Releasing the button while in Default mode should be a no-op, but we got a release event"
+            ),
+            ChannelLayerMode::Press => self.mode = ChannelLayerMode::Default,
+            ChannelLayerMode::Shift => panic!(
+                "Releasing the button while in Shift mode should be a no-op, but we got a release event"
+            ),
+            ChannelLayerMode::ShiftPress => self.mode = ChannelLayerMode::Shift,
+        }
+    }
+
+    fn handle_shift_press(mut self) {
+        match self.mode {
+            ChannelLayerMode::Default => self.mode = ChannelLayerMode::Shift,
+            ChannelLayerMode::Press => self.mode = ChannelLayerMode::ShiftPress,
+            ChannelLayerMode::Shift => panic!(
+                "Pressing shift again while in Shift mode should be a no-op, but we got another shift press event"
+            ),
+            ChannelLayerMode::ShiftPress => panic!(
+                "Pressing shift again while in ShiftPress mode should be a no-op, but we got another shift press event"
+            ),
+        }
+    }
+
+    fn handle_shift_release(mut self) {
+        match self.mode {
+            ChannelLayerMode::Default => panic!(
+                "Releasing shift while in Default mode should be a no-op, but we got a shift release event"
+            ),
+            ChannelLayerMode::Press => panic!(
+                "Releasing shift while in Press mode should be a no-op, but we got a shift release event"
+            ),
+            ChannelLayerMode::Shift => self.mode = ChannelLayerMode::Default,
+            ChannelLayerMode::ShiftPress => self.mode = ChannelLayerMode::Press,
+        }
+    }
+}
+
 struct Button {
     state: bool,
 }
