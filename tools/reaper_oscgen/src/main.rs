@@ -177,6 +177,7 @@ struct ContextParam {
 
 fn write_imports(code: &mut String) {
     code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
+    code.push_str("use std::collections::HashMap;\n");
     code.push_str("use std::net::UdpSocket;\n");
     code.push_str("use std::sync::Arc;\n\n");
 
@@ -395,21 +396,60 @@ fn write_node_struct_definition(code: &mut String, node: &OscRoute) {
 fn write_node_accessors(code: &mut String, routes: Vec<OscRoute>) {
     code.push_str("impl Reaper {\n");
     for route in routes {
-        code.push_str(&format!("    pub fn {}(&self", route.accessor_name()));
-        for param in &route.params {
-            code.push_str(&format!(", {}: {}", param.name, rust_type(&param.typ)));
+        if route.params.is_empty() {
+            write_node_accessor_single(code, route);
+        } else {
+            write_node_accessor_multi(code, route);
         }
-        code.push_str(&format!(") -> {} {{\n", route.struct_name()));
-        code.push_str(&format!("        {} {{\n", route.struct_name()));
-        code.push_str("        socket: self.socket.clone(),\n");
-        code.push_str("        handler: None,\n");
-        for param in &route.params {
-            code.push_str(&format!("        {}: {},\n", param.name, param.name));
-        }
-        code.push_str("        }\n");
-        code.push_str("    }\n");
     }
     code.push_str("}\n\n");
+}
+
+fn write_node_accessor_single(code: &mut String, route: OscRoute) {
+    code.push_str(&format!("    pub fn {}(&mut self", route.accessor_name()));
+    for param in &route.params {
+        code.push_str(&format!(", {}: {}", param.name, rust_type(&param.typ)));
+    }
+    code.push_str(&format!(") -> &mut {} {{\n", route.struct_name()));
+    code.push_str(&format!(
+        "        &mut self.{}_endpoint\n",
+        route.accessor_name()
+    ));
+    code.push_str("    }\n");
+}
+
+fn write_node_accessor_multi(code: &mut String, route: OscRoute) {
+    code.push_str(&format!("    pub fn {}(&mut self", route.accessor_name()));
+    for param in &route.params {
+        code.push_str(&format!(", {}: {}", param.name, rust_type(&param.typ)));
+    }
+    code.push_str(&format!(") -> &mut {} {{\n", route.struct_name()));
+    code.push_str(&format!(
+        "        self.{}_endpoints\n",
+        route.accessor_name()
+    ));
+
+    if let Some((last, rest)) = route.params.split_last() {
+        for param in rest {
+            code.push_str(&format!("            .entry({}.clone())\n", param.name));
+            code.push_str("            .or_insert_with(|| HashMap::new())\n");
+        }
+        code.push_str(&format!("            .entry({}.clone())\n", last.name));
+        code.push_str(&format!(
+            "        .or_insert_with(|| {} {{\n",
+            route.struct_name()
+        ));
+        code.push_str("                socket: self.socket.clone(),\n");
+        for param in &route.params {
+            code.push_str(&format!(
+                "                {}: {},\n",
+                param.name, param.name
+            ));
+        }
+        code.push_str("                handler: None,\n");
+        code.push_str("        })\n");
+        code.push_str("    }\n");
+    }
 }
 
 fn write_node_bind_trait(code: &mut String, node: &OscRoute) {
@@ -551,11 +591,48 @@ fn write_node(code: &mut String, node: &OscRoute, generated_structs: &mut HashSe
 fn write_reaper(code: &mut String, routes: Vec<OscRoute>) {
     code.push_str("pub struct Reaper {\n");
     code.push_str("    socket: Arc<UdpSocket>,\n");
+    for route in routes.iter() {
+        if route.params.is_empty() {
+            code.push_str(&format!(
+                "    {}_endpoint: {},\n",
+                route.accessor_name(),
+                route.struct_name(),
+            ));
+        } else {
+            // TODO: handle multi-param endpoints and don't assume string
+            code.push_str(&format!("    {}_endpoints: ", route.accessor_name(),));
+            for param in route.params.iter() {
+                code.push_str(&format!("HashMap<{},", rust_type(param.typ.as_str())));
+            }
+            code.push_str(&route.struct_name().to_string());
+            for _ in route.params.iter() {
+                code.push('>');
+            }
+            code.push_str(",\n");
+        }
+    }
     code.push_str("}\n\n");
     code.push_str("impl Reaper {\n");
     code.push_str("    pub fn new(socket: Arc<UdpSocket>) -> Self {\n");
     code.push_str("        Self {\n");
-    code.push_str("            socket,\n");
+    code.push_str("            socket: socket.clone(),\n");
+    for route in routes.iter() {
+        if route.params.is_empty() {
+            code.push_str(&format!(
+                "            {}_endpoint: {} {{\n",
+                route.accessor_name(),
+                route.struct_name()
+            ));
+            code.push_str("                socket: socket.clone(),\n");
+            code.push_str("                handler: None,\n");
+            code.push_str("            },\n");
+        } else {
+            code.push_str(&format!(
+                "            {}_endpoints: HashMap::new(),\n",
+                route.accessor_name()
+            ));
+        }
+    }
     code.push_str("        }\n");
     code.push_str("    }\n");
     // for route in routes.iter() {
@@ -596,7 +673,7 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
     code.push_str("    }\n");
     code.push_str("    let mut args = Vec::new();\n");
     code.push_str("    for (a, p) in addr_parts.iter().zip(pat_parts.iter()) {\n");
-    code.push_str("        if *p == \"{}\" {\n");
+    code.push_str("        if p.starts_with('{') && p.ends_with('}') {\n");
     code.push_str("            args.push((*a).to_string());\n");
     code.push_str("        } else if *p != *a {\n");
     code.push_str("            return None;\n");
@@ -722,21 +799,33 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
 
 fn format_code(code: &str) -> String {
     let mut rustfmt = Command::new("rustfmt")
+        .arg("--emit")
         .arg("stdout")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to start rustfmt");
 
-    let stdin = rustfmt.stdin.as_mut().expect("Failed to open stdin");
-    use std::io::Write;
-    stdin
-        .write_all(code.as_bytes())
-        .expect("Failed to write to rustfmt stdin");
+    {
+        use std::io::Write;
+        rustfmt
+            .stdin
+            .as_mut()
+            .expect("Failed to open stdin")
+            .write_all(code.as_bytes())
+            .expect("Failed to write to rustfmt stdin");
+    }
 
     let output = rustfmt
         .wait_with_output()
         .expect("Failed to read rustfmt output");
+
+    // Optional but recommended: surface rustfmt errors
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        panic!("rustfmt failed: {}", err);
+    }
+
     String::from_utf8(output.stdout).expect("rustfmt output not valid UTF-8")
 }
 
