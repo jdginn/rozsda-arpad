@@ -4,6 +4,7 @@ use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
 
+use crate::midi::xtouch;
 use crate::midi::xtouch::{
     EncoderPressMsg, EncoderReleaseMsg, FaderAbsMsg, LEDState, XTouchDownstreamMsg,
     XTouchUpstreamMsg,
@@ -59,6 +60,11 @@ use crate::track::track::{
 // implementation talks to some kind of reaper "compound" plugin. But we also need some kind of
 // fallback implementation that does a best-effort mapping based on whatever plugins appear on the
 // track. This is trickier.
+//
+// Dataflow goes:
+// Reaper -> Router -> ChannelWidget -> Hardware
+//
+// Router links up messages to the appropriate ChannelWidget inputs?
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ChannelWidgetMode {
@@ -84,6 +90,7 @@ struct ChannelWidgetColors {
     shift_press: u32,
 }
 
+/// ChannelWidgetCore handles shared logic around mode switching and message passing.
 struct ChannelWidgetCore {
     mode: ChannelWidgetMode,
 
@@ -132,8 +139,8 @@ impl ChannelWidgetCore {
     }
 }
 
+/// ChannelWidetBehavior defines the specific behavior of some specific widget.
 trait ChannelWidgetBehavior {
-    // FIXME: sometimes labels and colors need to change depending on the state of the plugin (e.g., EQ type), so we can't truly use static labels.
     const LABELS: ChannelWidgetLabels;
     const COLORS: ChannelWidgetColors;
     const INDEX: usize; // Which encoder this widget is associated with (0-15)
@@ -144,12 +151,16 @@ trait ChannelWidgetBehavior {
     fn handle_downstream_message(&mut self, msg: TrackMsg);
 }
 
+/// ChannelWidget is the full implementation of some widget.
 struct ChannelWidget<B: ChannelWidgetBehavior> {
     core: ChannelWidgetCore,
     behavior: B,
 }
 
 impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
+    // By default, colors and labels switch between static values based on the mode.
+    // In some situations, labels may need to change based on plugin state. In these cases,
+    // override the method.
     fn color(&self) -> u32 {
         let colors = B::COLORS;
         match self.core.mode {
@@ -218,6 +229,10 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         self.behavior.on_click();
     }
 
+    // FIXME: this probably should live elsewhere and delgate to all the configured widgets.
+    //
+    // It would be awkward to have this on each and every widget. Would we pass messages
+    // sequentially? Would we multiplex them?
     fn handle_downstream_message(&mut self, msg: TrackMsg) {
         self.behavior.handle_downstream_message(msg);
     }
@@ -736,15 +751,17 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 // Handle barrier messages if needed
             }
-            XTouchUpstreamMsg::GlobalPress => curr_mode, // GlobalPress maps to this mode!
+            // GlobalPress maps to ReaperVolPan mode
+            XTouchUpstreamMsg::GlobalPress => ModeState {
+                mode: Mode::ReaperVolPan,
+                state: State::RequestingModeTransition,
+            },
             // MIDITracksPress maps to ReaperSends mode
-            XTouchUpstreamMsg::MIDITracksPress => {
-                // Request transition to ReaperSends mode
-                ModeState {
-                    mode: Mode::ReaperSends,
-                    state: State::RequestingModeTransition,
-                }
-            }
+            XTouchUpstreamMsg::MIDITracksPress => ModeState {
+                mode: Mode::ReaperSends,
+                state: State::RequestingModeTransition,
+            },
+            XTouchUpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
             XTouchUpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) =
                     &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
