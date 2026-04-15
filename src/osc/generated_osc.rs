@@ -1,5 +1,6 @@
 // AUTO-GENERATED CODE. DO NOT EDIT!
 
+use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::Arc;
 
@@ -1521,260 +1522,422 @@ pub mod context_kind {
 
 pub struct Reaper {
     socket: Arc<UdpSocket>,
+    num_tracks_endpoint: NumTracks,
+    track_all_guids_endpoint: TrackAllGuids,
+    track_index_endpoints: HashMap<String, TrackIndex>,
+    track_delete_endpoints: HashMap<String, TrackDelete>,
+    track_name_endpoints: HashMap<String, TrackName>,
+    track_selected_endpoints: HashMap<String, TrackSelected>,
+    track_volume_endpoints: HashMap<String, TrackVolume>,
+    track_pan_endpoints: HashMap<String, TrackPan>,
+    track_mute_endpoints: HashMap<String, TrackMute>,
+    track_solo_endpoints: HashMap<String, TrackSolo>,
+    track_rec_arm_endpoints: HashMap<String, TrackRecArm>,
+    track_send_guid_endpoints: HashMap<String, HashMap<i32, TrackSendGuid>>,
+    track_send_volume_endpoints: HashMap<String, HashMap<i32, TrackSendVolume>>,
+    track_send_pan_endpoints: HashMap<String, HashMap<i32, TrackSendPan>>,
+    track_color_endpoints: HashMap<String, TrackColor>,
+    track_fx_guid_endpoints: HashMap<String, HashMap<i32, TrackFxGuid>>,
+    track_fx_name_endpoints: HashMap<String, HashMap<i32, TrackFxName>>,
+    track_fx_enabled_endpoints: HashMap<String, HashMap<i32, TrackFxEnabled>>,
+    track_fx_param_count_endpoints: HashMap<String, HashMap<i32, TrackFxParamCount>>,
+    track_fx_param_name_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamName>>>,
+    track_fx_param_value_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamValue>>>,
+    track_fx_param_min_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamMin>>>,
+    track_fx_param_max_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamMax>>>,
+    track_fx_info_endpoints: HashMap<String, HashMap<i32, TrackFxInfo>>,
+    fxinfo_name_endpoints: HashMap<String, FxinfoName>,
+    fxinfo_param_count_endpoints: HashMap<String, FxinfoParamCount>,
+    fxinfo_param_name_endpoints: HashMap<String, HashMap<i32, FxinfoParamName>>,
+    fxinfo_param_min_endpoints: HashMap<String, HashMap<i32, FxinfoParamMin>>,
+    fxinfo_param_max_endpoints: HashMap<String, HashMap<i32, FxinfoParamMax>>,
+    fxinfo_endpoint: Fxinfo,
 }
 
 impl Reaper {
     pub fn new(socket: Arc<UdpSocket>) -> Self {
-        Self { socket }
+        Self {
+            socket: socket.clone(),
+            num_tracks_endpoint: NumTracks {
+                socket: socket.clone(),
+                handler: None,
+            },
+            track_all_guids_endpoint: TrackAllGuids {
+                socket: socket.clone(),
+                handler: None,
+            },
+            track_index_endpoints: HashMap::new(),
+            track_delete_endpoints: HashMap::new(),
+            track_name_endpoints: HashMap::new(),
+            track_selected_endpoints: HashMap::new(),
+            track_volume_endpoints: HashMap::new(),
+            track_pan_endpoints: HashMap::new(),
+            track_mute_endpoints: HashMap::new(),
+            track_solo_endpoints: HashMap::new(),
+            track_rec_arm_endpoints: HashMap::new(),
+            track_send_guid_endpoints: HashMap::new(),
+            track_send_volume_endpoints: HashMap::new(),
+            track_send_pan_endpoints: HashMap::new(),
+            track_color_endpoints: HashMap::new(),
+            track_fx_guid_endpoints: HashMap::new(),
+            track_fx_name_endpoints: HashMap::new(),
+            track_fx_enabled_endpoints: HashMap::new(),
+            track_fx_param_count_endpoints: HashMap::new(),
+            track_fx_param_name_endpoints: HashMap::new(),
+            track_fx_param_value_endpoints: HashMap::new(),
+            track_fx_param_min_endpoints: HashMap::new(),
+            track_fx_param_max_endpoints: HashMap::new(),
+            track_fx_info_endpoints: HashMap::new(),
+            fxinfo_name_endpoints: HashMap::new(),
+            fxinfo_param_count_endpoints: HashMap::new(),
+            fxinfo_param_name_endpoints: HashMap::new(),
+            fxinfo_param_min_endpoints: HashMap::new(),
+            fxinfo_param_max_endpoints: HashMap::new(),
+            fxinfo_endpoint: Fxinfo {
+                socket: socket.clone(),
+                handler: None,
+            },
+        }
     }
 }
 
 impl Reaper {
-    pub fn num_tracks(&self) -> NumTracks {
-        NumTracks {
-            socket: self.socket.clone(),
-            handler: None,
-        }
+    pub fn num_tracks(&mut self) -> &mut NumTracks {
+        &mut self.num_tracks_endpoint
     }
-    pub fn track_all_guids(&self) -> TrackAllGuids {
-        TrackAllGuids {
-            socket: self.socket.clone(),
-            handler: None,
-        }
+    pub fn track_all_guids(&mut self) -> &mut TrackAllGuids {
+        &mut self.track_all_guids_endpoint
     }
-    pub fn track_index(&self, track_guid: String) -> TrackIndex {
-        TrackIndex {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_index(&mut self, track_guid: String) -> &mut TrackIndex {
+        self.track_index_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackIndex {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_delete(&self, track_guid: String) -> TrackDelete {
-        TrackDelete {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_delete(&mut self, track_guid: String) -> &mut TrackDelete {
+        self.track_delete_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackDelete {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_name(&self, track_guid: String) -> TrackName {
-        TrackName {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_name(&mut self, track_guid: String) -> &mut TrackName {
+        self.track_name_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackName {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_selected(&self, track_guid: String) -> TrackSelected {
-        TrackSelected {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_selected(&mut self, track_guid: String) -> &mut TrackSelected {
+        self.track_selected_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackSelected {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_volume(&self, track_guid: String) -> TrackVolume {
-        TrackVolume {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_volume(&mut self, track_guid: String) -> &mut TrackVolume {
+        self.track_volume_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackVolume {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_pan(&self, track_guid: String) -> TrackPan {
-        TrackPan {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_pan(&mut self, track_guid: String) -> &mut TrackPan {
+        self.track_pan_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackPan {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_mute(&self, track_guid: String) -> TrackMute {
-        TrackMute {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_mute(&mut self, track_guid: String) -> &mut TrackMute {
+        self.track_mute_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackMute {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_solo(&self, track_guid: String) -> TrackSolo {
-        TrackSolo {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_solo(&mut self, track_guid: String) -> &mut TrackSolo {
+        self.track_solo_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackSolo {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_rec_arm(&self, track_guid: String) -> TrackRecArm {
-        TrackRecArm {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_rec_arm(&mut self, track_guid: String) -> &mut TrackRecArm {
+        self.track_rec_arm_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackRecArm {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_send_guid(&self, track_guid: String, send_index: i32) -> TrackSendGuid {
-        TrackSendGuid {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            send_index: send_index,
-        }
+    pub fn track_send_guid(&mut self, track_guid: String, send_index: i32) -> &mut TrackSendGuid {
+        self.track_send_guid_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(send_index.clone())
+            .or_insert_with(|| TrackSendGuid {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                send_index: send_index,
+                handler: None,
+            })
     }
-    pub fn track_send_volume(&self, track_guid: String, send_index: i32) -> TrackSendVolume {
-        TrackSendVolume {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            send_index: send_index,
-        }
+    pub fn track_send_volume(
+        &mut self,
+        track_guid: String,
+        send_index: i32,
+    ) -> &mut TrackSendVolume {
+        self.track_send_volume_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(send_index.clone())
+            .or_insert_with(|| TrackSendVolume {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                send_index: send_index,
+                handler: None,
+            })
     }
-    pub fn track_send_pan(&self, track_guid: String, send_index: i32) -> TrackSendPan {
-        TrackSendPan {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            send_index: send_index,
-        }
+    pub fn track_send_pan(&mut self, track_guid: String, send_index: i32) -> &mut TrackSendPan {
+        self.track_send_pan_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(send_index.clone())
+            .or_insert_with(|| TrackSendPan {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                send_index: send_index,
+                handler: None,
+            })
     }
-    pub fn track_color(&self, track_guid: String) -> TrackColor {
-        TrackColor {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_color(&mut self, track_guid: String) -> &mut TrackColor {
+        self.track_color_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackColor {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_fx_guid(&self, track_guid: String, fx_idx: i32) -> TrackFxGuid {
-        TrackFxGuid {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_guid(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxGuid {
+        self.track_fx_guid_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxGuid {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_name(&self, track_guid: String, fx_idx: i32) -> TrackFxName {
-        TrackFxName {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_name(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxName {
+        self.track_fx_name_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxName {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_enabled(&self, track_guid: String, fx_idx: i32) -> TrackFxEnabled {
-        TrackFxEnabled {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_enabled(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxEnabled {
+        self.track_fx_enabled_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxEnabled {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_param_count(&self, track_guid: String, fx_idx: i32) -> TrackFxParamCount {
-        TrackFxParamCount {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_param_count(
+        &mut self,
+        track_guid: String,
+        fx_idx: i32,
+    ) -> &mut TrackFxParamCount {
+        self.track_fx_param_count_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxParamCount {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_name(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamName {
-        TrackFxParamName {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamName {
+        self.track_fx_param_name_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamName {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_value(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamValue {
-        TrackFxParamValue {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamValue {
+        self.track_fx_param_value_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamValue {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_min(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamMin {
-        TrackFxParamMin {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamMin {
+        self.track_fx_param_min_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamMin {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_max(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamMax {
-        TrackFxParamMax {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamMax {
+        self.track_fx_param_max_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamMax {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_info(&self, track_guid: String, fx_idx: i32) -> TrackFxInfo {
-        TrackFxInfo {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_info(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxInfo {
+        self.track_fx_info_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxInfo {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo_name(&self, ident: String) -> FxinfoName {
-        FxinfoName {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-        }
+    pub fn fxinfo_name(&mut self, ident: String) -> &mut FxinfoName {
+        self.fxinfo_name_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| FxinfoName {
+                socket: self.socket.clone(),
+                ident: ident,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_count(&self, ident: String) -> FxinfoParamCount {
-        FxinfoParamCount {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-        }
+    pub fn fxinfo_param_count(&mut self, ident: String) -> &mut FxinfoParamCount {
+        self.fxinfo_param_count_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| FxinfoParamCount {
+                socket: self.socket.clone(),
+                ident: ident,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_name(&self, ident: String, param_idx: i32) -> FxinfoParamName {
-        FxinfoParamName {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-            param_idx: param_idx,
-        }
+    pub fn fxinfo_param_name(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamName {
+        self.fxinfo_param_name_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamName {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_min(&self, ident: String, param_idx: i32) -> FxinfoParamMin {
-        FxinfoParamMin {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-            param_idx: param_idx,
-        }
+    pub fn fxinfo_param_min(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamMin {
+        self.fxinfo_param_min_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamMin {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_max(&self, ident: String, param_idx: i32) -> FxinfoParamMax {
-        FxinfoParamMax {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-            param_idx: param_idx,
-        }
+    pub fn fxinfo_param_max(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamMax {
+        self.fxinfo_param_max_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamMax {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo(&self) -> Fxinfo {
-        Fxinfo {
-            socket: self.socket.clone(),
-            handler: None,
-        }
+    pub fn fxinfo(&mut self) -> &mut Fxinfo {
+        &mut self.fxinfo_endpoint
     }
 }
 
@@ -1788,7 +1951,7 @@ fn match_addr(addr: &str, pattern: &str) -> Option<Vec<String>> {
     }
     let mut args = Vec::new();
     for (a, p) in addr_parts.iter().zip(pat_parts.iter()) {
-        if *p == "{}" {
+        if p.starts_with('{') && p.ends_with('}') {
             args.push((*a).to_string());
         } else if *p != *a {
             return None;
