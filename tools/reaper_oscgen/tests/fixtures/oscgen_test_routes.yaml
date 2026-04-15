@@ -1,0 +1,60 @@
+# This file is for tests only.
+# It is used to validate code generation and runtime behaviour of the reaper_oscgen tool.
+#
+# It intentionally uses a clearly artificial OSC namespace: "/_test/oscgen/..."
+
+- osc_address: /_test/oscgen/num
+  params: []
+  arguments:
+    - name: num
+      type: int
+      description: test-only integer payload
+  access_tags:
+    - readable
+    - queryable
+
+- osc_address: /_test/oscgen/ping
+  params: []
+  arguments: []
+  access_tags:
+    - readable
+    - queryable
+
+- osc_address: /_test/oscgen/set_name
+  params: []
+  arguments:
+    - name: name
+      type: string
+      description: test-only string payload
+  access_tags:
+    - writeable
+
+- osc_address: /_test/oscgen/item/{id_1}/enabled
+  params:
+    - name: id_1
+      type: string
+      description: test-only string id
+  arguments:
+    - name: enabled
+      type: bool
+      description: test-only boolean payload
+  access_tags:
+    - readable
+    - writeable
+
+- osc_address: /_test/oscgen/item/{id_1}/slot/{slot}/gain
+  params:
+    - name: id_1
+      type: string
+      description: test-only string id
+    - name: slot
+      type: int
+      description: test-only integer slot index
+  arguments:
+    - name: gain
+      type: float
+      description: test-only float payload
+  access_tags:
+    - readable
+    - writeable
+    - queryable
