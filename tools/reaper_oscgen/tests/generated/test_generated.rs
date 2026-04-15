@@ -244,8 +244,10 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::Item> {
             let re = Regex::new(r"^/_test/oscgen/item/([^/]+)/enabled$").unwrap();
-            re.captures(osc_address).map(|caps| context::Item {
-                id_1: caps[1].to_string(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::Item {
+                    id_1: caps[1].to_string(),
+                })
             })
         }
     }
@@ -262,9 +264,11 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::ItemSlot> {
             let re = Regex::new(r"^/_test/oscgen/item/([^/]+)/slot/([^/]+)/gain$").unwrap();
-            re.captures(osc_address).map(|caps| context::ItemSlot {
-                id_1: caps[1].to_string(),
-                slot: caps[2].parse().unwrap(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::ItemSlot {
+                    id_1: caps[1].to_string(),
+                    slot: caps[2].parse().ok()?,
+                })
             })
         }
     }

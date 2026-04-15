@@ -51,7 +51,8 @@ include!("generated/test_generated.rs");
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
-use std::cell::Cell;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// Create a connected UDP socket pair for testing outbound OSC messages.
@@ -177,17 +178,14 @@ fn dispatch_calls_bound_handler_for_num_with_int() {
     let (sender, _rx) = make_udp_pair();
     let mut reaper = make_reaper(sender);
 
-    let called = std::cell::Cell::new(false);
-    let received = std::cell::Cell::new(0i32);
+    let called = Rc::new(RefCell::new(false));
+    let received = Rc::new(RefCell::new(0i32));
+    let called_c = Rc::clone(&called);
+    let received_c = Rc::clone(&received);
 
-    // We use a shared flag via Cell (single-threaded, no Send needed).
-    let called_ptr = &called as *const Cell<bool>;
-    let received_ptr = &received as *const Cell<i32>;
     reaper._test_oscgen_num().bind(move |args: TestOscgenNumArgs| {
-        unsafe {
-            (*called_ptr).set(true);
-            (*received_ptr).set(args.num);
-        }
+        *called_c.borrow_mut() = true;
+        *received_c.borrow_mut() = args.num;
     });
 
     let msg = rosc::OscMessage {
@@ -203,8 +201,8 @@ fn dispatch_calls_bound_handler_for_num_with_int() {
         |_, _| decode_error_called = true,
     );
 
-    assert!(called.get(), "handler should have been called");
-    assert_eq!(received.get(), 42);
+    assert!(*called.borrow(), "handler should have been called");
+    assert_eq!(*received.borrow(), 42);
     assert!(!unknown_called, "unknown-route logger must not fire");
     assert!(!decode_error_called, "decode-error logger must not fire");
 }
@@ -214,12 +212,13 @@ fn dispatch_calls_bound_handler_for_ping_with_no_args() {
     let (sender, _rx) = make_udp_pair();
     let mut reaper = make_reaper(sender);
 
-    let called = Cell::new(false);
-    let called_ptr = &called as *const Cell<bool>;
+    let called = Rc::new(RefCell::new(false));
+    let called_c = Rc::clone(&called);
+
     reaper
         ._test_oscgen_ping()
         .bind(move |_args: TestOscgenPingArgs| {
-            unsafe { (*called_ptr).set(true) };
+            *called_c.borrow_mut() = true;
         });
 
     let msg = rosc::OscMessage {
@@ -235,7 +234,7 @@ fn dispatch_calls_bound_handler_for_ping_with_no_args() {
         |_, _| decode_error_called = true,
     );
 
-    assert!(called.get(), "handler must be called for 0-arg route");
+    assert!(*called.borrow(), "handler must be called for 0-arg route");
     assert!(!unknown_called);
     assert!(!decode_error_called);
 }
@@ -245,18 +244,16 @@ fn dispatch_extracts_param_id_1_and_calls_correct_item_enabled_handler() {
     let (sender, _rx) = make_udp_pair();
     let mut reaper = make_reaper(sender);
 
-    let called = Cell::new(false);
-    let got_value = Cell::new(false);
-    let called_ptr = &called as *const Cell<bool>;
-    let value_ptr = &got_value as *const Cell<bool>;
+    let called = Rc::new(RefCell::new(false));
+    let got_value = Rc::new(RefCell::new(false));
+    let called_c = Rc::clone(&called);
+    let value_c = Rc::clone(&got_value);
 
     reaper
         ._test_oscgen_item_enabled("abc".to_string())
         .bind(move |args: TestOscgenItemEnabledArgs| {
-            unsafe {
-                (*called_ptr).set(true);
-                (*value_ptr).set(args.enabled);
-            }
+            *called_c.borrow_mut() = true;
+            *value_c.borrow_mut() = args.enabled;
         });
 
     let msg = rosc::OscMessage {
@@ -272,8 +269,8 @@ fn dispatch_extracts_param_id_1_and_calls_correct_item_enabled_handler() {
         |_, _| decode_error_called = true,
     );
 
-    assert!(called.get(), "handler should have been called");
-    assert!(got_value.get(), "handler should have received true");
+    assert!(*called.borrow(), "handler should have been called");
+    assert!(*got_value.borrow(), "handler should have received true");
     assert!(!unknown_called);
     assert!(!decode_error_called);
 }
@@ -285,18 +282,16 @@ fn dispatch_extracts_two_params_in_correct_order_and_calls_gain_handler() {
     let (sender, _rx) = make_udp_pair();
     let mut reaper = make_reaper(sender);
 
-    let called = Cell::new(false);
-    let got_gain: Cell<f32> = Cell::new(0.0);
-    let called_ptr = &called as *const Cell<bool>;
-    let gain_ptr = &got_gain as *const Cell<f32>;
+    let called = Rc::new(RefCell::new(false));
+    let got_gain = Rc::new(RefCell::new(0.0f32));
+    let called_c = Rc::clone(&called);
+    let gain_c = Rc::clone(&got_gain);
 
     reaper
         ._test_oscgen_item_slot_gain("abc".to_string(), 2)
         .bind(move |args: TestOscgenItemSlotGainArgs| {
-            unsafe {
-                (*called_ptr).set(true);
-                (*gain_ptr).set(args.gain);
-            }
+            *called_c.borrow_mut() = true;
+            *gain_c.borrow_mut() = args.gain;
         });
 
     let msg = rosc::OscMessage {
@@ -312,11 +307,11 @@ fn dispatch_extracts_two_params_in_correct_order_and_calls_gain_handler() {
         |_, _| decode_error_called = true,
     );
 
-    assert!(called.get(), "handler should have been called");
+    assert!(*called.borrow(), "handler should have been called");
     assert!(
-        (got_gain.get() - 0.75).abs() < 1e-6,
+        (*got_gain.borrow() - 0.75).abs() < 1e-6,
         "gain should be 0.75, got {}",
-        got_gain.get()
+        *got_gain.borrow()
     );
     assert!(!unknown_called);
     assert!(!decode_error_called);
@@ -489,20 +484,20 @@ fn dispatch_routes_to_correct_endpoint_instance_between_two_ids() {
     let (sender, _rx) = make_udp_pair();
     let mut reaper = make_reaper(sender);
 
-    let called_a: Cell<bool> = Cell::new(false);
-    let called_b: Cell<bool> = Cell::new(false);
-    let a_ptr = &called_a as *const Cell<bool>;
-    let b_ptr = &called_b as *const Cell<bool>;
+    let called_a = Rc::new(RefCell::new(false));
+    let called_b = Rc::new(RefCell::new(false));
+    let a_c = Rc::clone(&called_a);
+    let b_c = Rc::clone(&called_b);
 
     reaper
         ._test_oscgen_item_enabled("a".to_string())
         .bind(move |_: TestOscgenItemEnabledArgs| {
-            unsafe { (*a_ptr).set(true) };
+            *a_c.borrow_mut() = true;
         });
     reaper
         ._test_oscgen_item_enabled("b".to_string())
         .bind(move |_: TestOscgenItemEnabledArgs| {
-            unsafe { (*b_ptr).set(true) };
+            *b_c.borrow_mut() = true;
         });
 
     // Dispatch to "a"
@@ -516,8 +511,8 @@ fn dispatch_routes_to_correct_endpoint_instance_between_two_ids() {
         |_, _| {},
     );
 
-    assert!(called_a.get(), "handler for 'a' should fire");
-    assert!(!called_b.get(), "handler for 'b' must NOT fire");
+    assert!(*called_a.borrow(), "handler for 'a' should fire");
+    assert!(!*called_b.borrow(), "handler for 'b' must NOT fire");
 
     // Dispatch to "b"
     dispatch_osc(
@@ -530,7 +525,7 @@ fn dispatch_routes_to_correct_endpoint_instance_between_two_ids() {
         |_, _| {},
     );
 
-    assert!(called_b.get(), "handler for 'b' should fire");
+    assert!(*called_b.borrow(), "handler for 'b' should fire");
 }
 
 #[test]
@@ -538,20 +533,20 @@ fn dispatch_routes_to_correct_endpoint_instance_between_two_slots_same_id() {
     let (sender, _rx) = make_udp_pair();
     let mut reaper = make_reaper(sender);
 
-    let called_1: Cell<bool> = Cell::new(false);
-    let called_2: Cell<bool> = Cell::new(false);
-    let p1 = &called_1 as *const Cell<bool>;
-    let p2 = &called_2 as *const Cell<bool>;
+    let called_1 = Rc::new(RefCell::new(false));
+    let called_2 = Rc::new(RefCell::new(false));
+    let c1 = Rc::clone(&called_1);
+    let c2 = Rc::clone(&called_2);
 
     reaper
         ._test_oscgen_item_slot_gain("abc".to_string(), 1)
         .bind(move |_: TestOscgenItemSlotGainArgs| {
-            unsafe { (*p1).set(true) };
+            *c1.borrow_mut() = true;
         });
     reaper
         ._test_oscgen_item_slot_gain("abc".to_string(), 2)
         .bind(move |_: TestOscgenItemSlotGainArgs| {
-            unsafe { (*p2).set(true) };
+            *c2.borrow_mut() = true;
         });
 
     // Dispatch to slot 1
@@ -565,8 +560,8 @@ fn dispatch_routes_to_correct_endpoint_instance_between_two_slots_same_id() {
         |_, _| {},
     );
 
-    assert!(called_1.get(), "slot-1 handler should fire");
-    assert!(!called_2.get(), "slot-2 handler must NOT fire");
+    assert!(*called_1.borrow(), "slot-1 handler should fire");
+    assert!(!*called_2.borrow(), "slot-2 handler must NOT fire");
 
     // Dispatch to slot 2
     dispatch_osc(
@@ -579,7 +574,7 @@ fn dispatch_routes_to_correct_endpoint_instance_between_two_slots_same_id() {
         |_, _| {},
     );
 
-    assert!(called_2.get(), "slot-2 handler should fire");
+    assert!(*called_2.borrow(), "slot-2 handler should fire");
 }
 
 // ---------------------------------------------------------------------------
@@ -621,7 +616,8 @@ fn generated_file_matches_current_generator_output() {
     assert_eq!(
         committed, expected,
         "tests/generated/test_generated.rs is out of date – regenerate with:\n  \
-         cargo run -p reaper_oscgen -- tests/fixtures/oscgen_test_routes.yaml \\\n    \
-         -o tools/reaper_oscgen/tests/generated/test_generated.rs"
+         cd tools/reaper_oscgen && \\\n  \
+         cargo run --bin reaper_oscgen -- tests/fixtures/oscgen_test_routes.yaml \\\n    \
+         -o tests/generated/test_generated.rs"
     );
 }

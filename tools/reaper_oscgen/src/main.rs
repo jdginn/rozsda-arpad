@@ -305,7 +305,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
             println!("param {} rust_type: {}", param.name, param.typ.as_str());
             match param.typ.as_str() {
                 "i32" => capture_fields.push_str(&format!(
-                    "{}: caps[{}].parse().unwrap(), ",
+                    "{}: caps[{}].parse().ok()?, ",
                     param.name,
                     i + 1
                 )),
@@ -335,7 +335,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
         .unwrap();
         writeln!(
             code,
-            "            re.captures(osc_address).map(|caps| context::{}{{ {} }})",
+            "            re.captures(osc_address).and_then(|caps| Some(context::{}{{ {} }}))",
             ctx.name, capture_fields
         )
         .unwrap();
