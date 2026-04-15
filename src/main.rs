@@ -45,7 +45,10 @@ fn main() {
         let reaper = reaper.clone();
         move |msg: OscMessage| {
             reaper.with_mut(|reaper| {
-                dispatch_osc(reaper, msg, |_| println!("Unhandled message"));
+                let msg_clone = msg.clone();
+                dispatch_osc(reaper, msg, |_| {
+                    println!("Unhandled message: {:?}", msg_clone)
+                });
             })
         }
     };
@@ -58,11 +61,11 @@ fn main() {
                 ContextGateBuilder::<context_kind::Track>::new()
                     .add_key_route("/track/{guid}/index")
                     .with_initialization_callback(move |ctx, key_messages| {
-                        println!(
-                            "Initialized track context: {:?} with messages: {:?}",
-                            ctx, key_messages
-                        );
                         reaper.with_mut(|reaper| {
+                            println!(
+                                "Binding track context for track guid: {:?} with messages: {:?}",
+                                ctx.track_guid, key_messages
+                            );
                             let track_guid = ctx.track_guid;
                             // Track Index
                             //
@@ -530,7 +533,6 @@ fn main() {
     loop {
         match socket.recv_from(&mut buf) {
             Ok((size, addr)) => {
-                println!("Received packet with size {} from: {}", size, addr);
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
                 router.dispatch_osc(packet);
                 // handle_packet(packet);
