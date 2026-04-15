@@ -261,7 +261,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
 
     // Step 1: put these structs in a module
     writeln!(code, "pub mod context {{").unwrap();
-    writeln!(code, "    use crate::osc::generated_osc::ContextTrait;\n").unwrap();
+    writeln!(code, "    use crate::osc::route_context::ContextTrait;\n").unwrap();
 
     // Step 2: Generate context structs
     for ctx in contexts.values() {
@@ -530,7 +530,7 @@ fn write_node_query_trait(code: &mut String, node: &OscRoute) {
     let re = Regex::new(r"\{[^\}]+\}").unwrap();
     let osc_address_template = re.replace_all(&node.osc_address, "{}");
     code.push_str(&format!(
-        "        let osc_address = format!(\"{}\"{});\n",
+        "        let osc_address = format!(\"{}?\"{});\n",
         osc_address_template,
         node.params
             .iter()
@@ -658,6 +658,27 @@ fn write_reaper(code: &mut String, routes: Vec<OscRoute>) {
     write_node_accessors(code, routes);
 }
 
+fn write_dispatch_types(code: &mut String) {
+    code.push_str("#[derive(Debug)]\n");
+    code.push_str("pub enum DispatchError {\n");
+    code.push_str("    MissingArgument { arg_index: usize },\n");
+    code.push_str("    WrongArgumentType { expected: &'static str, got: &'static str },\n");
+    code.push_str("    ParamParseError { param: &'static str, value: String },\n");
+    code.push_str("}\n\n");
+
+    code.push_str("fn osc_type_name(t: &rosc::OscType) -> &'static str {\n");
+    code.push_str("    match t {\n");
+    code.push_str("        rosc::OscType::Int(_) => \"int\",\n");
+    code.push_str("        rosc::OscType::Float(_) => \"float\",\n");
+    code.push_str("        rosc::OscType::String(_) => \"string\",\n");
+    code.push_str("        rosc::OscType::Bool(_) => \"bool\",\n");
+    code.push_str("        rosc::OscType::Double(_) => \"double\",\n");
+    code.push_str("        rosc::OscType::Long(_) => \"long\",\n");
+    code.push_str("        _ => \"unknown\",\n");
+    code.push_str("    }\n");
+    code.push_str("}\n\n");
+}
+
 fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
     code.push_str("/// Try to match an OSC address against a pattern, extracting arguments.\n");
     code.push_str("/// E.g. addr: \"/track/abc123/pan\", pattern: \"/track/{}/pan\" -> Some(vec![\"abc123\"])\n");
@@ -681,31 +702,51 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
     code.push_str("    }\n");
     code.push_str("    Some(args)\n");
     code.push_str("}\n\n");
-    code.push_str("pub fn dispatch_osc<F>(reaper: &mut Reaper, msg: rosc::OscMessage, log_unknown: F)\nwhere F: Fn(&str) {\n");
+    code.push_str("pub fn dispatch_osc<F, G>(reaper: &mut Reaper, msg: rosc::OscMessage, mut log_unknown_route: F, mut log_decode_error: G)\nwhere F: FnMut(&str), G: FnMut(&str, DispatchError) {\n");
     code.push_str("    let addr = msg.addr.as_str();\n");
 
     // Emit match arms for each endpoint
     for node in routes.iter() {
         // Begin arm
+        let match_var = if node.params.is_empty() { "_args" } else { "args" };
         code.push_str(&format!(
-            "    if let Some(args) = match_addr(addr, \"{}\") {{\n",
+            "    if let Some({}) = match_addr(addr, \"{}\") {{\n",
+            match_var,
             &node.osc_address,
         ));
 
-        // Extract path args
-        for (i, param) in node.params.iter().rev().enumerate() {
+        // Extract path params IN FORWARD ORDER (args[0] = first placeholder, etc.)
+        for (i, param) in node.params.iter().enumerate() {
             match param.typ.as_str() {
                 "int" => {
                     code.push_str(&format!(
-                        "        let {}: i32 = args[{}].parse().unwrap();\n",
+                        "        let {}: i32 = match args[{}].parse::<i32>() {{\n",
                         param.name, i
                     ));
+                    code.push_str("            Ok(v) => v,\n");
+                    code.push_str("            Err(_) => {\n");
+                    code.push_str(&format!(
+                        "                log_decode_error(addr, DispatchError::ParamParseError {{ param: \"{}\", value: args[{}].clone() }});\n",
+                        param.name, i
+                    ));
+                    code.push_str("                return;\n");
+                    code.push_str("            }\n");
+                    code.push_str("        };\n");
                 }
                 "float" => {
                     code.push_str(&format!(
-                        "        let {}: f32 = args[{}].parse().unwrap();\n",
+                        "        let {}: f32 = match args[{}].parse::<f32>() {{\n",
                         param.name, i
                     ));
+                    code.push_str("            Ok(v) => v,\n");
+                    code.push_str("            Err(_) => {\n");
+                    code.push_str(&format!(
+                        "                log_decode_error(addr, DispatchError::ParamParseError {{ param: \"{}\", value: args[{}].clone() }});\n",
+                        param.name, i
+                    ));
+                    code.push_str("                return;\n");
+                    code.push_str("            }\n");
+                    code.push_str("        };\n");
                 }
                 "bool" => {
                     code.push_str(&format!(
@@ -729,7 +770,7 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
         }
 
         code.push_str(&format!(
-            "        let mut endpoint = reaper.{}(",
+            "        let endpoint = reaper.{}(",
             node.accessor_name(),
         ));
         if !node.params.is_empty() {
@@ -742,59 +783,67 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
         // Handler check
         code.push_str("        if let Some(handler) = &mut endpoint.handler {\n");
 
-        // OSC arg decoding
-        for (j, osc_arg) in node.clone().arguments.iter().enumerate() {
+        if node.arguments.is_empty() {
+            // 0-arg route: call handler directly without decoding any OSC args
             code.push_str(&format!(
-                "            if let Some({}) = msg.args.get({}) {{\n",
-                osc_arg.name, j
+                "            handler({}Args {{}});\n",
+                node.struct_name()
             ));
-            match osc_arg.typ.as_str() {
-                "int" => {
-                    code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().int().unwrap()}});\n",
-                        node.struct_name(),
-                        osc_arg.name,
-                        osc_arg.name
-                    ));
-                }
-                "float" => {
-                    code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().float().unwrap()}});\n",
-                        node.struct_name(),
-                        osc_arg.name,
-                        osc_arg.name
-                    ));
-                }
-                "bool" => {
-                    code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().bool().unwrap()}});\n",
-                        node.struct_name(),
-                        osc_arg.name,
-                        osc_arg.name
-                    ));
-                }
-                "string" => {
-                    code.push_str(&format!(
-                        "                handler({}Args {{ {}: {}.clone().string().unwrap().clone()}});\n",
-                        node.struct_name(), osc_arg.name, osc_arg.name
-                    ));
-                }
-                _ => {
-                    code.push_str(&format!(
-                        "                // Unsupported arg type: {}\n",
-                        osc_arg.typ
-                    ));
-                }
+        } else {
+            // Decode each OSC argument robustly before calling handler
+            for (j, osc_arg) in node.arguments.iter().enumerate() {
+                let arg_var = format!("_decoded_{}", sanitize_path_level(&osc_arg.name));
+                let (type_method, type_name) = match osc_arg.typ.as_str() {
+                    "int" => ("int()", "int"),
+                    "float" => ("float()", "float"),
+                    "bool" => ("bool()", "bool"),
+                    "string" => ("string()", "string"),
+                    _ => panic!("Unknown arg type: {}", osc_arg.typ),
+                };
+                code.push_str(&format!(
+                    "            let {} = match msg.args.get({}) {{\n",
+                    arg_var, j
+                ));
+                code.push_str(&format!(
+                    "                Some(_raw_arg_{}) => match _raw_arg_{}.clone().{} {{\n",
+                    j, j, type_method
+                ));
+                code.push_str("                    Some(v) => v,\n");
+                code.push_str("                    None => {\n");
+                code.push_str(&format!(
+                    "                        log_decode_error(addr, DispatchError::WrongArgumentType {{ expected: \"{}\", got: osc_type_name(_raw_arg_{}) }});\n",
+                    type_name, j
+                ));
+                code.push_str("                        return;\n");
+                code.push_str("                    }\n");
+                code.push_str("                },\n");
+                code.push_str("                None => {\n");
+                code.push_str(&format!(
+                    "                    log_decode_error(addr, DispatchError::MissingArgument {{ arg_index: {} }});\n",
+                    j
+                ));
+                code.push_str("                    return;\n");
+                code.push_str("                }\n");
+                code.push_str("            };\n");
             }
-            code.push_str("                }\n");
+            // Call handler with all decoded args
+            code.push_str(&format!(
+                "            handler({}Args {{",
+                node.struct_name()
+            ));
+            for osc_arg in &node.arguments {
+                let arg_name = sanitize_path_level(&osc_arg.name);
+                let arg_var = format!("_decoded_{}", arg_name);
+                code.push_str(&format!(" {}: {},", arg_name, arg_var));
+            }
+            code.push_str(" });\n");
         }
-        code.push_str("            }\n        return;\n    }\n");
+
+        code.push_str("        }\n        return;\n    }\n");
     }
 
     // Unknown fallback
-    code.push_str("    log_unknown(addr);\n}\n");
-
-    // Add match_addr helper here
+    code.push_str("    log_unknown_route(addr);\n}\n");
 }
 
 fn format_code(code: &str) -> String {
@@ -842,6 +891,7 @@ fn main() {
     }
     write_context_struct_types(&mut code, &routes);
     write_reaper(&mut code, routes.clone());
+    write_dispatch_types(&mut code);
     write_dispatcher(&mut code, routes);
 
     let formatted_code = match std::panic::catch_unwind(|| format_code(&code)) {
