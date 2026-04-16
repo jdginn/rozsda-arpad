@@ -1,344 +1,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::midi::xtouch;
 use crate::midi::xtouch::{
-    EncoderPressMsg, EncoderReleaseMsg, FaderAbsMsg, LEDState, XTouchDownstreamMsg,
+    ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, XTouchDownstreamMsg,
     XTouchUpstreamMsg,
 };
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track::{
     DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
 };
-
-// Scribble strips:
-//
-// Top displays:
-// - Color is set per function (EQ, Comp, etc)
-// - Range
-// - Top line: function
-// - Second line: numeric
-// - Third line: click-in function
-// - Bottom line: shift function
-//
-// Lower displays:
-// - Top line: track name
-// - Bottom line: ?
-
-// Architecture ideas:
-//
-// In this mode, faders do the same thing as VolPanMode. Faders are the surfaces where being out
-// of step with Reaper can cause us problems, so for the unique channel strip stuff here, we have
-// less stringent requirements around state synchronization.
-//
-// The channel-strip specific stuff here cares about the *top displays*. Each of these displays can
-// implement its own adapter that encapsulates all channel-strip specific behavior:
-//
-// INPUT:
-// - Encoder position
-// - Encode press (used for push-in mode)
-// - Encoder release (used to exit push-in mode or register click)
-// - Shift (comes globally)
-//
-// OUTPUT:
-// - Color
-// - Range
-// - Numeric value
-// - Click-in function
-// - Shift function
-//
-// In shift mode, display the click-in function on line 3 but not the shift function
-//
-// OUTPUTs can simply follow our best-known feedback values. We don't need to gate upstream
-// messages for synchronization because the values shown on the displays do not affect inputs.
-// Inputs are relative anyway.
-//
-// There should be some abstraction for hooking up messages to ChannelLayers. The naive
-// implementation talks to some kind of reaper "compound" plugin. But we also need some kind of
-// fallback implementation that does a best-effort mapping based on whatever plugins appear on the
-// track. This is trickier.
-//
-// Dataflow goes:
-// Reaper -> Router -> ChannelWidget -> Hardware
-//
-// Router links up messages to the appropriate ChannelWidget inputs?
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ChannelWidgetMode {
-    Default,
-    Press,
-    Shift,
-    ShiftPress,
-}
-
-#[derive(Clone, Debug)]
-struct ChannelWidgetLabels {
-    default: &'static str,
-    press: &'static str,
-    shift: &'static str,
-    shift_press: &'static str,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct ChannelWidgetColors {
-    default: u32, // Or some better datatype
-    press: u32,
-    shift: u32,
-    shift_press: u32,
-}
-
-/// ChannelWidgetCore handles shared logic around mode switching and message passing.
-struct ChannelWidgetCore {
-    mode: ChannelWidgetMode,
-
-    upstream_tx: Sender<TrackMsg>,
-    downstream_tx: Sender<XTouchDownstreamMsg>,
-}
-
-impl ChannelWidgetCore {
-    fn on_mode_change(&mut self) {}
-
-    fn mode_change_button_press(&mut self) {
-        match self.mode {
-            ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Press,
-            ChannelWidgetMode::Press => {}
-            ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::ShiftPress,
-            ChannelWidgetMode::ShiftPress => {}
-        }
-    }
-
-    fn mode_change_button_release(&mut self) {
-        // TODO: sometimes this sends a message upstream, sometimes it just changes mode.
-        match self.mode {
-            ChannelWidgetMode::Default => {}
-            ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::Default,
-            ChannelWidgetMode::Shift => {}
-            ChannelWidgetMode::ShiftPress => self.mode = ChannelWidgetMode::Shift,
-        }
-    }
-
-    fn mode_change_shift_press(&mut self) {
-        match self.mode {
-            ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Shift,
-            ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::ShiftPress,
-            ChannelWidgetMode::Shift => {}
-            ChannelWidgetMode::ShiftPress => {}
-        }
-    }
-
-    fn mode_change_shift_release(&mut self) {
-        match self.mode {
-            ChannelWidgetMode::Default => {}
-            ChannelWidgetMode::Press => {}
-            ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::Default,
-            ChannelWidgetMode::ShiftPress => self.mode = ChannelWidgetMode::Press,
-        }
-    }
-}
-
-/// ChannelWidetBehavior defines the specific behavior of some specific widget.
-trait ChannelWidgetBehavior {
-    const LABELS: ChannelWidgetLabels;
-    const COLORS: ChannelWidgetColors;
-    const INDEX: usize; // Which encoder this widget is associated with (0-15)
-
-    fn on_encoder_inc(&mut self);
-    fn on_encoder_dec(&mut self);
-    fn on_click(&mut self) -> Option<TrackMsg>;
-    fn handle_downstream_message(&mut self, msg: TrackMsg);
-}
-
-/// ChannelWidget is the full implementation of some widget.
-struct ChannelWidget<B: ChannelWidgetBehavior> {
-    core: ChannelWidgetCore,
-    behavior: B,
-}
-
-impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
-    // By default, colors and labels switch between static values based on the mode.
-    // In some situations, labels may need to change based on plugin state. In these cases,
-    // override the method.
-    fn color(&self) -> u32 {
-        let colors = B::COLORS;
-        match self.core.mode {
-            ChannelWidgetMode::Default => colors.default,
-            ChannelWidgetMode::Press => colors.press,
-            ChannelWidgetMode::Shift => colors.shift,
-            ChannelWidgetMode::ShiftPress => colors.shift_press,
-        }
-    }
-
-    fn label1(&self) -> &'static str {
-        let labels = B::LABELS;
-        match self.core.mode {
-            ChannelWidgetMode::Default => labels.default,
-            ChannelWidgetMode::Press => labels.press,
-            ChannelWidgetMode::Shift => labels.shift,
-            ChannelWidgetMode::ShiftPress => labels.shift_press,
-        }
-    }
-
-    fn label3(&self) -> &'static str {
-        let labels = B::LABELS;
-        match self.core.mode {
-            ChannelWidgetMode::Default => labels.press,
-            ChannelWidgetMode::Press => "",
-            ChannelWidgetMode::Shift => labels.shift_press,
-            ChannelWidgetMode::ShiftPress => "",
-        }
-    }
-
-    fn label4(&self) -> &'static str {
-        let labels = B::LABELS;
-        match self.core.mode {
-            ChannelWidgetMode::Default => labels.shift,
-            ChannelWidgetMode::Press => labels.shift_press,
-            ChannelWidgetMode::Shift => "",
-            ChannelWidgetMode::ShiftPress => "",
-        }
-    }
-
-    fn mode_change_button_press(&mut self) {
-        self.core.mode_change_button_press();
-    }
-
-    fn mode_change_button_release(&mut self) {
-        self.core.mode_change_button_release();
-    }
-
-    fn mode_change_shift_press(&mut self) {
-        self.core.mode_change_shift_press();
-    }
-
-    fn mode_change_shift_release(&mut self) {
-        self.core.mode_change_shift_release();
-    }
-
-    fn on_encoder_inc(&mut self) {
-        self.behavior.on_encoder_inc();
-    }
-
-    fn on_encoder_dec(&mut self) {
-        self.behavior.on_encoder_dec();
-    }
-
-    fn on_click(&mut self) {
-        self.behavior.on_click();
-    }
-
-    // FIXME: this probably should live elsewhere and delgate to all the configured widgets.
-    //
-    // It would be awkward to have this on each and every widget. Would we pass messages
-    // sequentially? Would we multiplex them?
-    fn handle_downstream_message(&mut self, msg: TrackMsg) {
-        self.behavior.handle_downstream_message(msg);
-    }
-
-    fn handle_upstream_message(&mut self, msg: XTouchUpstreamMsg) {
-        let index = B::INDEX;
-        match msg {
-            XTouchUpstreamMsg::EncoderPress(msg) => {
-                if msg.idx as usize == index {
-                    self.mode_change_button_press();
-                }
-            }
-            XTouchUpstreamMsg::EncoderRelease(msg) => {
-                if msg.idx as usize == index {
-                    self.mode_change_button_release();
-                    self.on_click();
-                }
-            }
-            XTouchUpstreamMsg::EncoderTurnInc(msg) => {
-                if msg.idx as usize == index {
-                    // TODO:
-                }
-            }
-            XTouchUpstreamMsg::EncoderTurnDec(msg) => {
-                if msg.idx as usize == index {
-                    // TODO:
-                }
-            }
-            _ => {
-                // Ignore other messages
-            }
-        }
-    }
-}
-
-struct HPWidgetBehavior {
-    hp_filt_freq: f32,
-}
-
-impl ChannelWidgetBehavior for HPWidgetBehavior {
-    const INDEX: usize = 0;
-    const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
-        default: "HP Filt",
-        press: "Slope",
-        shift: "EQ Type",
-        shift_press: "",
-    };
-    const COLORS: ChannelWidgetColors = ChannelWidgetColors {
-        default: 0xFF0000,
-        press: 0x00FF00,
-        shift: 0x0000FF,
-        shift_press: 0xFFFF00,
-    };
-
-    fn on_encoder_inc(&mut self) {
-        self.hp_filt_freq += 1.0; // TODO: scale appropriately and add limits
-    }
-
-    fn on_encoder_dec(&mut self) {
-        self.hp_filt_freq -= 1.0; // TODO: scale appropriately and add limits
-    }
-
-    fn on_click(&mut self) -> Option<TrackMsg> {
-        None
-    }
-
-    fn handle_downstream_message(&mut self, msg: TrackMsg) {
-        // TODO
-    }
-}
-
-struct LowFreqWidgetBehavior {
-    low_freq: f32,
-}
-
-impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
-    const INDEX: usize = 1;
-    const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
-        default: "Low Freq",
-        press: "Low Q / Slope",
-        shift: "Bell/Shelf",
-        shift_press: "",
-    };
-    const COLORS: ChannelWidgetColors = ChannelWidgetColors {
-        default: 0xFF0000,
-        press: 0x00FF00,
-        shift: 0x0000FF,
-        shift_press: 0xFFFF00,
-    };
-
-    fn on_encoder_inc(&mut self) {
-        self.low_freq += 1.0; // TODO: scale appropriately and add limits
-    }
-
-    fn on_encoder_dec(&mut self) {
-        self.low_freq -= 1.0; // TODO: scale appropriately and add limits
-    }
-
-    fn on_click(&mut self) -> Option<TrackMsg> {
-        None
-    }
-
-    fn handle_downstream_message(&mut self, msg: TrackMsg) {
-        // TODO
-    }
-}
 
 struct Button {
     state: bool,
@@ -370,140 +42,6 @@ struct MuteSoloArmButtonState {
     mute: Button,
     solo: Button,
     arm: Button,
-}
-
-struct FXParamIdent {
-    fx_index: i32,
-    param_index: i32,
-}
-
-/// Maps named, high-level channel strip concepts to their respective parameters
-///
-/// NOTE: we have one of these *PER TRACK*
-///
-/// TODO: the hard part will be getting this to update dynamically based on the actual FX chain on the track
-struct ChannelStripMap {
-    mux: Mutex<()>,
-    plugin_names_by_index: Vec<String>,
-    hp_filter: Option<FXParamIdent>,
-    hp_slope: Option<FXParamIdent>,
-    low_freq: Option<FXParamIdent>,
-    low_q: Option<FXParamIdent>,
-    low_slope: Option<FXParamIdent>,
-    /// Chooses between bell and shelf for low band
-    low_bell_shelf: Option<FXParamIdent>,
-    low_gain: Option<FXParamIdent>,
-    lm_freq: Option<FXParamIdent>,
-    lm_q: Option<FXParamIdent>,
-    lm_gain: Option<FXParamIdent>,
-    hm_freq: Option<FXParamIdent>,
-    hm_q: Option<FXParamIdent>,
-    hm_gain: Option<FXParamIdent>,
-    high_freq: Option<FXParamIdent>,
-    high_q: Option<FXParamIdent>,
-    high_slope: Option<FXParamIdent>,
-    /// Chooses between bell and shelf for high band
-    high_bell_shelf: Option<FXParamIdent>,
-    high_gain: Option<FXParamIdent>,
-    /// Gain for the "sides" channel in a mid-side EQ (if applicable)
-    high_sides_gain: Option<FXParamIdent>,
-    /// Toggles between various EQ plugins
-    eq_type: Option<FXParamIdent>,
-    eq_bypass: Option<FXParamIdent>,
-    /// EQ before or after comprssion
-    // eq_position: Option<FXParamIdent>,
-    comp1_thresh: Option<FXParamIdent>,
-    comp1_sc_filter: Option<FXParamIdent>,
-    comp1_ratio: Option<FXParamIdent>,
-    comp1_attack: Option<FXParamIdent>,
-    comp1_release: Option<FXParamIdent>,
-    comp1_makeup: Option<FXParamIdent>,
-    /// Toggles between various compressor plugins
-    comp1_type: Option<FXParamIdent>,
-    comp1_bypass: Option<FXParamIdent>,
-    comp2_thresh: Option<FXParamIdent>,
-    comp2_sc_filter: Option<FXParamIdent>,
-    comp2_ratio: Option<FXParamIdent>,
-    comp2_attack: Option<FXParamIdent>,
-    comp2_release: Option<FXParamIdent>,
-    comp2_makeup: Option<FXParamIdent>,
-    /// Toggles between various compressor plugins
-    comp2_type: Option<FXParamIdent>,
-    comp2_bypass: Option<FXParamIdent>,
-    /// Comp 1 -> Comp 2 or Comp 2 -> Comp 1
-    // comp_position: Option<FXParamIdent>,
-    saturation: Option<FXParamIdent>,
-    saturation_bypass: Option<FXParamIdent>,
-    /// Toggles between various saturation plugins
-    saturation_type: Option<FXParamIdent>,
-    gain: Option<FXParamIdent>,
-    /// Toggles between various gain plugins (e.g. preamp models)
-    gain_type: Option<FXParamIdent>,
-    /// Only active if the track is armed
-    interface_gain: Option<FXParamIdent>,
-}
-
-impl ChannelStripMap {
-    fn new() -> Self {
-        ChannelStripMap {
-            mux: Mutex::new(()),
-            plugin_names_by_index: Vec::new(),
-            hp_filter: None,
-            hp_slope: None,
-            low_freq: None,
-            low_q: None,
-            low_slope: None,
-            low_bell_shelf: None,
-            low_gain: None,
-            lm_freq: None,
-            lm_q: None,
-            lm_gain: None,
-            hm_freq: None,
-            hm_q: None,
-            hm_gain: None,
-            high_freq: None,
-            high_q: None,
-            high_slope: None,
-            high_bell_shelf: None,
-            high_gain: None,
-            high_sides_gain: None,
-            eq_type: None,
-            eq_bypass: None,
-            comp1_thresh: None,
-            comp1_sc_filter: None,
-            comp1_ratio: None,
-            comp1_attack: None,
-            comp1_release: None,
-            comp1_makeup: None,
-            comp1_type: None,
-            comp1_bypass: None,
-            comp2_thresh: None,
-            comp2_sc_filter: None,
-            comp2_ratio: None,
-            comp2_attack: None,
-            comp2_release: None,
-            comp2_makeup: None,
-            comp2_type: None,
-            comp2_bypass: None,
-            saturation: None,
-            saturation_bypass: None,
-            saturation_type: None,
-            gain: None,
-            gain_type: None,
-            interface_gain: None,
-        }
-    }
-
-    fn update_plugin_state(&mut self, plugin_index: i32, plugin_name: &str) {
-        let _lock = self.mux.lock().unwrap();
-        if (plugin_index as usize) >= self.plugin_names_by_index.len() {
-            self.plugin_names_by_index
-                .resize((plugin_index + 1) as usize, String::new());
-        }
-        self.plugin_names_by_index[plugin_index as usize] = plugin_name.to_string();
-    }
-
-    fn update_mapping_locked(&mut self) {}
 }
 
 /// Implements a mode where the faders and Arm/Mute/Solo/Select buttons behave the same as VolumePanMode
@@ -674,12 +212,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
                         self.get_track_state(msg.guid).mute.set(muted);
                         // Send mute LED update to XTouch
-                        let _ =
-                            self.to_xtouch
-                                .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
-                                    idx: hw_channel as i32,
-                                    state: LEDState::from(muted),
-                                }));
+                        let _ = self
+                            .to_xtouch
+                            .send(XTouchDownstreamMsg::MuteLED(MuteLEDMsg {
+                                idx: hw_channel as i32,
+                                state: LEDState::from(muted),
+                            }));
                     }
                     return curr_mode;
                 }
@@ -687,12 +225,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
                         self.get_track_state(msg.guid).solo.set(soloed);
                         // Send solo LED update to XTouch
-                        let _ =
-                            self.to_xtouch
-                                .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
-                                    idx: hw_channel as i32,
-                                    state: LEDState::from(soloed),
-                                }));
+                        let _ = self
+                            .to_xtouch
+                            .send(XTouchDownstreamMsg::SoloLED(SoloLEDMsg {
+                                idx: hw_channel as i32,
+                                state: LEDState::from(soloed),
+                            }));
                     }
                     return curr_mode;
                 }
@@ -700,12 +238,10 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
                         self.get_track_state(msg.guid).arm.set(armed);
                         // Send arm LED update to XTouch
-                        let _ =
-                            self.to_xtouch
-                                .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
-                                    idx: hw_channel as i32,
-                                    state: LEDState::from(armed),
-                                }));
+                        let _ = self.to_xtouch.send(XTouchDownstreamMsg::ArmLED(ArmLEDMsg {
+                            idx: hw_channel as i32,
+                            state: LEDState::from(armed),
+                        }));
                     }
                     return curr_mode;
                 }
@@ -788,7 +324,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         .unwrap();
                     // Update the toggle on the hardware
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
+                        .send(XTouchDownstreamMsg::MuteLED(MuteLEDMsg {
                             idx: mute_msg.idx,
                             state: LEDState::from(new_state),
                         }))
@@ -808,7 +344,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         }))
                         .unwrap();
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
+                        .send(XTouchDownstreamMsg::SoloLED(SoloLEDMsg {
                             idx: solo_msg.idx,
                             state: LEDState::from(new_state),
                         }))
@@ -828,7 +364,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         }))
                         .unwrap();
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
+                        .send(XTouchDownstreamMsg::ArmLED(ArmLEDMsg {
                             idx: arm_msg.idx,
                             state: LEDState::from(new_state),
                         }))
