@@ -1,5 +1,6 @@
 // AUTO-GENERATED CODE. DO NOT EDIT!
 
+use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::Arc;
 
@@ -36,7 +37,7 @@ impl Bind<NumTracksArgs> for NumTracks {
 impl Query for NumTracks {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/num_tracks");
+        let osc_address = format!("/num_tracks?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -72,7 +73,7 @@ impl Bind<TrackAllGuidsArgs> for TrackAllGuids {
 impl Query for TrackAllGuids {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/all_guids");
+        let osc_address = format!("/track/all_guids?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -111,7 +112,7 @@ impl Bind<TrackIndexArgs> for TrackIndex {
 impl Query for TrackIndex {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/index", self.track_guid);
+        let osc_address = format!("/track/{}/index?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -193,7 +194,7 @@ impl Bind<TrackNameArgs> for TrackName {
 impl Query for TrackName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/name", self.track_guid);
+        let osc_address = format!("/track/{}/name?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -248,7 +249,7 @@ impl Bind<TrackSelectedArgs> for TrackSelected {
 impl Query for TrackSelected {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/selected", self.track_guid);
+        let osc_address = format!("/track/{}/selected?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -303,7 +304,7 @@ impl Bind<TrackVolumeArgs> for TrackVolume {
 impl Query for TrackVolume {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/volume", self.track_guid);
+        let osc_address = format!("/track/{}/volume?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -358,7 +359,7 @@ impl Bind<TrackPanArgs> for TrackPan {
 impl Query for TrackPan {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/pan", self.track_guid);
+        let osc_address = format!("/track/{}/pan?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -413,7 +414,7 @@ impl Bind<TrackMuteArgs> for TrackMute {
 impl Query for TrackMute {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/mute", self.track_guid);
+        let osc_address = format!("/track/{}/mute?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -468,7 +469,7 @@ impl Bind<TrackSoloArgs> for TrackSolo {
 impl Query for TrackSolo {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/solo", self.track_guid);
+        let osc_address = format!("/track/{}/solo?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -523,7 +524,7 @@ impl Bind<TrackRecArmArgs> for TrackRecArm {
 impl Query for TrackRecArm {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/rec-arm", self.track_guid);
+        let osc_address = format!("/track/{}/rec-arm?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -563,7 +564,7 @@ impl Bind<TrackSendGuidArgs> for TrackSendGuid {
 impl Query for TrackSendGuid {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/send/{}/guid", self.track_guid, self.send_index);
+        let osc_address = format!("/track/{}/send/{}/guid?", self.track_guid, self.send_index);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -619,7 +620,10 @@ impl Bind<TrackSendVolumeArgs> for TrackSendVolume {
 impl Query for TrackSendVolume {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/send/{}/volume", self.track_guid, self.send_index);
+        let osc_address = format!(
+            "/track/{}/send/{}/volume?",
+            self.track_guid, self.send_index
+        );
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -675,7 +679,7 @@ impl Bind<TrackSendPanArgs> for TrackSendPan {
 impl Query for TrackSendPan {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/send/{}/pan", self.track_guid, self.send_index);
+        let osc_address = format!("/track/{}/send/{}/pan?", self.track_guid, self.send_index);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -730,7 +734,7 @@ impl Bind<TrackColorArgs> for TrackColor {
 impl Query for TrackColor {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/color", self.track_guid);
+        let osc_address = format!("/track/{}/color?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -770,7 +774,7 @@ impl Bind<TrackFxGuidArgs> for TrackFxGuid {
 impl Query for TrackFxGuid {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/guid", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/guid?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -810,7 +814,7 @@ impl Bind<TrackFxNameArgs> for TrackFxName {
 impl Query for TrackFxName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/name", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/name?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -866,7 +870,7 @@ impl Bind<TrackFxEnabledArgs> for TrackFxEnabled {
 impl Query for TrackFxEnabled {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/enabled", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/enabled?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -906,7 +910,7 @@ impl Bind<TrackFxParamCountArgs> for TrackFxParamCount {
 impl Query for TrackFxParamCount {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/param_count", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/param_count?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -948,7 +952,7 @@ impl Query for TrackFxParamName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/name",
+            "/track/{}/fx/{}/param/{}/name?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1011,7 +1015,7 @@ impl Query for TrackFxParamValue {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/value",
+            "/track/{}/fx/{}/param/{}/value?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1055,7 +1059,7 @@ impl Query for TrackFxParamMin {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/min",
+            "/track/{}/fx/{}/param/{}/min?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1099,7 +1103,7 @@ impl Query for TrackFxParamMax {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/max",
+            "/track/{}/fx/{}/param/{}/max?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1129,7 +1133,7 @@ pub struct TrackFxInfo {
 impl Query for TrackFxInfo {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/info", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/info?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1191,7 +1195,7 @@ impl Bind<FxinfoParamCountArgs> for FxinfoParamCount {
 impl Query for FxinfoParamCount {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param_count", self.ident);
+        let osc_address = format!("/fxinfo/{}/param_count?", self.ident);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1231,7 +1235,7 @@ impl Bind<FxinfoParamNameArgs> for FxinfoParamName {
 impl Query for FxinfoParamName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param/{}/name", self.ident, self.param_idx);
+        let osc_address = format!("/fxinfo/{}/param/{}/name?", self.ident, self.param_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1271,7 +1275,7 @@ impl Bind<FxinfoParamMinArgs> for FxinfoParamMin {
 impl Query for FxinfoParamMin {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param/{}/min", self.ident, self.param_idx);
+        let osc_address = format!("/fxinfo/{}/param/{}/min?", self.ident, self.param_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1311,7 +1315,7 @@ impl Bind<FxinfoParamMaxArgs> for FxinfoParamMax {
 impl Query for FxinfoParamMax {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param/{}/max", self.ident, self.param_idx);
+        let osc_address = format!("/fxinfo/{}/param/{}/max?", self.ident, self.param_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1337,7 +1341,7 @@ pub struct Fxinfo {
 impl Query for Fxinfo {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo");
+        let osc_address = format!("/fxinfo?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1350,7 +1354,7 @@ impl Query for Fxinfo {
 }
 
 pub mod context {
-    use crate::osc::generated_osc::ContextTrait;
+    use crate::osc::route_context::ContextTrait;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Fxinfo {
@@ -1417,8 +1421,10 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::Fxinfo> {
             let re = Regex::new(r"^/fxinfo/([^/]+)/name$").unwrap();
-            re.captures(osc_address).map(|caps| context::Fxinfo {
-                ident: caps[1].to_string(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::Fxinfo {
+                    ident: caps[1].to_string(),
+                })
             })
         }
     }
@@ -1435,9 +1441,11 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::FxinfoParam> {
             let re = Regex::new(r"^/fxinfo/([^/]+)/param/([^/]+)/name$").unwrap();
-            re.captures(osc_address).map(|caps| context::FxinfoParam {
-                ident: caps[1].to_string(),
-                param_idx: caps[2].parse().unwrap(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::FxinfoParam {
+                    ident: caps[1].to_string(),
+                    param_idx: caps[2].parse().ok()?,
+                })
             })
         }
     }
@@ -1454,8 +1462,10 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::Track> {
             let re = Regex::new(r"^/track/([^/]+)/index$").unwrap();
-            re.captures(osc_address).map(|caps| context::Track {
-                track_guid: caps[1].to_string(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::Track {
+                    track_guid: caps[1].to_string(),
+                })
             })
         }
     }
@@ -1472,9 +1482,11 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::TrackFx> {
             let re = Regex::new(r"^/track/([^/]+)/fx/([^/]+)/guid$").unwrap();
-            re.captures(osc_address).map(|caps| context::TrackFx {
-                track_guid: caps[1].to_string(),
-                fx_idx: caps[2].parse().unwrap(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::TrackFx {
+                    track_guid: caps[1].to_string(),
+                    fx_idx: caps[2].parse().ok()?,
+                })
             })
         }
     }
@@ -1491,10 +1503,12 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::TrackFxParam> {
             let re = Regex::new(r"^/track/([^/]+)/fx/([^/]+)/param/([^/]+)/name$").unwrap();
-            re.captures(osc_address).map(|caps| context::TrackFxParam {
-                track_guid: caps[1].to_string(),
-                fx_idx: caps[2].parse().unwrap(),
-                param_idx: caps[3].parse().unwrap(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::TrackFxParam {
+                    track_guid: caps[1].to_string(),
+                    fx_idx: caps[2].parse().ok()?,
+                    param_idx: caps[3].parse().ok()?,
+                })
             })
         }
     }
@@ -1511,9 +1525,11 @@ pub mod context_kind {
 
         fn parse(osc_address: &str) -> Option<context::TrackSend> {
             let re = Regex::new(r"^/track/([^/]+)/send/([^/]+)/guid$").unwrap();
-            re.captures(osc_address).map(|caps| context::TrackSend {
-                track_guid: caps[1].to_string(),
-                send_index: caps[2].parse().unwrap(),
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::TrackSend {
+                    track_guid: caps[1].to_string(),
+                    send_index: caps[2].parse().ok()?,
+                })
             })
         }
     }
@@ -1521,260 +1537,449 @@ pub mod context_kind {
 
 pub struct Reaper {
     socket: Arc<UdpSocket>,
+    num_tracks_endpoint: NumTracks,
+    track_all_guids_endpoint: TrackAllGuids,
+    track_index_endpoints: HashMap<String, TrackIndex>,
+    track_delete_endpoints: HashMap<String, TrackDelete>,
+    track_name_endpoints: HashMap<String, TrackName>,
+    track_selected_endpoints: HashMap<String, TrackSelected>,
+    track_volume_endpoints: HashMap<String, TrackVolume>,
+    track_pan_endpoints: HashMap<String, TrackPan>,
+    track_mute_endpoints: HashMap<String, TrackMute>,
+    track_solo_endpoints: HashMap<String, TrackSolo>,
+    track_rec_arm_endpoints: HashMap<String, TrackRecArm>,
+    track_send_guid_endpoints: HashMap<String, HashMap<i32, TrackSendGuid>>,
+    track_send_volume_endpoints: HashMap<String, HashMap<i32, TrackSendVolume>>,
+    track_send_pan_endpoints: HashMap<String, HashMap<i32, TrackSendPan>>,
+    track_color_endpoints: HashMap<String, TrackColor>,
+    track_fx_guid_endpoints: HashMap<String, HashMap<i32, TrackFxGuid>>,
+    track_fx_name_endpoints: HashMap<String, HashMap<i32, TrackFxName>>,
+    track_fx_enabled_endpoints: HashMap<String, HashMap<i32, TrackFxEnabled>>,
+    track_fx_param_count_endpoints: HashMap<String, HashMap<i32, TrackFxParamCount>>,
+    track_fx_param_name_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamName>>>,
+    track_fx_param_value_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamValue>>>,
+    track_fx_param_min_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamMin>>>,
+    track_fx_param_max_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamMax>>>,
+    track_fx_info_endpoints: HashMap<String, HashMap<i32, TrackFxInfo>>,
+    fxinfo_name_endpoints: HashMap<String, FxinfoName>,
+    fxinfo_param_count_endpoints: HashMap<String, FxinfoParamCount>,
+    fxinfo_param_name_endpoints: HashMap<String, HashMap<i32, FxinfoParamName>>,
+    fxinfo_param_min_endpoints: HashMap<String, HashMap<i32, FxinfoParamMin>>,
+    fxinfo_param_max_endpoints: HashMap<String, HashMap<i32, FxinfoParamMax>>,
+    fxinfo_endpoint: Fxinfo,
 }
 
 impl Reaper {
     pub fn new(socket: Arc<UdpSocket>) -> Self {
-        Self { socket }
+        Self {
+            socket: socket.clone(),
+            num_tracks_endpoint: NumTracks {
+                socket: socket.clone(),
+                handler: None,
+            },
+            track_all_guids_endpoint: TrackAllGuids {
+                socket: socket.clone(),
+                handler: None,
+            },
+            track_index_endpoints: HashMap::new(),
+            track_delete_endpoints: HashMap::new(),
+            track_name_endpoints: HashMap::new(),
+            track_selected_endpoints: HashMap::new(),
+            track_volume_endpoints: HashMap::new(),
+            track_pan_endpoints: HashMap::new(),
+            track_mute_endpoints: HashMap::new(),
+            track_solo_endpoints: HashMap::new(),
+            track_rec_arm_endpoints: HashMap::new(),
+            track_send_guid_endpoints: HashMap::new(),
+            track_send_volume_endpoints: HashMap::new(),
+            track_send_pan_endpoints: HashMap::new(),
+            track_color_endpoints: HashMap::new(),
+            track_fx_guid_endpoints: HashMap::new(),
+            track_fx_name_endpoints: HashMap::new(),
+            track_fx_enabled_endpoints: HashMap::new(),
+            track_fx_param_count_endpoints: HashMap::new(),
+            track_fx_param_name_endpoints: HashMap::new(),
+            track_fx_param_value_endpoints: HashMap::new(),
+            track_fx_param_min_endpoints: HashMap::new(),
+            track_fx_param_max_endpoints: HashMap::new(),
+            track_fx_info_endpoints: HashMap::new(),
+            fxinfo_name_endpoints: HashMap::new(),
+            fxinfo_param_count_endpoints: HashMap::new(),
+            fxinfo_param_name_endpoints: HashMap::new(),
+            fxinfo_param_min_endpoints: HashMap::new(),
+            fxinfo_param_max_endpoints: HashMap::new(),
+            fxinfo_endpoint: Fxinfo {
+                socket: socket.clone(),
+                handler: None,
+            },
+        }
     }
 }
 
 impl Reaper {
-    pub fn num_tracks(&self) -> NumTracks {
-        NumTracks {
-            socket: self.socket.clone(),
-            handler: None,
-        }
+    pub fn num_tracks(&mut self) -> &mut NumTracks {
+        &mut self.num_tracks_endpoint
     }
-    pub fn track_all_guids(&self) -> TrackAllGuids {
-        TrackAllGuids {
-            socket: self.socket.clone(),
-            handler: None,
-        }
+    pub fn track_all_guids(&mut self) -> &mut TrackAllGuids {
+        &mut self.track_all_guids_endpoint
     }
-    pub fn track_index(&self, track_guid: String) -> TrackIndex {
-        TrackIndex {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_index(&mut self, track_guid: String) -> &mut TrackIndex {
+        self.track_index_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackIndex {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_delete(&self, track_guid: String) -> TrackDelete {
-        TrackDelete {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_delete(&mut self, track_guid: String) -> &mut TrackDelete {
+        self.track_delete_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackDelete {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_name(&self, track_guid: String) -> TrackName {
-        TrackName {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_name(&mut self, track_guid: String) -> &mut TrackName {
+        self.track_name_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackName {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_selected(&self, track_guid: String) -> TrackSelected {
-        TrackSelected {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_selected(&mut self, track_guid: String) -> &mut TrackSelected {
+        self.track_selected_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackSelected {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_volume(&self, track_guid: String) -> TrackVolume {
-        TrackVolume {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_volume(&mut self, track_guid: String) -> &mut TrackVolume {
+        self.track_volume_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackVolume {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_pan(&self, track_guid: String) -> TrackPan {
-        TrackPan {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_pan(&mut self, track_guid: String) -> &mut TrackPan {
+        self.track_pan_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackPan {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_mute(&self, track_guid: String) -> TrackMute {
-        TrackMute {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_mute(&mut self, track_guid: String) -> &mut TrackMute {
+        self.track_mute_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackMute {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_solo(&self, track_guid: String) -> TrackSolo {
-        TrackSolo {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_solo(&mut self, track_guid: String) -> &mut TrackSolo {
+        self.track_solo_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackSolo {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_rec_arm(&self, track_guid: String) -> TrackRecArm {
-        TrackRecArm {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_rec_arm(&mut self, track_guid: String) -> &mut TrackRecArm {
+        self.track_rec_arm_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackRecArm {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_send_guid(&self, track_guid: String, send_index: i32) -> TrackSendGuid {
-        TrackSendGuid {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            send_index: send_index,
-        }
+    pub fn track_send_guid(&mut self, track_guid: String, send_index: i32) -> &mut TrackSendGuid {
+        self.track_send_guid_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(send_index.clone())
+            .or_insert_with(|| TrackSendGuid {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                send_index: send_index,
+                handler: None,
+            })
     }
-    pub fn track_send_volume(&self, track_guid: String, send_index: i32) -> TrackSendVolume {
-        TrackSendVolume {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            send_index: send_index,
-        }
+    pub fn track_send_volume(
+        &mut self,
+        track_guid: String,
+        send_index: i32,
+    ) -> &mut TrackSendVolume {
+        self.track_send_volume_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(send_index.clone())
+            .or_insert_with(|| TrackSendVolume {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                send_index: send_index,
+                handler: None,
+            })
     }
-    pub fn track_send_pan(&self, track_guid: String, send_index: i32) -> TrackSendPan {
-        TrackSendPan {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            send_index: send_index,
-        }
+    pub fn track_send_pan(&mut self, track_guid: String, send_index: i32) -> &mut TrackSendPan {
+        self.track_send_pan_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(send_index.clone())
+            .or_insert_with(|| TrackSendPan {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                send_index: send_index,
+                handler: None,
+            })
     }
-    pub fn track_color(&self, track_guid: String) -> TrackColor {
-        TrackColor {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-        }
+    pub fn track_color(&mut self, track_guid: String) -> &mut TrackColor {
+        self.track_color_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| TrackColor {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                handler: None,
+            })
     }
-    pub fn track_fx_guid(&self, track_guid: String, fx_idx: i32) -> TrackFxGuid {
-        TrackFxGuid {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_guid(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxGuid {
+        self.track_fx_guid_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxGuid {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_name(&self, track_guid: String, fx_idx: i32) -> TrackFxName {
-        TrackFxName {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_name(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxName {
+        self.track_fx_name_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxName {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_enabled(&self, track_guid: String, fx_idx: i32) -> TrackFxEnabled {
-        TrackFxEnabled {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_enabled(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxEnabled {
+        self.track_fx_enabled_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxEnabled {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_param_count(&self, track_guid: String, fx_idx: i32) -> TrackFxParamCount {
-        TrackFxParamCount {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_param_count(
+        &mut self,
+        track_guid: String,
+        fx_idx: i32,
+    ) -> &mut TrackFxParamCount {
+        self.track_fx_param_count_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxParamCount {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_name(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamName {
-        TrackFxParamName {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamName {
+        self.track_fx_param_name_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamName {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_value(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamValue {
-        TrackFxParamValue {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamValue {
+        self.track_fx_param_value_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamValue {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_min(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamMin {
-        TrackFxParamMin {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamMin {
+        self.track_fx_param_min_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamMin {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
     pub fn track_fx_param_max(
-        &self,
+        &mut self,
         track_guid: String,
         fx_idx: i32,
         param_idx: i32,
-    ) -> TrackFxParamMax {
-        TrackFxParamMax {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-            param_idx: param_idx,
-        }
+    ) -> &mut TrackFxParamMax {
+        self.track_fx_param_max_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| TrackFxParamMax {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn track_fx_info(&self, track_guid: String, fx_idx: i32) -> TrackFxInfo {
-        TrackFxInfo {
-            socket: self.socket.clone(),
-            handler: None,
-            track_guid: track_guid,
-            fx_idx: fx_idx,
-        }
+    pub fn track_fx_info(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxInfo {
+        self.track_fx_info_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxInfo {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo_name(&self, ident: String) -> FxinfoName {
-        FxinfoName {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-        }
+    pub fn fxinfo_name(&mut self, ident: String) -> &mut FxinfoName {
+        self.fxinfo_name_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| FxinfoName {
+                socket: self.socket.clone(),
+                ident: ident,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_count(&self, ident: String) -> FxinfoParamCount {
-        FxinfoParamCount {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-        }
+    pub fn fxinfo_param_count(&mut self, ident: String) -> &mut FxinfoParamCount {
+        self.fxinfo_param_count_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| FxinfoParamCount {
+                socket: self.socket.clone(),
+                ident: ident,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_name(&self, ident: String, param_idx: i32) -> FxinfoParamName {
-        FxinfoParamName {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-            param_idx: param_idx,
-        }
+    pub fn fxinfo_param_name(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamName {
+        self.fxinfo_param_name_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamName {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_min(&self, ident: String, param_idx: i32) -> FxinfoParamMin {
-        FxinfoParamMin {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-            param_idx: param_idx,
-        }
+    pub fn fxinfo_param_min(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamMin {
+        self.fxinfo_param_min_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamMin {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo_param_max(&self, ident: String, param_idx: i32) -> FxinfoParamMax {
-        FxinfoParamMax {
-            socket: self.socket.clone(),
-            handler: None,
-            ident: ident,
-            param_idx: param_idx,
-        }
+    pub fn fxinfo_param_max(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamMax {
+        self.fxinfo_param_max_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamMax {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
     }
-    pub fn fxinfo(&self) -> Fxinfo {
-        Fxinfo {
-            socket: self.socket.clone(),
-            handler: None,
-        }
+    pub fn fxinfo(&mut self) -> &mut Fxinfo {
+        &mut self.fxinfo_endpoint
+    }
+}
+
+#[derive(Debug)]
+pub enum DispatchError {
+    MissingArgument {
+        arg_index: usize,
+    },
+    WrongArgumentType {
+        expected: &'static str,
+        got: &'static str,
+    },
+    ParamParseError {
+        param: &'static str,
+        value: String,
+    },
+}
+
+fn osc_type_name(t: &rosc::OscType) -> &'static str {
+    match t {
+        rosc::OscType::Int(_) => "int",
+        rosc::OscType::Float(_) => "float",
+        rosc::OscType::String(_) => "string",
+        rosc::OscType::Bool(_) => "bool",
+        rosc::OscType::Double(_) => "double",
+        rosc::OscType::Long(_) => "long",
+        _ => "unknown",
     }
 }
 
@@ -1788,7 +1993,7 @@ fn match_addr(addr: &str, pattern: &str) -> Option<Vec<String>> {
     }
     let mut args = Vec::new();
     for (a, p) in addr_parts.iter().zip(pat_parts.iter()) {
-        if *p == "{}" {
+        if p.starts_with('{') && p.ends_with('}') {
             args.push((*a).to_string());
         } else if *p != *a {
             return None;
@@ -1797,229 +2002,607 @@ fn match_addr(addr: &str, pattern: &str) -> Option<Vec<String>> {
     Some(args)
 }
 
-pub fn dispatch_osc<F>(reaper: &mut Reaper, msg: rosc::OscMessage, log_unknown: F)
-where
-    F: Fn(&str),
+pub fn dispatch_osc<F, G>(
+    reaper: &mut Reaper,
+    msg: rosc::OscMessage,
+    mut log_unknown_route: F,
+    mut log_decode_error: G,
+) where
+    F: FnMut(&str),
+    G: FnMut(&str, DispatchError),
 {
     let addr = msg.addr.as_str();
-    if let Some(args) = match_addr(addr, "/num_tracks") {
-        let mut endpoint = reaper.num_tracks();
+    if let Some(_args) = match_addr(addr, "/num_tracks") {
+        let endpoint = reaper.num_tracks();
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(num_tracks) = msg.args.get(0) {
-                handler(NumTracksArgs {
-                    num_tracks: num_tracks.clone().int().unwrap(),
-                });
-            }
+            let _decoded_num_tracks = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(NumTracksArgs {
+                num_tracks: _decoded_num_tracks,
+            });
         }
         return;
     }
-    if let Some(args) = match_addr(addr, "/track/all_guids") {
-        let mut endpoint = reaper.track_all_guids();
-        if let Some(handler) = &mut endpoint.handler {}
+    if let Some(_args) = match_addr(addr, "/track/all_guids") {
+        let endpoint = reaper.track_all_guids();
+        if let Some(handler) = &mut endpoint.handler {
+            handler(TrackAllGuidsArgs {});
+        }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/index") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_index(track_guid);
+        let endpoint = reaper.track_index(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(index) = msg.args.get(0) {
-                handler(TrackIndexArgs {
-                    index: index.clone().int().unwrap(),
-                });
-            }
+            let _decoded_index = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackIndexArgs {
+                index: _decoded_index,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/delete") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_delete(track_guid);
-        if let Some(handler) = &mut endpoint.handler {}
+        let endpoint = reaper.track_delete(track_guid);
+        if let Some(handler) = &mut endpoint.handler {
+            handler(TrackDeleteArgs {});
+        }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/name") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_name(track_guid);
+        let endpoint = reaper.track_name(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(name) = msg.args.get(0) {
-                handler(TrackNameArgs {
-                    name: name.clone().string().unwrap().clone(),
-                });
-            }
+            let _decoded_name = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackNameArgs {
+                name: _decoded_name,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/selected") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_selected(track_guid);
+        let endpoint = reaper.track_selected(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(selected) = msg.args.get(0) {
-                handler(TrackSelectedArgs {
-                    selected: selected.clone().bool().unwrap(),
-                });
-            }
+            let _decoded_selected = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().bool() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "bool",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackSelectedArgs {
+                selected: _decoded_selected,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/volume") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_volume(track_guid);
+        let endpoint = reaper.track_volume(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(volume) = msg.args.get(0) {
-                handler(TrackVolumeArgs {
-                    volume: volume.clone().float().unwrap(),
-                });
-            }
+            let _decoded_volume = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackVolumeArgs {
+                volume: _decoded_volume,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/pan") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_pan(track_guid);
+        let endpoint = reaper.track_pan(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(pan) = msg.args.get(0) {
-                handler(TrackPanArgs {
-                    pan: pan.clone().float().unwrap(),
-                });
-            }
+            let _decoded_pan = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackPanArgs { pan: _decoded_pan });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/mute") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_mute(track_guid);
+        let endpoint = reaper.track_mute(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(mute) = msg.args.get(0) {
-                handler(TrackMuteArgs {
-                    mute: mute.clone().bool().unwrap(),
-                });
-            }
+            let _decoded_mute = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().bool() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "bool",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackMuteArgs {
+                mute: _decoded_mute,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/solo") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_solo(track_guid);
+        let endpoint = reaper.track_solo(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(solo) = msg.args.get(0) {
-                handler(TrackSoloArgs {
-                    solo: solo.clone().bool().unwrap(),
-                });
-            }
+            let _decoded_solo = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().bool() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "bool",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackSoloArgs {
+                solo: _decoded_solo,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/rec-arm") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_rec_arm(track_guid);
+        let endpoint = reaper.track_rec_arm(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(rec_arm) = msg.args.get(0) {
-                handler(TrackRecArmArgs {
-                    rec_arm: rec_arm.clone().bool().unwrap(),
-                });
-            }
+            let _decoded_rec_arm = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().bool() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "bool",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackRecArmArgs {
+                rec_arm: _decoded_rec_arm,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/guid") {
-        let send_index: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_send_guid(track_guid, send_index);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(guid) = msg.args.get(0) {
-                handler(TrackSendGuidArgs {
-                    guid: guid.clone().string().unwrap().clone(),
-                });
+        let track_guid = args[0].clone();
+        let send_index: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "send_index",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_send_guid(track_guid, send_index);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_guid = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackSendGuidArgs {
+                guid: _decoded_guid,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/volume") {
-        let send_index: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_send_volume(track_guid, send_index);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(volume) = msg.args.get(0) {
-                handler(TrackSendVolumeArgs {
-                    volume: volume.clone().float().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let send_index: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "send_index",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_send_volume(track_guid, send_index);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_volume = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackSendVolumeArgs {
+                volume: _decoded_volume,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/pan") {
-        let send_index: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_send_pan(track_guid, send_index);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(pan) = msg.args.get(0) {
-                handler(TrackSendPanArgs {
-                    pan: pan.clone().float().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let send_index: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "send_index",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_send_pan(track_guid, send_index);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_pan = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackSendPanArgs { pan: _decoded_pan });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/color") {
         let track_guid = args[0].clone();
-        let mut endpoint = reaper.track_color(track_guid);
+        let endpoint = reaper.track_color(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(color) = msg.args.get(0) {
-                handler(TrackColorArgs {
-                    color: color.clone().int().unwrap(),
-                });
-            }
+            let _decoded_color = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackColorArgs {
+                color: _decoded_color,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/guid") {
-        let fx_idx: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_fx_guid(track_guid, fx_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(guid) = msg.args.get(0) {
-                handler(TrackFxGuidArgs {
-                    guid: guid.clone().string().unwrap().clone(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_fx_guid(track_guid, fx_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_guid = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxGuidArgs {
+                guid: _decoded_guid,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/name") {
-        let fx_idx: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_fx_name(track_guid, fx_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(name) = msg.args.get(0) {
-                handler(TrackFxNameArgs {
-                    name: name.clone().string().unwrap().clone(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_fx_name(track_guid, fx_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_name = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxNameArgs {
+                name: _decoded_name,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/enabled") {
-        let fx_idx: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_fx_enabled(track_guid, fx_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(enabled) = msg.args.get(0) {
-                handler(TrackFxEnabledArgs {
-                    enabled: enabled.clone().bool().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_fx_enabled(track_guid, fx_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_enabled = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().bool() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "bool",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxEnabledArgs {
+                enabled: _decoded_enabled,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/param_count") {
-        let fx_idx: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_fx_param_count(track_guid, fx_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(param_count) = msg.args.get(0) {
-                handler(TrackFxParamCountArgs {
-                    param_count: param_count.clone().int().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.track_fx_param_count(track_guid, fx_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_param_count = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxParamCountArgs {
+                param_count: _decoded_param_count,
+            });
         }
         return;
     }
@@ -2027,16 +2610,57 @@ where
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/name",
     ) {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let fx_idx: i32 = args[1].parse().unwrap();
-        let track_guid = args[2].clone();
-        let mut endpoint = reaper.track_fx_param_name(track_guid, fx_idx, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(param_name) = msg.args.get(0) {
-                handler(TrackFxParamNameArgs {
-                    param_name: param_name.clone().string().unwrap().clone(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let param_idx: i32 = match args[2].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[2].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.track_fx_param_name(track_guid, fx_idx, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_param_name = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxParamNameArgs {
+                param_name: _decoded_param_name,
+            });
         }
         return;
     }
@@ -2044,16 +2668,57 @@ where
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/value",
     ) {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let fx_idx: i32 = args[1].parse().unwrap();
-        let track_guid = args[2].clone();
-        let mut endpoint = reaper.track_fx_param_value(track_guid, fx_idx, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(value) = msg.args.get(0) {
-                handler(TrackFxParamValueArgs {
-                    value: value.clone().float().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let param_idx: i32 = match args[2].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[2].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.track_fx_param_value(track_guid, fx_idx, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_value = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxParamValueArgs {
+                value: _decoded_value,
+            });
         }
         return;
     }
@@ -2061,16 +2726,55 @@ where
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/min",
     ) {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let fx_idx: i32 = args[1].parse().unwrap();
-        let track_guid = args[2].clone();
-        let mut endpoint = reaper.track_fx_param_min(track_guid, fx_idx, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(min) = msg.args.get(0) {
-                handler(TrackFxParamMinArgs {
-                    min: min.clone().float().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let param_idx: i32 = match args[2].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[2].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.track_fx_param_min(track_guid, fx_idx, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_min = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxParamMinArgs { min: _decoded_min });
         }
         return;
     }
@@ -2078,93 +2782,269 @@ where
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/max",
     ) {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let fx_idx: i32 = args[1].parse().unwrap();
-        let track_guid = args[2].clone();
-        let mut endpoint = reaper.track_fx_param_max(track_guid, fx_idx, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(max) = msg.args.get(0) {
-                handler(TrackFxParamMaxArgs {
-                    max: max.clone().float().unwrap(),
-                });
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let param_idx: i32 = match args[2].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[2].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.track_fx_param_max(track_guid, fx_idx, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_max = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxParamMaxArgs { max: _decoded_max });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/info") {
-        let fx_idx: i32 = args[0].parse().unwrap();
-        let track_guid = args[1].clone();
-        let mut endpoint = reaper.track_fx_info(track_guid, fx_idx);
-        if let Some(handler) = &mut endpoint.handler {}
+        let track_guid = args[0].clone();
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.track_fx_info(track_guid, fx_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            handler(TrackFxInfoArgs {});
+        }
         return;
     }
     if let Some(args) = match_addr(addr, "/fxinfo/{ident}/name") {
         let ident = args[0].clone();
-        let mut endpoint = reaper.fxinfo_name(ident);
+        let endpoint = reaper.fxinfo_name(ident);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(name) = msg.args.get(0) {
-                handler(FxinfoNameArgs {
-                    name: name.clone().string().unwrap().clone(),
-                });
-            }
+            let _decoded_name = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoNameArgs {
+                name: _decoded_name,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param_count") {
         let ident = args[0].clone();
-        let mut endpoint = reaper.fxinfo_param_count(ident);
+        let endpoint = reaper.fxinfo_param_count(ident);
         if let Some(handler) = &mut endpoint.handler {
-            if let Some(param_count) = msg.args.get(0) {
-                handler(FxinfoParamCountArgs {
-                    param_count: param_count.clone().int().unwrap(),
-                });
-            }
+            let _decoded_param_count = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamCountArgs {
+                param_count: _decoded_param_count,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param/{param_idx}/name") {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let ident = args[1].clone();
-        let mut endpoint = reaper.fxinfo_param_name(ident, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(param_name) = msg.args.get(0) {
-                handler(FxinfoParamNameArgs {
-                    param_name: param_name.clone().string().unwrap().clone(),
-                });
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.fxinfo_param_name(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_param_name = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamNameArgs {
+                param_name: _decoded_param_name,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param/{param_idx}/min") {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let ident = args[1].clone();
-        let mut endpoint = reaper.fxinfo_param_min(ident, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(param_min) = msg.args.get(0) {
-                handler(FxinfoParamMinArgs {
-                    param_min: param_min.clone().float().unwrap(),
-                });
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.fxinfo_param_min(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_param_min = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamMinArgs {
+                param_min: _decoded_param_min,
+            });
         }
         return;
     }
     if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param/{param_idx}/max") {
-        let param_idx: i32 = args[0].parse().unwrap();
-        let ident = args[1].clone();
-        let mut endpoint = reaper.fxinfo_param_max(ident, param_idx);
-        if let Some(handler) = &mut endpoint.handler {
-            if let Some(param_max) = msg.args.get(0) {
-                handler(FxinfoParamMaxArgs {
-                    param_max: param_max.clone().float().unwrap(),
-                });
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
             }
+        };
+        let endpoint = reaper.fxinfo_param_max(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_param_max = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamMaxArgs {
+                param_max: _decoded_param_max,
+            });
         }
         return;
     }
-    if let Some(args) = match_addr(addr, "/fxinfo") {
-        let mut endpoint = reaper.fxinfo();
-        if let Some(handler) = &mut endpoint.handler {}
+    if let Some(_args) = match_addr(addr, "/fxinfo") {
+        let endpoint = reaper.fxinfo();
+        if let Some(handler) = &mut endpoint.handler {
+            handler(FxinfoArgs {});
+        }
         return;
     }
-    log_unknown(addr);
+    log_unknown_route(addr);
 }

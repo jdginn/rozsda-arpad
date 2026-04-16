@@ -46,9 +46,12 @@ fn main() {
         move |msg: OscMessage| {
             reaper.with_mut(|reaper| {
                 let msg_clone = msg.clone();
-                dispatch_osc(reaper, msg, |_| {
-                    println!("Unhandled message: {:?}", msg_clone)
-                });
+                dispatch_osc(
+                    reaper,
+                    msg,
+                    |_| println!("Unhandled message: {:?}", msg_clone),
+                    |msg, err| println!("Error dispatching message {:?}: {:?}", msg, err),
+                );
             })
         }
     };
