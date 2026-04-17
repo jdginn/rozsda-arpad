@@ -248,6 +248,18 @@ impl ChannelStripMap {
     fn update_mapping_locked(&mut self) {}
 
     fn translate_downstream_msg(&self, msg: TrackMsg) -> Result<ChannelStripMsg, String> {
+        if self.hp_filter.is_some() {
+            if let TrackMsg::TrackDataMsg(data_msg) = msg {
+                match data_msg.data {
+                    DataPayload::Muted(is_muted) => {
+                        // Example: if the track is muted, bypass the HPF
+                        return Ok(ChannelStripMsg::HpfFreq(if is_muted { 0.0 } else { 20.0 }));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // FIXME: implement
         Ok(ChannelStripMsg::HpfFreq(0.0))
     }
@@ -256,7 +268,6 @@ impl ChannelStripMap {
         // FIXME: implement
         Ok(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "foo".to_string(),
-            direction: crate::track::track::Direction::Upstream,
             data: crate::track::track::DataPayload::Muted(true),
         }))
     }

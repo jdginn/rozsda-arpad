@@ -1,30 +1,46 @@
 use arpad_rust::modes::mode_manager::{Barrier, Mode};
 use arpad_rust::track::track::{
-    DataPayload, Direction, SendIndex, SendLevel, TrackDataMsg, TrackManager, TrackMsg, TrackQuery,
+    DataPayload, SendIndex, SendLevel, TrackDataMsg, TrackManager, TrackMsg, TrackQuery,
 };
 use crossbeam_channel::{Receiver, Sender, bounded};
 use std::time::Duration;
 
 /// Helper to create a test TrackManager setup with channels
-fn setup_track_manager() -> (Sender<TrackMsg>, Receiver<TrackMsg>, Receiver<TrackMsg>) {
-    let (input_tx, input_rx) = bounded(128);
-    let (upstream_tx, upstream_rx) = bounded(128);
-    let (downstream_tx, downstream_rx) = bounded(128);
+fn setup_track_manager() -> (
+    Sender<TrackMsg>,
+    Receiver<TrackMsg>,
+    Sender<TrackMsg>,
+    Receiver<TrackMsg>,
+) {
+    let (from_upstream_tx, from_upstream_rx) = bounded(128);
+    let (to_upstream_tx, to_upstream_rx) = bounded(128);
+    let (from_downstream_tx, from_downstream_rx) = bounded(128);
+    let (to_downstream_tx, to_downstream_rx) = bounded(128);
 
-    TrackManager::start(input_rx, upstream_tx, downstream_tx);
+    TrackManager::start(
+        from_upstream_rx.clone(),
+        to_upstream_tx.clone(),
+        from_downstream_rx.clone(),
+        to_downstream_tx.clone(),
+    );
 
     // Give the thread time to start
     std::thread::sleep(Duration::from_millis(50));
 
-    (input_tx, upstream_rx, downstream_rx)
+    (
+        from_upstream_tx,
+        to_upstream_rx,
+        from_downstream_tx,
+        to_downstream_rx,
+    )
 }
 
 #[test]
 fn test_track_manager_forwards_barriers() {
-    let (input_tx, _upstream_rx, downstream_rx) = setup_track_manager();
+    let (upstream_tx, _upstream_rx, _downstream_tx, downstream_rx) = setup_track_manager();
 
     let barrier = Barrier::new(Mode::ReaperVolPan, Mode::ReaperSends);
-    input_tx.send(TrackMsg::Barrier(barrier)).unwrap();
+    upstream_tx.send(TrackMsg::Barrier(barrier)).unwrap();
 
     // Barrier should be forwarded downstream
     let result = downstream_rx.recv_timeout(Duration::from_millis(100));
@@ -39,15 +55,14 @@ fn test_track_manager_forwards_barriers() {
 
 #[test]
 fn test_track_manager_handles_track_name() {
-    let (input_tx, _upstream_rx, downstream_rx) = setup_track_manager();
+    let (upstream_tx, _upstream_rx, _downstream_tx, downstream_rx) = setup_track_manager();
 
     let test_guid = "test-track-guid-1".to_string();
     let test_name = "Test Track".to_string();
 
-    input_tx
+    upstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: test_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Name(test_name.clone()),
         }))
         .unwrap();
@@ -70,15 +85,14 @@ fn test_track_manager_handles_track_name() {
 
 #[test]
 fn test_track_manager_handles_track_volume() {
-    let (input_tx, upstream_rx, _downstream_rx) = setup_track_manager();
+    let (upstream_tx, upstream_rx, downstream_tx, _downstream_rx) = setup_track_manager();
 
     let test_guid = "test-track-guid-2".to_string();
     let test_volume = 0.75;
 
-    input_tx
+    downstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: test_guid.clone(),
-            direction: Direction::Upstream,
             data: DataPayload::Volume(test_volume),
         }))
         .unwrap();
@@ -101,15 +115,14 @@ fn test_track_manager_handles_track_volume() {
 
 #[test]
 fn test_track_manager_responds_to_track_query() {
-    let (input_tx, upstream_rx, downstream_rx) = setup_track_manager();
+    let (upstream_tx, upstream_rx, downstream_tx, downstream_rx) = setup_track_manager();
 
     let test_guid = "test-track-guid-3".to_string();
 
     // First, populate some track data
-    input_tx
+    upstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: test_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Name("Populated Track".to_string()),
         }))
         .unwrap();
@@ -118,10 +131,9 @@ fn test_track_manager_responds_to_track_query() {
     let _ = downstream_rx.recv_timeout(Duration::from_millis(100));
 
     // Now query the track
-    input_tx
+    downstream_tx
         .send(TrackMsg::TrackQuery(TrackQuery {
             guid: test_guid.clone(),
-            direction: Direction::Upstream,
         }))
         .unwrap();
 
@@ -146,17 +158,16 @@ fn test_track_manager_responds_to_track_query() {
 
 #[test]
 fn test_track_manager_handles_send_data() {
-    let (input_tx, _upstream_rx, downstream_rx) = setup_track_manager();
+    let (upstream_tx, upstream_rx, downstream_tx, downstream_rx) = setup_track_manager();
 
     let test_guid = "test-track-guid-4".to_string();
     let send_index = 2;
     let target_guid = "target-track-guid".to_string();
 
     // Set send index (maps send to target track)
-    input_tx
+    upstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: test_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::SendIndex(SendIndex {
                 send_index,
                 guid: target_guid.clone(),
@@ -169,10 +180,9 @@ fn test_track_manager_handles_send_data() {
 
     // Set send level
     let send_level = 0.8;
-    input_tx
+    downstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: test_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: send_level,
@@ -181,14 +191,14 @@ fn test_track_manager_handles_send_data() {
         .unwrap();
 
     // Message should be forwarded
-    let result = downstream_rx.recv_timeout(Duration::from_millis(100));
+    let result = upstream_rx.recv_timeout(Duration::from_millis(100));
     assert!(result.is_ok(), "Send level message should be forwarded");
 }
 
 #[test]
 fn test_track_manager_message_ordering() {
     // Test that messages are processed in the order they're sent
-    let (input_tx, _upstream_rx, downstream_rx) = setup_track_manager();
+    let (from_upstream, to_upstream, from_downstream, to_downstream) = setup_track_manager();
 
     let test_guid = "test-track-ordering".to_string();
 
@@ -201,10 +211,9 @@ fn test_track_manager_message_ordering() {
     ];
 
     for payload in messages.iter() {
-        input_tx
+        from_upstream
             .send(TrackMsg::TrackDataMsg(TrackDataMsg {
                 guid: test_guid.clone(),
-                direction: Direction::Downstream,
                 data: payload.clone(),
             }))
             .unwrap();
@@ -212,7 +221,7 @@ fn test_track_manager_message_ordering() {
 
     // Verify messages are received in order
     for (idx, expected_payload) in messages.iter().enumerate() {
-        let result = downstream_rx.recv_timeout(Duration::from_millis(100));
+        let result = to_downstream.recv_timeout(Duration::from_millis(100));
         assert!(
             result.is_ok(),
             "Message {} should be received in order",
@@ -235,40 +244,37 @@ fn test_track_manager_message_ordering() {
 #[test]
 fn test_track_manager_concurrent_tracks() {
     // Test that TrackManager can handle messages for multiple tracks concurrently
-    let (input_tx, _upstream_rx, downstream_rx) = setup_track_manager();
+    let (from_upstream, to_upstream, from_downstream, to_downstream) = setup_track_manager();
 
     let track1 = "track-1".to_string();
     let track2 = "track-2".to_string();
     let track3 = "track-3".to_string();
 
     // Send messages for multiple tracks
-    input_tx
+    from_upstream
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track1.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Name("Track 1".to_string()),
         }))
         .unwrap();
 
-    input_tx
+    from_upstream
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track2.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Name("Track 2".to_string()),
         }))
         .unwrap();
 
-    input_tx
+    from_upstream
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track3.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Name("Track 3".to_string()),
         }))
         .unwrap();
 
     // All messages should be forwarded
     for i in 0..3 {
-        let result = downstream_rx.recv_timeout(Duration::from_millis(100));
+        let result = to_downstream.recv_timeout(Duration::from_millis(100));
         assert!(
             result.is_ok(),
             "Message {} for concurrent tracks should be forwarded",
@@ -281,14 +287,13 @@ fn test_track_manager_concurrent_tracks() {
 // The current implementation doesn't send anything if track doesn't exist, which is verified below.
 #[test]
 fn test_track_manager_query_nonexistent_track() {
-    let (input_tx, upstream_rx, _downstream_rx) = setup_track_manager();
+    let (upstream_tx, upstream_rx, downstream_tx, downstream_rx) = setup_track_manager();
 
     let nonexistent_guid = "nonexistent-track".to_string();
 
-    input_tx
+    upstream_tx
         .send(TrackMsg::TrackQuery(TrackQuery {
             guid: nonexistent_guid.clone(),
-            direction: Direction::Upstream,
         }))
         .unwrap();
 
@@ -296,11 +301,12 @@ fn test_track_manager_query_nonexistent_track() {
     // Option 1: Receive nothing (timeout)
     // Option 2: Receive a TrackData with default/empty values
     // Option 3: Receive an error message
-    let result = upstream_rx.recv_timeout(Duration::from_millis(100));
+    let result = upstream_rx.recv_timeout(Duration::from_millis(5));
 
     // Currently, the implementation doesn't send anything if track doesn't exist
     assert!(
         result.is_err(),
-        "Query for nonexistent track currently returns nothing"
+        "Query for nonexistent should return nothing but got {:?}",
+        result
     );
 }

@@ -7,9 +7,7 @@ use float_cmp::approx_eq;
 use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
-use arpad_rust::track::track::{
-    DataPayload, Direction, SendIndex, SendLevel, TrackDataMsg, TrackMsg,
-};
+use arpad_rust::track::track::{DataPayload, SendIndex, SendLevel, TrackDataMsg, TrackMsg};
 
 pub fn drain<T>(rx: &Receiver<T>) {
     // Drops (flushes) all messages currently buffered at the time we start draining,
@@ -98,7 +96,6 @@ macro_rules! assert_upstream_send_level_track_msg {
         match result {
             Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
-                check!(msg.direction == Direction::Upstream, "Should be upstream");
                 match msg.data {
                     DataPayload::SendLevel(send_level) => {
                         check!(
@@ -143,7 +140,6 @@ fn assign_send_to_channel(
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendIndex(SendIndex {
                 send_index,
                 guid: send_guid.to_string(),
@@ -172,7 +168,6 @@ fn test_track_sends_mode_assigns_sends_by_index() {
     // Send a SendIndex message to assign the send to hardware channel 2
     let msg = TrackMsg::TrackDataMsg(TrackDataMsg {
         guid: "selected-track".to_string(),
-        direction: Direction::Downstream,
         data: DataPayload::SendIndex(SendIndex {
             send_index,
             guid: "selected-track".to_string(),
@@ -214,7 +209,6 @@ fn test_send_level_for_mapped_send_forwards_to_hardware() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: test_level,
@@ -244,7 +238,6 @@ fn test_send_level_for_unmapped_send_is_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: test_level,
@@ -340,7 +333,6 @@ fn test_simultaneous_upstream_downstream_messages() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: 0.6,
@@ -368,7 +360,6 @@ fn test_simultaneous_upstream_downstream_messages() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: 0.9,
@@ -408,7 +399,6 @@ fn test_remapping_sends_across_hardware_channels() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: channel_1,
                 level: 0.5,
@@ -436,7 +426,6 @@ fn test_remapping_sends_across_hardware_channels() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: channel_2,
                 level: 0.8,
@@ -502,7 +491,6 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: send_index_1,
                 level: level_1,
@@ -516,7 +504,6 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: send_index_1,
                 level: level_2,
@@ -535,7 +522,6 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: send_index_2,
                 level: 0.9,
@@ -577,7 +563,6 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: send_index_1,
                 level: 0.3,
@@ -588,7 +573,6 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: send_index_2,
                 level: 0.6,
@@ -599,7 +583,6 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: send_index_3,
                 level: 0.9,
@@ -633,7 +616,6 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: level_1,
@@ -649,7 +631,6 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: level_2,
@@ -736,7 +717,6 @@ fn test_downstream_messages_sent_in_correct_order() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: 0.5,
@@ -748,7 +728,6 @@ fn test_downstream_messages_sent_in_correct_order() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: 0.7,
@@ -760,7 +739,6 @@ fn test_downstream_messages_sent_in_correct_order() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: 0.9,
@@ -839,7 +817,6 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: initial_level,
@@ -854,7 +831,6 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: small_change,
@@ -894,7 +870,6 @@ fn test_send_level_changes_above_epsilon_propagate() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: initial_level,
@@ -909,7 +884,6 @@ fn test_send_level_changes_above_epsilon_propagate() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index,
                 level: large_change,
@@ -946,10 +920,6 @@ fn test_mode_transition_requests_track_query() {
     match msg1.unwrap() {
         TrackMsg::TrackQuery(query) => {
             check!(query.guid == selected_track_guid, "GUID should match");
-            check!(
-                query.direction == Direction::Downstream,
-                "Should be downstream"
-            );
         }
         _ => panic!("Expected TrackQuery message"),
     }
@@ -998,7 +968,6 @@ fn test_complex_multi_send_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 0,
                 level: 0.3,
@@ -1011,7 +980,6 @@ fn test_complex_multi_send_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 1,
                 level: 0.6,
@@ -1024,7 +992,6 @@ fn test_complex_multi_send_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 2,
                 level: 0.9,
@@ -1063,7 +1030,6 @@ fn test_complex_multi_send_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 0,
                 level: 0.5,
@@ -1076,7 +1042,6 @@ fn test_complex_multi_send_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 1,
                 level: 0.8,
@@ -1114,7 +1079,6 @@ fn test_multiple_tracks_and_switching_selections() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 0,
                 level: 0.3,
@@ -1127,7 +1091,6 @@ fn test_multiple_tracks_and_switching_selections() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 1,
                 level: 0.6,
@@ -1145,7 +1108,6 @@ fn test_multiple_tracks_and_switching_selections() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 0,
                 level: 0.9,
@@ -1163,7 +1125,6 @@ fn test_multiple_tracks_and_switching_selections() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 0,
                 level: 0.4,
@@ -1199,7 +1160,6 @@ fn test_expanded_real_world_integration() {
         mode.handle_downstream_messages(
             TrackMsg::TrackDataMsg(TrackDataMsg {
                 guid: "selected-track".to_string(),
-                direction: Direction::Downstream,
                 data: DataPayload::SendLevel(SendLevel {
                     send_index: idx,
                     level,
@@ -1236,7 +1196,6 @@ fn test_expanded_real_world_integration() {
         mode.handle_downstream_messages(
             TrackMsg::TrackDataMsg(TrackDataMsg {
                 guid: "selected-track".to_string(),
-                direction: Direction::Downstream,
                 data: DataPayload::SendLevel(SendLevel {
                     send_index: idx,
                     level,
@@ -1254,7 +1213,6 @@ fn test_expanded_real_world_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 5,
                 level: 0.95,
@@ -1284,7 +1242,6 @@ fn test_expanded_real_world_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "selected-track".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendLevel(SendLevel {
                 send_index: 0,
                 level: 0.55,
