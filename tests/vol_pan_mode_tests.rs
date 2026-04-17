@@ -18,7 +18,7 @@ use arpad_rust::midi::xtouch::{
 };
 use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_vol_pan::{FADER_0DB, VolumePanMode};
-use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
+use arpad_rust::track::track::{DataPayload, TrackDataMsg, TrackMsg};
 
 // EPSILON constant for floating-point threshold testing
 const EPSILON: f32 = 0.01;
@@ -183,7 +183,6 @@ macro_rules! assert_upstream_volume_track_msg {
         match result {
             Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
-                check!(msg.direction == Direction::Upstream, "Should be upstream");
                 match msg.data {
                     DataPayload::Volume(volume) => {
                         check!(
@@ -290,7 +289,6 @@ fn assign_track_to_channel(
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: guid.to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -326,7 +324,6 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     // Send a ReaperTrackIndex message to assign the track to hardware channel 2
     let msg = TrackMsg::TrackDataMsg(TrackDataMsg {
         guid: track_guid.clone(),
-        direction: Direction::Downstream,
         data: DataPayload::ReaperTrackIndex(Some(reaper_index)),
     });
 
@@ -362,7 +359,6 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -374,7 +370,6 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(test_volume),
         }),
         curr_mode,
@@ -422,7 +417,6 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -442,7 +436,6 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
 
     if let Ok(TrackMsg::TrackDataMsg(msg)) = result {
         check!(msg.guid == track_guid, "Track GUID should match");
-        check!(msg.direction == Direction::Upstream, "Should be upstream");
         if let DataPayload::Volume(volume) = msg.data {
             assert!(
                 approx_eq!(f32, volume, new_volume as f32, epsilon = EPSILON),
@@ -488,7 +481,6 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(test_volume),
         }),
         curr_mode,
@@ -515,7 +507,6 @@ fn test_02_volume_message_for_unmapped_track_is_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(test_volume),
         }),
         curr_mode,
@@ -611,7 +602,6 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(volume_1),
         }),
         curr_mode,
@@ -622,7 +612,6 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(volume_2),
         }),
         curr_mode,
@@ -655,7 +644,6 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(volume_3),
         }),
         curr_mode,
@@ -686,7 +674,6 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Muted(true),
         }),
         curr_mode,
@@ -697,7 +684,6 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Soloed(true),
         }),
         curr_mode,
@@ -708,7 +694,6 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Armed(true),
         }),
         curr_mode,
@@ -743,7 +728,6 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(pan_value_1),
         }),
         curr_mode,
@@ -755,7 +739,6 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(pan_value_2),
         }),
         curr_mode,
@@ -787,7 +770,6 @@ fn test_pan_state_accumulates_before_mapping() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(pan_value_1),
         }),
         curr_mode,
@@ -799,7 +781,6 @@ fn test_pan_state_accumulates_before_mapping() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(pan_value_2),
         }),
         curr_mode,
@@ -933,7 +914,6 @@ fn test_11_pan_encoder_changes_forward_correctly() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(initial_pan),
         }),
         curr_mode,
@@ -1033,7 +1013,6 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.5),
         }),
         curr_mode,
@@ -1042,7 +1021,6 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(0.3),
         }),
         curr_mode,
@@ -1051,7 +1029,6 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Muted(true),
         }),
         curr_mode,
@@ -1162,7 +1139,6 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(initial_volume),
         }),
         curr_mode,
@@ -1174,7 +1150,6 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(small_change),
         }),
         curr_mode,
@@ -1211,7 +1186,6 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(0.7),
         }),
         curr_mode,
@@ -1223,7 +1197,6 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(small_change),
         }),
         curr_mode,
@@ -1261,7 +1234,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track1_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.75),
         }),
         curr_mode,
@@ -1272,7 +1244,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track2_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(0.3),
         }),
         curr_mode,
@@ -1280,7 +1251,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track2_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Muted(true),
         }),
         curr_mode,
@@ -1288,7 +1258,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track2_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.9),
         }),
         curr_mode,
@@ -1301,7 +1270,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track3_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Soloed(true),
         }),
         curr_mode,
@@ -1309,7 +1277,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track3_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Armed(true),
         }),
         curr_mode,
@@ -1348,7 +1315,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track1_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.6),
         }),
         curr_mode,
@@ -1379,7 +1345,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track1_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.5),
         }),
         curr_mode,
@@ -1402,7 +1367,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track4_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(0.2),
         }),
         curr_mode,
@@ -1410,7 +1374,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track4_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(0.8), // Updated pan value
         }),
         curr_mode,
@@ -1418,7 +1381,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track4_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.4),
         }),
         curr_mode,
@@ -1426,7 +1388,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track4_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Muted(true),
         }),
         curr_mode,
@@ -1451,7 +1412,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track4_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.7),
         }),
         curr_mode,
@@ -1499,7 +1459,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track3_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Volume(0.1),
         }),
         curr_mode,
@@ -1510,7 +1469,6 @@ fn test_complex_multi_track_integration() {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: track2_guid.clone(),
-            direction: Direction::Downstream,
             data: DataPayload::Pan(0.65),
         }),
         curr_mode,
@@ -1566,7 +1524,6 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send volume update (0.8)
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            direction: Direction::Downstream,
             guid: track_guid.clone(),
             data: DataPayload::Volume(0.8),
         }),
@@ -1577,7 +1534,6 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send small volume update (0.805) - should be filtered by EPSILON
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            direction: Direction::Downstream,
             guid: track_guid.clone(),
             data: DataPayload::Volume(0.805),
         }),
@@ -1597,7 +1553,6 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send another small volume update (0.81) - should be filtered again
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            direction: Direction::Downstream,
             guid: track_guid.clone(),
             data: DataPayload::Volume(0.81),
         }),
@@ -1608,7 +1563,6 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send larger volume update (0.82) - should not be filtered
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            direction: Direction::Downstream,
             guid: track_guid.clone(),
             data: DataPayload::Volume(0.82),
         }),

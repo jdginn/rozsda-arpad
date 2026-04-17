@@ -14,8 +14,8 @@ use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
 use arpad_rust::track::track::{
-    DataPayload, Direction, FXEnabled, FXGuid, FXName, FXParamMax, FXParamMin, FXParamName,
-    FXParamValue, SendIndex, SendLevel, SendPan, TrackDataMsg, TrackManager, TrackMsg,
+    DataPayload, FXEnabled, FXGuid, FXName, FXParamMax, FXParamMin, FXParamName, FXParamValue,
+    SendIndex, SendLevel, SendPan, TrackDataMsg, TrackManager, TrackMsg,
 };
 
 use crate::shared::Shared;
@@ -36,10 +36,11 @@ fn main() {
 
     let reaper = Shared::new(Reaper::new(Arc::new(socket.try_clone().unwrap())));
 
+    // FIXME: why do we have a, b, and c?
     let (a_send, a_rec) = bounded(128); // buffer size as needed
     let (b, _) = bounded(128); // buffer size as needed
-    let (c, _) = bounded(128); // buffer size as needed
-    TrackManager::start(a_rec.clone(), b.clone(), c.clone());
+    let (c_send, c_rec) = bounded(128); // buffer size as needed
+    TrackManager::start(a_rec.clone(), b.clone(), c_rec.clone(), c_send.clone());
 
     let dispatcher = {
         let reaper = reaper.clone();
@@ -80,7 +81,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::ReaperTrackIndex(Some(index.index)),
                                         }))
                                         .unwrap();
@@ -99,7 +99,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Name(name.name.clone()),
                                         }))
                                         .unwrap();
@@ -118,7 +117,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Selected(selected.selected),
                                         }))
                                         .unwrap();
@@ -137,7 +135,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Muted(muted.mute),
                                         }))
                                         .unwrap();
@@ -156,7 +153,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Soloed(soloed.solo),
                                         }))
                                         .unwrap();
@@ -175,7 +171,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Armed(rec_arm.rec_arm),
                                         }))
                                         .unwrap();
@@ -194,7 +189,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Volume(volume.volume),
                                         }))
                                         .unwrap();
@@ -213,7 +207,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::Pan(pan.pan),
                                         }))
                                         .unwrap();
@@ -252,7 +245,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::SendIndex(SendIndex {
                                                     guid: send_guid.guid.clone(),
                                                     send_index,
@@ -277,7 +269,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::SendLevel(SendLevel {
                                                     send_index,
                                                     level: send_volume.volume,
@@ -300,7 +291,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::SendPan(SendPan {
                                                 send_index,
                                                 pan: send_pan.pan,
@@ -341,7 +331,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::FXGuid(FXGuid {
                                                 fx_index: ctx.fx_idx,
                                                 guid: fx_guid.guid.clone(),
@@ -358,7 +347,6 @@ fn main() {
                                     a_send
                                         .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                             guid: track_guid.clone(),
-                                            direction: Direction::Downstream,
                                             data: DataPayload::FXName(FXName {
                                                 fx_index: ctx.fx_idx,
                                                 name: fx_name.name.clone(),
@@ -383,7 +371,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::FXEnabled(FXEnabled {
                                                     fx_index: ctx.fx_idx,
                                                     enabled: fx_enabled.enabled,
@@ -426,7 +413,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::FXParamName(FXParamName {
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
@@ -453,7 +439,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::FXParamValue(FXParamValue {
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
@@ -480,7 +465,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::FXParamMin(FXParamMin {
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
@@ -507,7 +491,6 @@ fn main() {
                                         a_send
                                             .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
                                                 guid: track_guid.clone(),
-                                                direction: Direction::Downstream,
                                                 data: DataPayload::FXParamMax(FXParamMax {
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,

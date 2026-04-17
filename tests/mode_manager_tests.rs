@@ -4,7 +4,7 @@ use float_cmp::approx_eq;
 use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeManager, ModeState};
 use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
-use arpad_rust::track::track::{DataPayload, Direction, TrackDataMsg, TrackMsg};
+use arpad_rust::track::track::{DataPayload, TrackDataMsg, TrackMsg};
 use crossbeam_channel::{Receiver, Sender, bounded};
 use std::time::Duration;
 
@@ -53,7 +53,6 @@ macro_rules! assert_upstream_volume_track_msg {
         match result {
             Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
-                check!(msg.direction == Direction::Upstream, "Should be upstream");
                 match msg.data {
                     DataPayload::Volume(volume) => {
                         check!(
@@ -84,7 +83,6 @@ macro_rules! assert_upstream_send_level_track_msg {
         match result {
             Ok(TrackMsg::TrackDataMsg(msg)) => {
                 check!(&msg.guid == $expected_guid, "Track GUID should match");
-                check!(msg.direction == Direction::Upstream, "Should be upstream");
                 match msg.data {
                     DataPayload::SendLevel(send_level) => {
                         check!(
@@ -236,7 +234,6 @@ fn assign_track_to_channel(
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: guid.to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -261,21 +258,18 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(0)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_2".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(1)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::Selected(true),
         }))
         .unwrap();
@@ -316,7 +310,6 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
                 send_index: 1,
                 guid: "track_2".to_string(),
@@ -392,28 +385,24 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(0)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_2".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::ReaperTrackIndex(Some(1)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::Selected(true),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
                 send_index: 1,
                 guid: "track_2".to_string(),
@@ -438,7 +427,6 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
             guid: "track_1".to_string(),
-            direction: Direction::Downstream,
             data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
                 send_index: 1,
                 guid: "track_2".to_string(),
