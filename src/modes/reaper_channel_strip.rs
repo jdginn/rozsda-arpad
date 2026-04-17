@@ -7,9 +7,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::midi::xtouch;
 use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
-use crate::track::track::{
-    DataPayload as TrackDataPayload, Direction, TrackDataMsg, TrackMsg, TrackQuery,
-};
+use crate::track::track::{DataPayload as TrackDataPayload, TrackDataMsg, TrackMsg, TrackQuery};
 
 struct Button {
     state: bool,
@@ -409,7 +407,6 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 {
                     // Send volume update to Reaper for the corresponding track
                     let _ = self.to_reaper.send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                        direction: Direction::Upstream,
                         guid: guid.clone(),
                         data: TrackDataPayload::Volume(fader_msg.value as f32), // TODO: Need to scale appropriately
                     }));
@@ -422,7 +419,6 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // Send mute toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
                             guid: guid.clone(),
                             data: TrackDataPayload::Muted(new_state),
                         }))
@@ -443,7 +439,6 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // Send solo toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
                             guid: guid.clone(),
                             data: TrackDataPayload::Soloed(new_state),
                         }))
@@ -463,7 +458,6 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // Send arm toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
                             guid: guid.clone(),
                             data: TrackDataPayload::Armed(new_state),
                         }))

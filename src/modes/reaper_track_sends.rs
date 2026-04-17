@@ -10,7 +10,7 @@ use crate::midi::xtouch::{
 };
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track::{
-    DataPayload as TrackDataPayload, Direction, SendLevel, TrackDataMsg, TrackMsg, TrackQuery,
+    DataPayload as TrackDataPayload, SendLevel, TrackDataMsg, TrackMsg, TrackQuery,
 };
 
 #[derive(Clone, Default)]
@@ -208,7 +208,6 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
                     self.to_reaper
                         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                            direction: Direction::Upstream,
                             guid,
                             data: TrackDataPayload::SendLevel(SendLevel {
                                 send_index: fader_msg.idx,
@@ -234,7 +233,6 @@ impl TrackSendsMode {
         self.selected_track_guid = Some(selected_track_guid.to_string());
         upstream
             .send(TrackMsg::TrackQuery(TrackQuery {
-                direction: Direction::Downstream,
                 guid: selected_track_guid.to_string(),
             }))
             .unwrap();
