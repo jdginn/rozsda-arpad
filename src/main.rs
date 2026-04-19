@@ -9,15 +9,11 @@ use std::sync::Arc;
 use clap::Parser;
 use crossbeam_channel::bounded;
 use rosc::OscMessage;
-use uuid::Uuid;
 
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
-use arpad_rust::track::track::{
-    DataPayload, FXEnabled, FXGuid, FXName, FXParamMax, FXParamMin, FXParamName, FXParamValue,
-    SendIndex, SendLevel, SendPan, TrackDataMsg, TrackManager, TrackMsg,
-};
+use arpad_rust::track::track;
 
 use crate::shared::Shared;
 use crate::traits::Bind;
@@ -41,7 +37,7 @@ fn main() {
     let (a_send, a_rec) = bounded(128); // buffer size as needed
     let (b, _) = bounded(128); // buffer size as needed
     let (c_send, c_rec) = bounded(128); // buffer size as needed
-    TrackManager::start(a_rec.clone(), b.clone(), c_rec.clone(), c_send.clone());
+    track::TrackManager::start(a_rec.clone(), b.clone(), c_rec.clone(), c_send.clone());
 
     let dispatcher = {
         let reaper = reaper.clone();
@@ -71,19 +67,21 @@ fn main() {
                                 "Binding track context for track guid: {:?} with messages: {:?}",
                                 ctx.track_guid, key_messages
                             );
-                            let track_guid = &ctx.track_guid;
+                            let track_guid = ctx.track_guid;
                             // Track Index
                             //
                             // For now, we aren't doing anything with this
-                            reaper.track_index(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_index(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |index| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::ReaperTrackIndex(Some(index.index)),
-                                        }))
+                                        .try_send(
+                                            track::ReaperTrackIndex {
+                                                track_guid,
+                                                track_index: Some(index.index),
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} index initial value: {:?}",
@@ -93,15 +91,17 @@ fn main() {
                                 }
                             });
                             // Track Name
-                            reaper.track_name(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_name(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |name| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Name(name.name.clone()),
-                                        }))
+                                        .try_send(
+                                            track::Name {
+                                                track_guid,
+                                                name: name.name.clone(),
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} name initial value: {:?}",
@@ -111,15 +111,17 @@ fn main() {
                                 }
                             });
                             // Track Selected
-                            reaper.track_selected(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_selected(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |selected| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Selected(selected.selected),
-                                        }))
+                                        .try_send(
+                                            track::Selected {
+                                                track_guid,
+                                                selected: selected.selected,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} selected initial value: {:?}",
@@ -129,15 +131,17 @@ fn main() {
                                 }
                             });
                             // Track Muted
-                            reaper.track_mute(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_mute(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |muted| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Muted(muted.mute),
-                                        }))
+                                        .try_send(
+                                            track::Muted {
+                                                track_guid,
+                                                muted: muted.mute,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} muted initial value: {:?}",
@@ -147,15 +151,17 @@ fn main() {
                                 }
                             });
                             // Track Soloed
-                            reaper.track_solo(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_solo(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |soloed| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Soloed(soloed.solo),
-                                        }))
+                                        .try_send(
+                                            track::Soloed {
+                                                track_guid,
+                                                soloed: soloed.solo,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} soloed initial value: {:?}",
@@ -165,15 +171,17 @@ fn main() {
                                 }
                             });
                             // Track Armed
-                            reaper.track_rec_arm(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_rec_arm(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |rec_arm| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Armed(rec_arm.rec_arm),
-                                        }))
+                                        .try_send(
+                                            track::Armed {
+                                                track_guid,
+                                                armed: rec_arm.rec_arm,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} armed initial value: {:?}",
@@ -183,15 +191,17 @@ fn main() {
                                 }
                             });
                             // Track Volume
-                            reaper.track_volume(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_volume(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |volume| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Volume(volume.volume),
-                                        }))
+                                        .try_send(
+                                            track::Volume {
+                                                track_guid,
+                                                volume: volume.volume,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} volume initial value: {:?}",
@@ -201,15 +211,17 @@ fn main() {
                                 }
                             });
                             // Track Pan
-                            reaper.track_pan(track_guid.clone()).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_pan(track_guid).bind({
                                 let a_send = a_send.clone();
                                 move |pan| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::Pan(pan.pan),
-                                        }))
+                                        .try_send(
+                                            track::Pan {
+                                                track_guid,
+                                                pan: pan.pan,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} pan initial value: {:?}",
@@ -229,7 +241,7 @@ fn main() {
                 ContextGateBuilder::<context_kind::TrackSend>::new()
                     .add_key_route("/track/{guid}/send/{send_index}/guid")
                     .with_initialization_callback(move |ctx, key_messages| {
-                        let track_guid = ctx.track_guid.clone();
+                        let track_guid = ctx.track_guid;
                         let send_index = ctx.send_index;
                         println!(
                             "Initialized track send context: {:?} with messages: {:?}",
@@ -237,66 +249,62 @@ fn main() {
                         );
                         reaper.with_mut(|reaper| {
                             // Track Send GUID
-                            reaper
-                                .track_send_guid(track_guid.clone(), send_index)
-                                .bind({
-                                    let track_guid = track_guid.clone();
-                                    let a_send = a_send.clone();
-                                    move |send_guid| {
-                                        a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::SendIndex(SendIndex {
-                                                    guid: send_guid.guid.clone(),
-                                                    send_index,
-                                                }),
-                                            }))
-                                            .unwrap();
-                                        println!(
-                                            "Track {} send {} guid initial value: {:?}",
-                                            track_guid.clone(),
-                                            send_index,
-                                            send_guid
+                            reaper.track_send_guid(track_guid, send_index).bind({
+                                let a_send = a_send.clone();
+                                move |send_guid| {
+                                    a_send
+                                        .try_send(
+                                            track::SendIndex {
+                                                track_guid,
+                                                send_index,
+                                                send_guid: send_guid.guid,
+                                            }
+                                            .into(),
                                         )
-                                    }
-                                });
+                                        .unwrap();
+                                    println!(
+                                        "Track {} send {} guid initial value: {:?}",
+                                        track_guid.clone(),
+                                        send_index,
+                                        send_guid
+                                    )
+                                }
+                            });
                             // Track Send Volume
-                            reaper
-                                .track_send_volume(track_guid.clone(), send_index)
-                                .bind({
-                                    let track_guid = track_guid.clone();
-                                    let a_send = a_send.clone();
-                                    move |send_volume| {
-                                        a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::SendLevel(SendLevel {
-                                                    send_index,
-                                                    level: send_volume.volume,
-                                                }),
-                                            }))
-                                            .unwrap();
-                                        println!(
-                                            "Track {} send {} volume initial value: {:?}",
-                                            track_guid.clone(),
-                                            send_index,
-                                            send_volume
+                            reaper.track_send_volume(track_guid, send_index).bind({
+                                let a_send = a_send.clone();
+                                move |send_volume| {
+                                    a_send
+                                        .try_send(
+                                            track::SendLevel {
+                                                track_guid,
+                                                send_index,
+                                                level: send_volume.volume,
+                                            }
+                                            .into(),
                                         )
-                                    }
-                                });
+                                        .unwrap();
+                                    println!(
+                                        "Track {} send {} volume initial value: {:?}",
+                                        track_guid.clone(),
+                                        send_index,
+                                        send_volume
+                                    )
+                                }
+                            });
                             // Track Send Pan
-                            reaper.track_send_pan(track_guid.clone(), send_index).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_send_pan(track_guid, send_index).bind({
                                 let a_send = a_send.clone();
                                 move |send_pan| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::SendPan(SendPan {
+                                        .try_send(
+                                            track::SendPan {
+                                                track_guid,
                                                 send_index,
                                                 pan: send_pan.pan,
-                                            }),
-                                        }))
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} send {} pan initial value: {:?}",
@@ -317,7 +325,7 @@ fn main() {
                 ContextGateBuilder::<context_kind::TrackFx>::new()
                     .add_key_route("/track/{guid}/fx/{fx_idx}/guid")
                     .with_initialization_callback(move |ctx, key_messages| {
-                        let track_guid = ctx.track_guid.clone();
+                        let track_guid = ctx.track_guid;
                         let a_send = a_send.clone();
                         println!(
                             "Initialized track fxcontext: {:?} with messages: {:?}",
@@ -325,34 +333,34 @@ fn main() {
                         );
                         reaper.with_mut(|reaper| {
                             // Track FX guid
-                            reaper.track_fx_guid(track_guid.clone(), ctx.fx_idx).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_fx_guid(track_guid, ctx.fx_idx).bind({
                                 let a_send = a_send.clone();
                                 move |fx_guid| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::FXGuid(FXGuid {
+                                        .try_send(
+                                            track::FXGuid {
+                                                track_guid,
                                                 fx_index: ctx.fx_idx,
-                                                guid: fx_guid.guid.clone(),
-                                            }),
-                                        }))
+                                                guid: fx_guid.guid,
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                 }
                             });
                             // Track FX Name
-                            reaper.track_fx_name(track_guid.clone(), ctx.fx_idx).bind({
-                                let track_guid = track_guid.clone();
+                            reaper.track_fx_name(track_guid, ctx.fx_idx).bind({
                                 let a_send = a_send.clone();
                                 move |fx_name| {
                                     a_send
-                                        .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                            guid: track_guid.clone(),
-                                            data: DataPayload::FXName(FXName {
+                                        .try_send(
+                                            track::FXName {
+                                                track_guid,
                                                 fx_index: ctx.fx_idx,
                                                 name: fx_name.name.clone(),
-                                            }),
-                                        }))
+                                            }
+                                            .into(),
+                                        )
                                         .unwrap();
                                     println!(
                                         "Track {} fx {} name initial value: {:?}",
@@ -363,29 +371,27 @@ fn main() {
                                 }
                             });
                             // Track FX Enabled
-                            reaper
-                                .track_fx_enabled(track_guid.clone(), ctx.fx_idx)
-                                .bind({
-                                    let track_guid = track_guid.clone();
-                                    let a_send = a_send.clone();
-                                    move |fx_enabled| {
-                                        a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::FXEnabled(FXEnabled {
-                                                    fx_index: ctx.fx_idx,
-                                                    enabled: fx_enabled.enabled,
-                                                }),
-                                            }))
-                                            .unwrap();
-                                        println!(
-                                            "Track {} fx {} enabled initial value: {:?}",
-                                            track_guid.clone(),
-                                            ctx.fx_idx,
-                                            fx_enabled
+                            reaper.track_fx_enabled(track_guid, ctx.fx_idx).bind({
+                                let a_send = a_send.clone();
+                                move |fx_enabled| {
+                                    a_send
+                                        .try_send(
+                                            track::FXEnabled {
+                                                track_guid,
+                                                fx_index: ctx.fx_idx,
+                                                enabled: fx_enabled.enabled,
+                                            }
+                                            .into(),
                                         )
-                                    }
-                                });
+                                        .unwrap();
+                                    println!(
+                                        "Track {} fx {} enabled initial value: {:?}",
+                                        track_guid.clone(),
+                                        ctx.fx_idx,
+                                        fx_enabled
+                                    )
+                                }
+                            });
                         })
                     }),
             )
@@ -397,7 +403,7 @@ fn main() {
                 ContextGateBuilder::<context_kind::TrackFxParam>::new()
                     .add_key_route("/track/{guid}/fx/{fx_idx}/param/{param_idx}/name")
                     .with_initialization_callback(move |ctx, key_messages| {
-                        let track_guid = ctx.track_guid.clone();
+                        let track_guid = ctx.track_guid;
                         let a_send = a_send.clone();
                         println!(
                             "Initialized track fx param context: {:?} with messages: {:?}",
@@ -406,20 +412,20 @@ fn main() {
                         reaper.with_mut(|reaper| {
                             // Track FX Param Name
                             reaper
-                                .track_fx_param_name(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .track_fx_param_name(track_guid, ctx.fx_idx, ctx.param_idx)
                                 .bind({
-                                    let track_guid = track_guid.clone();
                                     let a_send = a_send.clone();
                                     move |fx_param_name| {
                                         a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::FXParamName(FXParamName {
+                                            .try_send(
+                                                track::FXParamName {
+                                                    track_guid,
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
                                                     name: fx_param_name.param_name.clone(),
-                                                }),
-                                            }))
+                                                }
+                                                .into(),
+                                            )
                                             .unwrap();
                                         println!(
                                             "Track {} fx {} param {} name initial value: {:?}",
@@ -432,20 +438,20 @@ fn main() {
                                 });
                             // Track FX Param Value
                             reaper
-                                .track_fx_param_value(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .track_fx_param_value(track_guid, ctx.fx_idx, ctx.param_idx)
                                 .bind({
-                                    let track_guid = track_guid.clone();
                                     let a_send = a_send.clone();
                                     move |fx_param_value| {
                                         a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::FXParamValue(FXParamValue {
+                                            .try_send(
+                                                track::FXParamValue {
+                                                    track_guid,
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
                                                     value: fx_param_value.value,
-                                                }),
-                                            }))
+                                                }
+                                                .into(),
+                                            )
                                             .unwrap();
                                         println!(
                                             "Track {} fx {} param {} value initial value: {:?}",
@@ -458,20 +464,20 @@ fn main() {
                                 });
                             // Track FX Param Min
                             reaper
-                                .track_fx_param_min(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .track_fx_param_min(track_guid, ctx.fx_idx, ctx.param_idx)
                                 .bind({
-                                    let track_guid = track_guid.clone();
                                     let a_send = a_send.clone();
                                     move |fx_param_min| {
                                         a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::FXParamMin(FXParamMin {
+                                            .try_send(
+                                                track::FXParamMin {
+                                                    track_guid,
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
                                                     min: fx_param_min.min,
-                                                }),
-                                            }))
+                                                }
+                                                .into(),
+                                            )
                                             .unwrap();
                                         println!(
                                             "Track {} fx {} param {} min initial value: {:?}",
@@ -484,20 +490,20 @@ fn main() {
                                 });
                             // Track FX Param Max
                             reaper
-                                .track_fx_param_max(track_guid.clone(), ctx.fx_idx, ctx.param_idx)
+                                .track_fx_param_max(track_guid, ctx.fx_idx, ctx.param_idx)
                                 .bind({
-                                    let track_guid = track_guid.clone();
                                     let a_send = a_send.clone();
                                     move |fx_param_max| {
                                         a_send
-                                            .try_send(TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: track_guid.clone(),
-                                                data: DataPayload::FXParamMax(FXParamMax {
+                                            .try_send(
+                                                track::FXParamMax {
+                                                    track_guid,
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
                                                     max: fx_param_max.max,
-                                                }),
-                                            }))
+                                                }
+                                                .into(),
+                                            )
                                             .unwrap();
                                         println!(
                                             "Track {} fx {} param {} max initial value: {:?}",
@@ -519,7 +525,7 @@ fn main() {
     let mut buf = [0u8; rosc::decoder::MTU];
     loop {
         match socket.recv_from(&mut buf) {
-            Ok((size, addr)) => {
+            Ok((size, _addr)) => {
                 let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
                 router.dispatch_osc(packet);
                 // handle_packet(packet);
