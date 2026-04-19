@@ -9,6 +9,7 @@ use std::sync::Arc;
 use clap::Parser;
 use crossbeam_channel::bounded;
 use rosc::OscMessage;
+use uuid::Uuid;
 
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
@@ -70,7 +71,7 @@ fn main() {
                                 "Binding track context for track guid: {:?} with messages: {:?}",
                                 ctx.track_guid, key_messages
                             );
-                            let track_guid = ctx.track_guid;
+                            let track_guid = &ctx.track_guid;
                             // Track Index
                             //
                             // For now, we aren't doing anything with this

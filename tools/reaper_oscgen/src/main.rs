@@ -23,6 +23,7 @@ fn rust_type(yaml_type: &str) -> &str {
         "string" => "String",
         "float" => "f32",
         "bool" => "bool",
+        "uuid" => "Uuid",
         _ => "String", // fallback
     }
 }
@@ -181,6 +182,8 @@ fn write_imports(code: &mut String) {
     code.push_str("use std::net::UdpSocket;\n");
     code.push_str("use std::sync::Arc;\n\n");
 
+    code.push_str("use uuid::Uuid;\n\n");
+
     code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
 
     code.push_str("use crate::osc::route_context::{ContextTrait};\n\n");
@@ -261,6 +264,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
 
     // Step 1: put these structs in a module
     writeln!(code, "pub mod context {{").unwrap();
+    writeln!(code, "    use uuid::Uuid;\n\n").unwrap();
     writeln!(code, "    use crate::osc::route_context::ContextTrait;\n").unwrap();
 
     // Step 2: Generate context structs
@@ -278,6 +282,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     writeln!(code, "pub mod context_kind {{").unwrap();
     writeln!(code, "    use regex::Regex;").unwrap();
     writeln!(code, "    use super::context;").unwrap();
+    writeln!(code, "    use uuid::Uuid;").unwrap();
     writeln!(
         code,
         "    use crate::osc::route_context::{{ContextKindTrait}};\n"
@@ -316,6 +321,11 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
                 )),
                 "bool" => capture_fields.push_str(&format!(
                     "{}: caps[{}] == \"true\", ",
+                    param.name,
+                    i + 1
+                )),
+                "Uuid" => capture_fields.push_str(&format!(
+                    "{}: Uuid::parse_str(&caps[{}]).ok()?, ",
                     param.name,
                     i + 1
                 )),
@@ -708,11 +718,14 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
     // Emit match arms for each endpoint
     for node in routes.iter() {
         // Begin arm
-        let match_var = if node.params.is_empty() { "_args" } else { "args" };
+        let match_var = if node.params.is_empty() {
+            "_args"
+        } else {
+            "args"
+        };
         code.push_str(&format!(
             "    if let Some({}) = match_addr(addr, \"{}\") {{\n",
-            match_var,
-            &node.osc_address,
+            match_var, &node.osc_address,
         ));
 
         // Extract path params IN FORWARD ORDER (args[0] = first placeholder, etc.)
@@ -760,6 +773,21 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
                         param.name, i
                     ));
                 }
+                "uuid" => {
+                    code.push_str(&format!(
+                        "        let {}: Uuid = match Uuid::parse_str(&args[{}]) {{\n",
+                        param.name, i
+                    ));
+                    code.push_str("            Ok(v) => v,\n");
+                    code.push_str("            Err(_) => {\n");
+                    code.push_str(&format!(
+                        "                log_decode_error(addr, DispatchError::ParamParseError {{ param: \"{}\", value: args[{}].clone() }});\n",
+                        param.name, i
+                    ));
+                    code.push_str("                return;\n");
+                    code.push_str("            }\n");
+                    code.push_str("        };\n");
+                }
                 _ => {
                     panic!(
                         "Unsupported path argument type '{}' in node {:?}",
@@ -798,6 +826,7 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
                     "float" => ("float()", "float"),
                     "bool" => ("bool()", "bool"),
                     "string" => ("string()", "string"),
+                    "uuid" => ("string()", "uuid (as string)"),
                     _ => panic!("Unknown arg type: {}", osc_arg.typ),
                 };
                 code.push_str(&format!(
@@ -808,7 +837,14 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
                     "                Some(_raw_arg_{}) => match _raw_arg_{}.clone().{} {{\n",
                     j, j, type_method
                 ));
-                code.push_str("                    Some(v) => v,\n");
+                match osc_arg.typ.as_str() {
+                    "uuid" => {
+                        code.push_str("                    Some(v) => Uuid::parse_str(&v).expect(\"Invalid UUID string\"),\n");
+                    }
+                    _ => {
+                        code.push_str("                    Some(v) => v,\n");
+                    }
+                }
                 code.push_str("                    None => {\n");
                 code.push_str(&format!(
                     "                        log_decode_error(addr, DispatchError::WrongArgumentType {{ expected: \"{}\", got: osc_type_name(_raw_arg_{}) }});\n",
