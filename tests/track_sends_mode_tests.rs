@@ -8,7 +8,8 @@ use uuid::Uuid;
 use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
-use arpad_rust::track::track::{DataPayload, SendIndex, SendLevel, TrackDataMsg, TrackMsg};
+use arpad_rust::track::track;
+use arpad_rust::track::track::TrackMsg;
 
 pub fn drain<T>(rx: &Receiver<T>) {
     // Drops (flushes) all messages currently buffered at the time we start draining,
@@ -95,23 +96,17 @@ macro_rules! assert_upstream_send_level_track_msg {
         );
 
         match result {
-            Ok(TrackMsg::TrackDataMsg(msg)) => {
-                check!(&msg.guid == $expected_guid, "Track GUID should match");
-                match msg.data {
-                    DataPayload::SendLevel(send_level) => {
-                        check!(
-                            send_level.send_index == $expected_send_index,
-                            "Send index should match"
-                        );
-                        check!(
-                            approx_eq!(f32, send_level.level, $expected_level, epsilon = EPSILON),
-                            "Send level should match approximately\nExpected: {}, Got: {}",
-                            $expected_level,
-                            send_level.level
-                        );
-                    }
-                    _ => panic!("Expected SendLevel payload"),
-                }
+            Ok(TrackMsg::SendLevel(msg)) => {
+                check!(
+                    msg.send_index == $expected_send_index,
+                    "Send index should match"
+                );
+                check!(
+                    approx_eq!(f32, msg.level, $expected_level, epsilon = EPSILON),
+                    "Send level should match approximately\nExpected: {}, Got: {}",
+                    $expected_level,
+                    msg.level
+                );
             }
             _ => panic!("Expected TrackDataMsg but got {:?}", result),
         }
@@ -140,13 +135,12 @@ fn assign_send_to_channel(
     curr_mode: ModeState,
 ) -> ModeState {
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendIndex(SendIndex {
-                send_index,
-                guid: send_guid,
-            }),
-        }),
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_index,
+            send_guid,
+        }
+        .into(),
         curr_mode,
     )
 }
@@ -170,15 +164,13 @@ fn test_track_sends_mode_assigns_sends_by_index() {
     let selected_track_guid = Uuid::new_v4();
 
     // Send a SendIndex message to assign the send to hardware channel 2
-    let msg = TrackMsg::TrackDataMsg(TrackDataMsg {
-        guid: selected_track_guid,
-        data: DataPayload::SendIndex(SendIndex {
-            send_index,
-            guid: selected_track_guid,
-        }),
-    });
+    let msg = track::SendIndex {
+        track_guid: selected_track_guid,
+        send_index,
+        send_guid: selected_track_guid, // For testing, we can use the same GUID
+    };
 
-    let result_mode = mode.handle_downstream_messages(msg, curr_mode);
+    let result_mode = mode.handle_downstream_messages(msg.into(), curr_mode);
 
     // Mode should remain unchanged
     assert_eq!(result_mode, curr_mode);
@@ -219,13 +211,12 @@ fn test_send_level_for_mapped_send_forwards_to_hardware() {
 
     // Send level update
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: test_level,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: test_level,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -250,13 +241,12 @@ fn test_send_level_for_unmapped_send_is_ignored() {
 
     // Send level update WITHOUT assigning send to hardware channel
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: test_level,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: test_level,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -1040,7 +1030,7 @@ fn test_mode_transition_requests_track_query() {
     let msg1 = upstream_receiver.recv_timeout(Duration::from_millis(1));
     assert!(msg1.is_ok(), "Should send TrackQuery for selected track");
     match msg1.unwrap() {
-        TrackMsg::TrackQuery(query) => {
+        TrackMsg::Query(query) => {
             check!(query.guid == selected_track_guid, "GUID should match");
         }
         _ => panic!("Expected TrackQuery message"),

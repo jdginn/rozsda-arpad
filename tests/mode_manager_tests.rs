@@ -8,7 +8,8 @@ use uuid::Uuid;
 use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeManager, ModeState};
 use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
-use arpad_rust::track::track::{DataPayload, TrackDataMsg, TrackMsg};
+use arpad_rust::track::track;
+use arpad_rust::track::track::TrackMsg;
 
 // EPSILON constant for floating-point threshold testing
 const EPSILON: f32 = 0.01;
@@ -53,21 +54,16 @@ macro_rules! assert_upstream_volume_track_msg {
         );
 
         match result {
-            Ok(TrackMsg::TrackDataMsg(msg)) => {
-                check!(&msg.guid == $expected_guid, "Track GUID should match");
-                match msg.data {
-                    DataPayload::Volume(volume) => {
-                        check!(
-                            approx_eq!(f32, volume, $expected_value, epsilon = EPSILON),
-                            "Volume should match approximately\nExpected: {}, Got: {}",
-                            $expected_value,
-                            volume
-                        );
-                    }
-                    _ => panic!("Expected Volume payload"),
-                }
+            Ok(TrackMsg::Volume(msg)) => {
+                check!(&msg.track_guid == $expected_guid, "Track GUID should match");
+                check!(
+                    approx_eq!(f32, msg.volume, $expected_value, epsilon = EPSILON),
+                    "Volume should match approximately\nExpected: {}, Got: {}",
+                    $expected_value,
+                    msg.volume
+                );
             }
-            _ => panic!("Expected TrackDataMsg but got {:?}", result),
+            _ => panic!("Expected Volume msg but got {:?}", result),
         }
     }};
 }
@@ -83,23 +79,17 @@ macro_rules! assert_upstream_send_level_track_msg {
         );
 
         match result {
-            Ok(TrackMsg::TrackDataMsg(msg)) => {
-                check!(&msg.guid == $expected_guid, "Track GUID should match");
-                match msg.data {
-                    DataPayload::SendLevel(send_level) => {
-                        check!(
-                            send_level.send_index == $expected_send_index,
-                            "Send index should match"
-                        );
-                        check!(
-                            approx_eq!(f32, send_level.level, $expected_level, epsilon = EPSILON),
-                            "Send level should match approximately\nExpected: {}, Got: {}",
-                            $expected_level,
-                            send_level.level
-                        );
-                    }
-                    _ => panic!("Expected SendLevel payload"),
-                }
+            Ok(TrackMsg::SendLevel(msg)) => {
+                check!(
+                    msg.send_index == $expected_send_index,
+                    "Send index should match"
+                );
+                check!(
+                    approx_eq!(f32, msg.level, $expected_level, epsilon = EPSILON),
+                    "Send level should match approximately\nExpected: {}, Got: {}",
+                    $expected_level,
+                    msg.level
+                );
             }
             _ => panic!("Expected TrackDataMsg but got {:?}", result),
         }
@@ -234,10 +224,11 @@ fn assign_track_to_channel(
     curr_mode: ModeState,
 ) -> ModeState {
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid,
-            data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
-        }),
+        track::ReaperTrackIndex {
+            track_guid: guid,
+            track_index: Some(hw_channel),
+        }
+        .into(),
         curr_mode,
     )
 }
@@ -261,22 +252,31 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // Register two tracks and select a track
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::ReaperTrackIndex(Some(0)),
-        }))
+        .send(
+            track::ReaperTrackIndex {
+                track_guid: track1_guid,
+                track_index: Some(0),
+            }
+            .into(),
+        )
         .unwrap();
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track2_guid,
-            data: DataPayload::ReaperTrackIndex(Some(1)),
-        }))
+        .send(
+            track::ReaperTrackIndex {
+                track_guid: track2_guid,
+                track_index: Some(1),
+            }
+            .into(),
+        )
         .unwrap();
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::Selected(true),
-        }))
+        .send(
+            track::Selected {
+                track_guid: track1_guid,
+                selected: true,
+            }
+            .into(),
+        )
         .unwrap();
 
     // TODO: is there a better way to do this than sleeping?
@@ -313,13 +313,14 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // Mock the response to the track data query
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
+        .send(
+            track::SendIndex {
+                track_guid: track1_guid,
                 send_index: 1,
-                guid: track2_guid,
-            }),
-        }))
+                send_guid: track2_guid,
+            }
+            .into(),
+        )
         .unwrap();
 
     // XTouch messages should still be blocked...
@@ -390,31 +391,41 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     let track1_guid = Uuid::new_v4();
     let track2_guid = Uuid::new_v4();
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::ReaperTrackIndex(Some(0)),
-        }))
+        .send(
+            track::ReaperTrackIndex {
+                track_guid: track1_guid,
+                track_index: Some(0),
+            }
+            .into(),
+        )
         .unwrap();
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track2_guid,
-            data: DataPayload::ReaperTrackIndex(Some(1)),
-        }))
+        .send(
+            track::ReaperTrackIndex {
+                track_guid: track2_guid,
+                track_index: Some(1),
+            }
+            .into(),
+        )
         .unwrap();
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::Selected(true),
-        }))
+        .send(
+            track::Selected {
+                track_guid: track1_guid,
+                selected: true,
+            }
+            .into(),
+        )
         .unwrap();
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
+        .send(
+            track::SendIndex {
+                track_guid: track1_guid,
                 send_index: 1,
-                guid: track2_guid,
-            }),
-        }))
+                send_guid: track2_guid,
+            }
+            .into(),
+        )
         .unwrap();
 
     // TODO: is there a better way to do this than sleeping?
@@ -432,13 +443,14 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
 
     // Mock the response to the track data query
     reaper_tx
-        .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1_guid,
-            data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
+        .send(
+            track::SendIndex {
+                track_guid: track1_guid,
                 send_index: 1,
-                guid: track2_guid,
-            }),
-        }))
+                send_guid: track2_guid,
+            }
+            .into(),
+        )
         .unwrap();
 
     // Reflect the barrier back from the reaper side indicating that we are done responding with

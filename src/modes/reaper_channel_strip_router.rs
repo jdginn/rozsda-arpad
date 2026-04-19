@@ -2,7 +2,8 @@ use std::sync::Mutex;
 
 use uuid::Uuid;
 
-use crate::track::track::{DataPayload, TrackDataMsg, TrackMsg};
+use crate::track::track;
+use crate::track::track::TrackMsg;
 
 /// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
 /// |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
@@ -251,14 +252,9 @@ impl ChannelStripMap {
 
     fn translate_downstream_msg(&self, msg: TrackMsg) -> Result<ChannelStripMsg, String> {
         if self.hp_filter.is_some() {
-            if let TrackMsg::TrackDataMsg(data_msg) = msg {
-                match data_msg.data {
-                    DataPayload::Muted(is_muted) => {
-                        // Example: if the track is muted, bypass the HPF
-                        return Ok(ChannelStripMsg::HpfFreq(if is_muted { 0.0 } else { 20.0 }));
-                    }
-                    _ => {}
-                }
+            if let TrackMsg::Muted(msg) = msg {
+                // Example: if the track is muted, bypass the HPF
+                return Ok(ChannelStripMsg::HpfFreq(if msg.muted { 0.0 } else { 20.0 }));
             }
         }
 
@@ -266,11 +262,12 @@ impl ChannelStripMap {
         Ok(ChannelStripMsg::HpfFreq(0.0))
     }
 
-    fn translate_upstream_msg(&self, msg: ChannelStripMsg) -> Result<TrackMsg, String> {
+    fn translate_upstream_msg(&self, _msg: ChannelStripMsg) -> Result<TrackMsg, String> {
         // FIXME: implement
-        Ok(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: uuid::Uuid::new_v4(),
-            data: crate::track::track::DataPayload::Muted(true),
-        }))
+        Ok(track::Muted {
+            track_guid: Uuid::new_v4(),
+            muted: false,
+        }
+        .into())
     }
 }
