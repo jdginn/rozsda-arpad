@@ -1,9 +1,12 @@
+use std::time::Duration;
+
 use arpad_rust::modes::mode_manager::{Barrier, Mode};
 use arpad_rust::track::track::{
     DataPayload, SendIndex, SendLevel, TrackDataMsg, TrackManager, TrackMsg, TrackQuery,
 };
+
 use crossbeam_channel::{Receiver, Sender, bounded};
-use std::time::Duration;
+use uuid::Uuid;
 
 /// Helper to create a test TrackManager setup with channels
 fn setup_track_manager() -> (
@@ -57,12 +60,12 @@ fn test_track_manager_forwards_barriers() {
 fn test_track_manager_handles_track_name() {
     let (upstream_tx, _upstream_rx, _downstream_tx, downstream_rx) = setup_track_manager();
 
-    let test_guid = "test-track-guid-1".to_string();
+    let test_guid = Uuid::new_v4();
     let test_name = "Test Track".to_string();
 
     upstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: test_guid.clone(),
+            guid: test_guid,
             data: DataPayload::Name(test_name.clone()),
         }))
         .unwrap();
@@ -85,14 +88,14 @@ fn test_track_manager_handles_track_name() {
 
 #[test]
 fn test_track_manager_handles_track_volume() {
-    let (upstream_tx, upstream_rx, downstream_tx, _downstream_rx) = setup_track_manager();
+    let (_upstream_tx, upstream_rx, downstream_tx, _downstream_rx) = setup_track_manager();
 
-    let test_guid = "test-track-guid-2".to_string();
+    let test_guid = Uuid::new_v4();
     let test_volume = 0.75;
 
     downstream_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: test_guid.clone(),
+            guid: test_guid,
             data: DataPayload::Volume(test_volume),
         }))
         .unwrap();
@@ -117,7 +120,7 @@ fn test_track_manager_handles_track_volume() {
 fn test_track_manager_responds_to_track_query() {
     let (upstream_tx, upstream_rx, downstream_tx, downstream_rx) = setup_track_manager();
 
-    let test_guid = "test-track-guid-3".to_string();
+    let test_guid = Uuid::new_v4();
 
     // First, populate some track data
     upstream_tx
@@ -160,9 +163,9 @@ fn test_track_manager_responds_to_track_query() {
 fn test_track_manager_handles_send_data() {
     let (upstream_tx, upstream_rx, downstream_tx, downstream_rx) = setup_track_manager();
 
-    let test_guid = "test-track-guid-4".to_string();
+    let test_guid = Uuid::new_v4();
     let send_index = 2;
-    let target_guid = "target-track-guid".to_string();
+    let target_guid = Uuid::new_v4();
 
     // Set send index (maps send to target track)
     upstream_tx
@@ -200,7 +203,7 @@ fn test_track_manager_message_ordering() {
     // Test that messages are processed in the order they're sent
     let (from_upstream, to_upstream, from_downstream, to_downstream) = setup_track_manager();
 
-    let test_guid = "test-track-ordering".to_string();
+    let test_guid = Uuid::new_v4();
 
     // Send multiple messages in sequence
     let messages = vec![
@@ -246,28 +249,28 @@ fn test_track_manager_concurrent_tracks() {
     // Test that TrackManager can handle messages for multiple tracks concurrently
     let (from_upstream, to_upstream, from_downstream, to_downstream) = setup_track_manager();
 
-    let track1 = "track-1".to_string();
-    let track2 = "track-2".to_string();
-    let track3 = "track-3".to_string();
+    let track1 = Uuid::new_v4();
+    let track2 = Uuid::new_v4();
+    let track3 = Uuid::new_v4();
 
     // Send messages for multiple tracks
     from_upstream
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track1.clone(),
+            guid: track1,
             data: DataPayload::Name("Track 1".to_string()),
         }))
         .unwrap();
 
     from_upstream
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track2.clone(),
+            guid: track2,
             data: DataPayload::Name("Track 2".to_string()),
         }))
         .unwrap();
 
     from_upstream
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track3.clone(),
+            guid: track3,
             data: DataPayload::Name("Track 3".to_string()),
         }))
         .unwrap();
@@ -287,13 +290,13 @@ fn test_track_manager_concurrent_tracks() {
 // The current implementation doesn't send anything if track doesn't exist, which is verified below.
 #[test]
 fn test_track_manager_query_nonexistent_track() {
-    let (upstream_tx, upstream_rx, downstream_tx, downstream_rx) = setup_track_manager();
+    let (upstream_tx, upstream_rx, _downstream_tx, _downstream_rx) = setup_track_manager();
 
-    let nonexistent_guid = "nonexistent-track".to_string();
+    let nonexistent_guid = Uuid::new_v4();
 
     upstream_tx
         .send(TrackMsg::TrackQuery(TrackQuery {
-            guid: nonexistent_guid.clone(),
+            guid: nonexistent_guid,
         }))
         .unwrap();
 

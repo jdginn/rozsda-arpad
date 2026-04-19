@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender, select};
+use uuid::Uuid;
 
 use crate::modes::mode_manager::Barrier;
 
@@ -15,19 +16,19 @@ pub enum TrackMsg {
 
 #[derive(Clone, Debug)]
 pub struct TrackDataMsg {
-    pub guid: String,
+    pub guid: Uuid,
     pub data: DataPayload,
 }
 
 #[derive(Clone, Debug)]
 pub struct TrackQuery {
-    pub guid: String,
+    pub guid: Uuid,
 }
 
 #[derive(Clone, Debug)]
 pub struct SendIndex {
     pub send_index: i32,
-    pub guid: String,
+    pub guid: Uuid,
 }
 
 #[derive(Clone, Debug)]
@@ -51,7 +52,7 @@ pub struct FXName {
 #[derive(Clone, Debug)]
 pub struct FXGuid {
     pub fx_index: i32,
-    pub guid: String,
+    pub guid: Uuid,
 }
 
 #[derive(Clone, Debug)]
@@ -113,7 +114,7 @@ pub enum DataPayload {
 
 #[derive(Clone, Debug)]
 pub struct SendData {
-    pub target_guid: String,
+    pub target_guid: Uuid,
     pub send_index: i32,
     pub level: f32,
     pub pan: f32,
@@ -122,7 +123,7 @@ pub struct SendData {
 #[derive(Clone, Debug)]
 pub struct FXData {
     pub fx_index: i32,
-    pub guid: String,
+    pub guid: Uuid,
     pub name: String,
     pub enabled: bool,
     pub params: Vec<FXParamData>,
@@ -154,7 +155,7 @@ pub struct FXParamData {
 /// Maintains state for a given track to the best of our knowledge
 #[derive(Clone, Debug)]
 pub struct TrackData {
-    guid: String,
+    guid: Uuid,
     name: String,
     reaper_track_index: Option<i32>,
     selected: bool,
@@ -168,9 +169,9 @@ pub struct TrackData {
 }
 
 impl TrackData {
-    fn new(guid: &str) -> Self {
+    fn new(guid: Uuid) -> Self {
         Self {
-            guid: guid.to_string(),
+            guid,
             name: String::new(),
             reaper_track_index: None,
             selected: false,
@@ -192,7 +193,7 @@ impl TrackData {
         // Ensure the sends vector is large enough
         while self.sends.len() <= send_index.send_index as usize {
             self.sends.push(SendData {
-                target_guid: String::new(),
+                target_guid: Uuid::nil(),
                 send_index: self.sends.len() as i32,
                 level: 0.0,
                 pan: 0.0,
@@ -205,7 +206,7 @@ impl TrackData {
         // Ensure the fx vector is large enough
         while self.fx.len() <= fx_index as usize {
             self.fx.push(FXData {
-                guid: String::new(),
+                guid: Uuid::nil(),
                 fx_index: self.fx.len() as i32,
                 name: String::new(),
                 enabled: false,
@@ -217,8 +218,8 @@ impl TrackData {
 }
 
 pub struct TrackManager {
-    tracks: HashMap<String, TrackData>,
-    selected_track: Option<String>,
+    tracks: HashMap<Uuid, TrackData>,
+    selected_track: Option<Uuid>,
     from_upstream: Receiver<TrackMsg>,
     to_upstream: Sender<TrackMsg>,
     from_downstream: Receiver<TrackMsg>,
@@ -323,8 +324,8 @@ impl TrackManager {
         // If we've never seen this track before, create a new entry
         let track = self
             .tracks
-            .entry(msg.guid.to_string())
-            .or_insert_with(|| TrackData::new(&msg.guid));
+            .entry(msg.guid)
+            .or_insert_with(|| TrackData::new(msg.guid));
         match msg.data {
             DataPayload::Name(name) => {
                 track.name = name.clone();

@@ -1,5 +1,7 @@
 use std::sync::Mutex;
 
+use uuid::Uuid;
+
 use crate::track::track::{DataPayload, TrackDataMsg, TrackMsg};
 
 /// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
@@ -267,7 +269,7 @@ impl ChannelStripMap {
     fn translate_upstream_msg(&self, msg: ChannelStripMsg) -> Result<TrackMsg, String> {
         // FIXME: implement
         Ok(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "foo".to_string(),
+            guid: uuid::Uuid::new_v4(),
             data: crate::track::track::DataPayload::Muted(true),
         }))
     }

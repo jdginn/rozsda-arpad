@@ -1,12 +1,14 @@
+use std::time::Duration;
+
 use assert2::{assert, check};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use float_cmp::approx_eq;
+use uuid::Uuid;
 
 use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeManager, ModeState};
 use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
 use arpad_rust::track::track::{DataPayload, TrackDataMsg, TrackMsg};
-use crossbeam_channel::{Receiver, Sender, bounded};
-use std::time::Duration;
 
 // EPSILON constant for floating-point threshold testing
 const EPSILON: f32 = 0.01;
@@ -227,13 +229,13 @@ fn setup_mode_manager_channels() -> (
 /// Helper function to assign a track to a hardware channel
 fn assign_track_to_channel(
     mode: &mut VolumePanMode,
-    guid: &str,
+    guid: Uuid,
     hw_channel: i32,
     curr_mode: ModeState,
 ) -> ModeState {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: guid.to_string(),
+            guid,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -254,22 +256,25 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     // We should not transition modes if no track is selected
     assert_no_message!(to_reaper_rx, 1);
 
+    let track1_guid = Uuid::new_v4();
+    let track2_guid = Uuid::new_v4();
+
     // Register two tracks and select a track
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::ReaperTrackIndex(Some(0)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_2".to_string(),
+            guid: track2_guid,
             data: DataPayload::ReaperTrackIndex(Some(1)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::Selected(true),
         }))
         .unwrap();
@@ -284,7 +289,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
             value: 0.75,
         }))
         .unwrap();
-    assert_upstream_volume_track_msg!(to_reaper_rx, "track_1", 0.75);
+    assert_upstream_volume_track_msg!(to_reaper_rx, &track1_guid, 0.75);
 
     // Initiate mode transition
     xtouch_tx
@@ -309,10 +314,10 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     // Mock the response to the track data query
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
                 send_index: 1,
-                guid: "track_2".to_string(),
+                guid: track2_guid,
             }),
         }))
         .unwrap();
@@ -372,7 +377,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
         }))
         .unwrap();
     drain_and_print(&to_reaper_rx);
-    assert_upstream_send_level_track_msg!(to_reaper_rx, "track_2", 1, 0.75);
+    assert_upstream_send_level_track_msg!(to_reaper_rx, &track2_guid, 1, 0.75);
 }
 
 #[test]
@@ -382,30 +387,32 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     // We start in VolPan mode. We need to get into Sends mode first before we can test transitioning back to VolPan, so we'll repeat some of the same steps as the previous test to get there.
 
     // Register two tracks and select a track
+    let track1_guid = Uuid::new_v4();
+    let track2_guid = Uuid::new_v4();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::ReaperTrackIndex(Some(0)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_2".to_string(),
+            guid: track2_guid,
             data: DataPayload::ReaperTrackIndex(Some(1)),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::Selected(true),
         }))
         .unwrap();
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
                 send_index: 1,
-                guid: "track_2".to_string(),
+                guid: track2_guid,
             }),
         }))
         .unwrap();
@@ -426,10 +433,10 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     // Mock the response to the track data query
     reaper_tx
         .send(TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: "track_1".to_string(),
+            guid: track1_guid,
             data: DataPayload::SendIndex(arpad_rust::track::track::SendIndex {
                 send_index: 1,
-                guid: "track_2".to_string(),
+                guid: track2_guid,
             }),
         }))
         .unwrap();
@@ -462,7 +469,7 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
         }))
         .unwrap();
     drain_and_print(&to_reaper_rx);
-    assert_upstream_send_level_track_msg!(to_reaper_rx, "track_2", 1, 0.75);
+    assert_upstream_send_level_track_msg!(to_reaper_rx, &track2_guid, 1, 0.75);
 
     // Now we are in Sends mode. Transition back to VolPan.
     xtouch_tx.send(XTouchUpstreamMsg::GlobalPress {}).unwrap();
@@ -502,6 +509,6 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
             value: 0.33,
         }))
         .unwrap();
-    assert_upstream_volume_track_msg!(to_reaper_rx, "track_1", 0.11);
-    assert_upstream_volume_track_msg!(to_reaper_rx, "track_2", 0.33);
+    assert_upstream_volume_track_msg!(to_reaper_rx, &track1_guid, 0.11);
+    assert_upstream_volume_track_msg!(to_reaper_rx, &track2_guid, 0.33);
 }

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender, select};
+use uuid::Uuid;
 
 use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::reaper_track_sends::TrackSendsMode;
@@ -86,7 +87,7 @@ pub struct ModeManager {
     to_xtouch: Sender<XTouchDownstreamMsg>,
     pub curr_mode: ModeState,
 
-    reaper_currently_selected_track_guid: Option<String>,
+    reaper_currently_selected_track_guid: Option<Uuid>,
 }
 
 impl ModeManager {
@@ -153,7 +154,7 @@ impl ModeManager {
                                     .initiate_mode_transition(
                                         manager.curr_mode.mode,
                                         manager.to_reaper.clone(),
-                                        &currently_selected_track_guid,
+                                        currently_selected_track_guid,
                                     );
                             } else {
                                 // If we can't transition, stay in current mode

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crossbeam_channel::{Receiver, Sender};
+use uuid::Uuid;
 
 use crate::midi::xtouch::{
     ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, XTouchDownstreamMsg,
@@ -106,8 +107,8 @@ struct MuteSoloArmButtonState {
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
 pub struct ChannelStripMode {
     // Maps each channel on the hardware controller to a Reaper track
-    track_hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
-    track_states: HashMap<String, MuteSoloArmButtonState>,
+    track_hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
+    track_states: HashMap<Uuid, MuteSoloArmButtonState>,
     to_reaper: Sender<TrackMsg>,
     from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
@@ -135,7 +136,7 @@ impl ChannelStripMode {
         }
     }
 
-    fn get_track_state(&mut self, guid: String) -> &mut MuteSoloArmButtonState {
+    fn get_track_state(&mut self, guid: Uuid) -> &mut MuteSoloArmButtonState {
         self.track_states
             .entry(guid)
             .or_insert(MuteSoloArmButtonState {
@@ -145,18 +146,18 @@ impl ChannelStripMode {
             })
     }
 
-    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<String> {
+    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.track_hw_assignments.lock().unwrap();
         assignments[hw_channel].clone()
     }
 
     // For a given track GUID, find which hardware channel it's assigned to (if any)
-    pub fn find_hw_channel(&self, guid: &str) -> Option<usize> {
+    pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
         let assignments = self.track_hw_assignments.lock().unwrap();
         assignments
             .iter()
             .enumerate()
-            .find(|(_, assigned_guid)| *assigned_guid == &Some(guid.to_string()))
+            .find(|(_, assigned_guid)| *assigned_guid == &Some(guid))
             .map(|(hw_channel, _)| hw_channel)
     }
 }
@@ -194,7 +195,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Volume(value) => {
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         // Send volume update to XTouch for the corresponding fader
                         let fader_value = value; // TODO: scale appropriately
                         let _ = self
@@ -207,7 +208,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Muted(muted) => {
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         self.get_track_state(msg.guid).mute.set(muted);
                         // Send mute LED update to XTouch
                         let _ = self
@@ -220,7 +221,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Soloed(soloed) => {
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         self.get_track_state(msg.guid).solo.set(soloed);
                         // Send solo LED update to XTouch
                         let _ = self
@@ -233,7 +234,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     return curr_mode;
                 }
                 TrackDataPayload::Armed(armed) => {
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         self.get_track_state(msg.guid).arm.set(armed);
                         // Send arm LED update to XTouch
                         let _ = self.to_xtouch.send(XTouchDownstreamMsg::ArmLED(ArmLEDMsg {
