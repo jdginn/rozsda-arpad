@@ -349,13 +349,12 @@ fn test_simultaneous_upstream_downstream_messages() {
 
     // Send downstream level update from Reaper
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: 0.6,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: 0.6,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -376,13 +375,12 @@ fn test_simultaneous_upstream_downstream_messages() {
 
     // Send another downstream update
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: 0.9,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: 0.9,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -423,13 +421,12 @@ fn test_remapping_sends_across_hardware_channels() {
 
     // Send level update to channel 1
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: channel_1,
-                level: 0.5,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: channel_1,
+            level: 0.5,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_1, 0.5);
@@ -456,13 +453,12 @@ fn test_remapping_sends_across_hardware_channels() {
 
     // Send level to second channel should work
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: channel_2,
-                level: 0.8,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: channel_2,
+            level: 0.8,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_2, 0.8);
@@ -534,26 +530,24 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     );
     drain(&to_xtouch_rx); // Clear any previous messages
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: send_index_1,
-                level: level_1,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: send_index_1,
+            level: level_1,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index_1, level_1 as f64);
 
     // Update level
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: send_index_1,
-                level: level_2,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: send_index_1,
+            level: level_2,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index_1, level_2 as f64);
@@ -571,13 +565,12 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
 
     // Send level update to new send
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: send_index_2,
-                level: 0.9,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: send_index_2,
+            level: 0.9,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -631,33 +624,30 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
 
     // Send levels to all three
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: send_index_1,
-                level: 0.3,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: send_index_1,
+            level: 0.3,
+        }
+        .into(),
         curr_mode,
     );
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: send_index_2,
-                level: 0.6,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: send_index_2,
+            level: 0.6,
+        }
+        .into(),
         curr_mode,
     );
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: send_index_3,
-                level: 0.9,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: send_index_3,
+            level: 0.9,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -685,13 +675,12 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
 
     // Send level updates BEFORE mapping - they should not be sent to hardware yet
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: level_1,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: level_1,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -700,13 +689,12 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
 
     // Send another level update
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: level_2,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: level_2,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -806,35 +794,32 @@ fn test_downstream_messages_sent_in_correct_order() {
 
     // Send multiple messages in order
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: 0.5,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: 0.5,
+        }
+        .into(),
         curr_mode,
     );
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: 0.7,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: 0.7,
+        }
+        .into(),
         curr_mode,
     );
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: 0.9,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: 0.9,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -920,13 +905,12 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
     );
     drain(&to_xtouch_rx); // Clear any previous messages
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: initial_level,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: initial_level,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, initial_level as f64);
@@ -934,13 +918,12 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
     // Send level change smaller than EPSILON
     let small_change = initial_level + (EPSILON / 2.0);
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: small_change,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: small_change,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -980,13 +963,12 @@ fn test_send_level_changes_above_epsilon_propagate() {
     );
     drain(&to_xtouch_rx); // Clear any previous messages
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: initial_level,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: initial_level,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index, initial_level as f64);
@@ -994,13 +976,12 @@ fn test_send_level_changes_above_epsilon_propagate() {
     // Send level change larger than EPSILON
     let large_change = initial_level + (EPSILON * 3.0);
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index,
-                level: large_change,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index,
+            level: large_change,
+        }
+        .into(),
         curr_mode,
     );
 
@@ -1079,37 +1060,34 @@ fn test_complex_multi_send_integration() {
 
     // === PHASE 2: Send levels to all sends ===
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 0,
-                level: 0.3,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 0,
+            level: 0.3,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.3);
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 1,
-                level: 0.6,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 1,
+            level: 0.6,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.6);
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 2,
-                level: 0.9,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 2,
+            level: 0.9,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 2, 0.9);
@@ -1141,25 +1119,23 @@ fn test_complex_multi_send_integration() {
 
     // === PHASE 4: Update send levels from Reaper ===
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 0,
-                level: 0.5,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 0,
+            level: 0.5,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.5);
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 1,
-                level: 0.8,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 1,
+            level: 0.8,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.8);
@@ -1191,25 +1167,23 @@ fn test_multiple_tracks_and_switching_selections() {
 
     // Send levels for track 1 sends
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 0,
-                level: 0.3,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 0,
+            level: 0.3,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.3);
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 1,
-                level: 0.6,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 1,
+            level: 0.6,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.6);
@@ -1220,13 +1194,12 @@ fn test_multiple_tracks_and_switching_selections() {
 
     // Send level for track 2 send 1
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 0,
-                level: 0.9,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 0,
+            level: 0.9,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.9);
@@ -1237,13 +1210,12 @@ fn test_multiple_tracks_and_switching_selections() {
 
     // Send level should update correctly
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 0,
-                level: 0.4,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 0,
+            level: 0.4,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.4);
@@ -1273,13 +1245,12 @@ fn test_expanded_real_world_integration() {
     // Set initial levels
     for (idx, level) in [(0, 0.3), (1, 0.5), (2, 0.7)] {
         mode.handle_downstream_messages(
-            TrackMsg::TrackDataMsg(TrackDataMsg {
-                guid: selected_track_guid,
-                data: DataPayload::SendLevel(SendLevel {
-                    send_index: idx,
-                    level,
-                }),
-            }),
+            track::SendLevel {
+                track_guid: selected_track_guid,
+                send_index: idx,
+                level,
+            }
+            .into(),
             curr_mode,
         );
         assert_downstream_fader_abs_msg!(&to_xtouch_rx, idx, level as f64);
@@ -1310,13 +1281,12 @@ fn test_expanded_real_world_integration() {
     // Track B levels
     for (idx, level) in [(0, 0.2), (1, 0.9)] {
         mode.handle_downstream_messages(
-            TrackMsg::TrackDataMsg(TrackDataMsg {
-                guid: selected_track_guid,
-                data: DataPayload::SendLevel(SendLevel {
-                    send_index: idx,
-                    level,
-                }),
-            }),
+            track::SendLevel {
+                track_guid: selected_track_guid,
+                send_index: idx,
+                level,
+            }
+            .into(),
             curr_mode,
         );
         assert_downstream_fader_abs_msg!(&to_xtouch_rx, idx, level as f64);
@@ -1327,13 +1297,12 @@ fn test_expanded_real_world_integration() {
     drain(&to_xtouch_rx); // Clear previous messages
 
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 5,
-                level: 0.95,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 5,
+            level: 0.95,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 5, 0.95);
@@ -1356,13 +1325,12 @@ fn test_expanded_real_world_integration() {
 
     // Track A send 1 should work on channel 0 again
     mode.handle_downstream_messages(
-        TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: selected_track_guid,
-            data: DataPayload::SendLevel(SendLevel {
-                send_index: 0,
-                level: 0.55,
-            }),
-        }),
+        track::SendLevel {
+            track_guid: selected_track_guid,
+            send_index: 0,
+            level: 0.55,
+        }
+        .into(),
         curr_mode,
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.55);
