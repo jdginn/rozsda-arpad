@@ -99,7 +99,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         let mut assignments = self.hw_assignments.lock().unwrap();
 
                         if let Some(index) = TrackSendsMode::find_hw_channel_for_guid(
-                            msg.track_guid,
+                            msg.send_guid,
                             assignments.to_vec(),
                         ) {
                             if index as i32 == msg.send_index {
@@ -114,14 +114,14 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         // Add bounds checking to prevent panic on invalid send_index
                         // If out of bounds, silently ignore (could log error in production)
                         if (msg.send_index as usize) < assignments.len() {
-                            assignments[msg.send_index as usize] = Some(msg.track_guid.clone());
+                            assignments[msg.send_index as usize] = Some(msg.send_guid);
                         }
                         // Insert default state into self.track_send_states if not already present
                         let state = self
                             .track_send_states
                             .lock()
                             .unwrap()
-                            .entry(msg.track_guid.clone())
+                            .entry(msg.send_guid)
                             .or_default()
                             .clone();
                         // Send current state to hardware for this send index
