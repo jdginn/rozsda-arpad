@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender, select};
+use uuid::Uuid;
 
 use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::reaper_track_sends::TrackSendsMode;
@@ -86,7 +87,7 @@ pub struct ModeManager {
     to_xtouch: Sender<XTouchDownstreamMsg>,
     pub curr_mode: ModeState,
 
-    reaper_currently_selected_track_guid: Option<String>,
+    reaper_currently_selected_track_guid: Option<Uuid>,
 }
 
 impl ModeManager {
@@ -153,7 +154,7 @@ impl ModeManager {
                                     .initiate_mode_transition(
                                         manager.curr_mode.mode,
                                         manager.to_reaper.clone(),
-                                        &currently_selected_track_guid,
+                                        currently_selected_track_guid,
                                     );
                             } else {
                                 // If we can't transition, stay in current mode
@@ -174,9 +175,10 @@ impl ModeManager {
                     recv(manager.from_reaper) -> msg => {
                         if let Ok(track_msg) = msg {
                         // Keep track of currently selected track for mode transitions
-                        if let TrackMsg::TrackDataMsg(ref data_msg) = track_msg {
-                            if let crate::track::track::DataPayload::Selected(true) = data_msg.data {
-                                manager.reaper_currently_selected_track_guid = Some(data_msg.guid.clone());
+                        if let TrackMsg::Selected(selected_msg) = track_msg {
+                            // If the message is a track selection message, update the currently selected track guid
+                            if selected_msg.selected {
+                                manager.reaper_currently_selected_track_guid = Some(selected_msg.track_guid);
                             }
                         }
 

@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use crate::traits::{Bind, Query, Set};
 
 use crate::osc::route_context::ContextTrait;
@@ -95,7 +97,7 @@ pub type TrackIndexHandler = Box<dyn FnMut(TrackIndexArgs) + 'static>;
 pub struct TrackIndex {
     socket: Arc<UdpSocket>,
     handler: Option<TrackIndexHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/index
@@ -132,7 +134,7 @@ pub type TrackDeleteHandler = Box<dyn FnMut(TrackDeleteArgs) + 'static>;
 pub struct TrackDelete {
     socket: Arc<UdpSocket>,
     handler: Option<TrackDeleteHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/delete
@@ -161,7 +163,7 @@ pub type TrackNameHandler = Box<dyn FnMut(TrackNameArgs) + 'static>;
 pub struct TrackName {
     socket: Arc<UdpSocket>,
     handler: Option<TrackNameHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/name
@@ -216,7 +218,7 @@ pub type TrackSelectedHandler = Box<dyn FnMut(TrackSelectedArgs) + 'static>;
 pub struct TrackSelected {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSelectedHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/selected
@@ -271,7 +273,7 @@ pub type TrackVolumeHandler = Box<dyn FnMut(TrackVolumeArgs) + 'static>;
 pub struct TrackVolume {
     socket: Arc<UdpSocket>,
     handler: Option<TrackVolumeHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/volume
@@ -326,7 +328,7 @@ pub type TrackPanHandler = Box<dyn FnMut(TrackPanArgs) + 'static>;
 pub struct TrackPan {
     socket: Arc<UdpSocket>,
     handler: Option<TrackPanHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/pan
@@ -381,7 +383,7 @@ pub type TrackMuteHandler = Box<dyn FnMut(TrackMuteArgs) + 'static>;
 pub struct TrackMute {
     socket: Arc<UdpSocket>,
     handler: Option<TrackMuteHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/mute
@@ -436,7 +438,7 @@ pub type TrackSoloHandler = Box<dyn FnMut(TrackSoloArgs) + 'static>;
 pub struct TrackSolo {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSoloHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/solo
@@ -491,7 +493,7 @@ pub type TrackRecArmHandler = Box<dyn FnMut(TrackRecArmArgs) + 'static>;
 pub struct TrackRecArm {
     socket: Arc<UdpSocket>,
     handler: Option<TrackRecArmHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/rec-arm
@@ -538,7 +540,7 @@ impl Query for TrackRecArm {
 
 #[derive(Debug)]
 pub struct TrackSendGuidArgs {
-    pub guid: String, // unique identifier for the send
+    pub guid: Uuid, // unique identifier for the send
 }
 
 pub type TrackSendGuidHandler = Box<dyn FnMut(TrackSendGuidArgs) + 'static>;
@@ -546,7 +548,7 @@ pub type TrackSendGuidHandler = Box<dyn FnMut(TrackSendGuidArgs) + 'static>;
 pub struct TrackSendGuid {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendGuidHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub send_index: i32,
 }
 
@@ -586,7 +588,7 @@ pub type TrackSendVolumeHandler = Box<dyn FnMut(TrackSendVolumeArgs) + 'static>;
 pub struct TrackSendVolume {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendVolumeHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub send_index: i32,
 }
 
@@ -645,7 +647,7 @@ pub type TrackSendPanHandler = Box<dyn FnMut(TrackSendPanArgs) + 'static>;
 pub struct TrackSendPan {
     socket: Arc<UdpSocket>,
     handler: Option<TrackSendPanHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub send_index: i32,
 }
 
@@ -701,7 +703,7 @@ pub type TrackColorHandler = Box<dyn FnMut(TrackColorArgs) + 'static>;
 pub struct TrackColor {
     socket: Arc<UdpSocket>,
     handler: Option<TrackColorHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
 }
 
 /// /track/{track_guid}/color
@@ -748,7 +750,7 @@ impl Query for TrackColor {
 
 #[derive(Debug)]
 pub struct TrackFxGuidArgs {
-    pub guid: String, // unique identifier for the FX
+    pub guid: Uuid, // unique identifier for the FX
 }
 
 pub type TrackFxGuidHandler = Box<dyn FnMut(TrackFxGuidArgs) + 'static>;
@@ -756,7 +758,7 @@ pub type TrackFxGuidHandler = Box<dyn FnMut(TrackFxGuidArgs) + 'static>;
 pub struct TrackFxGuid {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxGuidHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
 }
 
@@ -796,7 +798,7 @@ pub type TrackFxNameHandler = Box<dyn FnMut(TrackFxNameArgs) + 'static>;
 pub struct TrackFxName {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxNameHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
 }
 
@@ -836,7 +838,7 @@ pub type TrackFxEnabledHandler = Box<dyn FnMut(TrackFxEnabledArgs) + 'static>;
 pub struct TrackFxEnabled {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxEnabledHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
 }
 
@@ -892,7 +894,7 @@ pub type TrackFxParamCountHandler = Box<dyn FnMut(TrackFxParamCountArgs) + 'stat
 pub struct TrackFxParamCount {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxParamCountHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
 }
 
@@ -932,7 +934,7 @@ pub type TrackFxParamNameHandler = Box<dyn FnMut(TrackFxParamNameArgs) + 'static
 pub struct TrackFxParamName {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxParamNameHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
     pub param_idx: i32,
 }
@@ -976,7 +978,7 @@ pub type TrackFxParamValueHandler = Box<dyn FnMut(TrackFxParamValueArgs) + 'stat
 pub struct TrackFxParamValue {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxParamValueHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
     pub param_idx: i32,
 }
@@ -1039,7 +1041,7 @@ pub type TrackFxParamMinHandler = Box<dyn FnMut(TrackFxParamMinArgs) + 'static>;
 pub struct TrackFxParamMin {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxParamMinHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
     pub param_idx: i32,
 }
@@ -1083,7 +1085,7 @@ pub type TrackFxParamMaxHandler = Box<dyn FnMut(TrackFxParamMaxArgs) + 'static>;
 pub struct TrackFxParamMax {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxParamMaxHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
     pub param_idx: i32,
 }
@@ -1125,7 +1127,7 @@ pub type TrackFxInfoHandler = Box<dyn FnMut(TrackFxInfoArgs) + 'static>;
 pub struct TrackFxInfo {
     socket: Arc<UdpSocket>,
     handler: Option<TrackFxInfoHandler>,
-    pub track_guid: String,
+    pub track_guid: Uuid,
     pub fx_idx: i32,
 }
 
@@ -1354,6 +1356,8 @@ impl Query for Fxinfo {
 }
 
 pub mod context {
+    use uuid::Uuid;
+
     use crate::osc::route_context::ContextTrait;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -1373,14 +1377,14 @@ pub mod context {
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Track {
-        pub track_guid: String,
+        pub track_guid: Uuid,
     }
 
     impl ContextTrait for Track {}
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct TrackFx {
-        pub track_guid: String,
+        pub track_guid: Uuid,
         pub fx_idx: i32,
     }
 
@@ -1388,7 +1392,7 @@ pub mod context {
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct TrackFxParam {
-        pub track_guid: String,
+        pub track_guid: Uuid,
         pub fx_idx: i32,
         pub param_idx: i32,
     }
@@ -1397,7 +1401,7 @@ pub mod context {
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct TrackSend {
-        pub track_guid: String,
+        pub track_guid: Uuid,
         pub send_index: i32,
     }
 
@@ -1408,6 +1412,7 @@ pub mod context_kind {
     use super::context;
     use crate::osc::route_context::ContextKindTrait;
     use regex::Regex;
+    use uuid::Uuid;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Fxinfo {}
@@ -1464,7 +1469,7 @@ pub mod context_kind {
             let re = Regex::new(r"^/track/([^/]+)/index$").unwrap();
             re.captures(osc_address).and_then(|caps| {
                 Some(context::Track {
-                    track_guid: caps[1].to_string(),
+                    track_guid: Uuid::parse_str(&caps[1]).ok()?,
                 })
             })
         }
@@ -1484,7 +1489,7 @@ pub mod context_kind {
             let re = Regex::new(r"^/track/([^/]+)/fx/([^/]+)/guid$").unwrap();
             re.captures(osc_address).and_then(|caps| {
                 Some(context::TrackFx {
-                    track_guid: caps[1].to_string(),
+                    track_guid: Uuid::parse_str(&caps[1]).ok()?,
                     fx_idx: caps[2].parse().ok()?,
                 })
             })
@@ -1505,7 +1510,7 @@ pub mod context_kind {
             let re = Regex::new(r"^/track/([^/]+)/fx/([^/]+)/param/([^/]+)/name$").unwrap();
             re.captures(osc_address).and_then(|caps| {
                 Some(context::TrackFxParam {
-                    track_guid: caps[1].to_string(),
+                    track_guid: Uuid::parse_str(&caps[1]).ok()?,
                     fx_idx: caps[2].parse().ok()?,
                     param_idx: caps[3].parse().ok()?,
                 })
@@ -1527,7 +1532,7 @@ pub mod context_kind {
             let re = Regex::new(r"^/track/([^/]+)/send/([^/]+)/guid$").unwrap();
             re.captures(osc_address).and_then(|caps| {
                 Some(context::TrackSend {
-                    track_guid: caps[1].to_string(),
+                    track_guid: Uuid::parse_str(&caps[1]).ok()?,
                     send_index: caps[2].parse().ok()?,
                 })
             })
@@ -1539,28 +1544,28 @@ pub struct Reaper {
     socket: Arc<UdpSocket>,
     num_tracks_endpoint: NumTracks,
     track_all_guids_endpoint: TrackAllGuids,
-    track_index_endpoints: HashMap<String, TrackIndex>,
-    track_delete_endpoints: HashMap<String, TrackDelete>,
-    track_name_endpoints: HashMap<String, TrackName>,
-    track_selected_endpoints: HashMap<String, TrackSelected>,
-    track_volume_endpoints: HashMap<String, TrackVolume>,
-    track_pan_endpoints: HashMap<String, TrackPan>,
-    track_mute_endpoints: HashMap<String, TrackMute>,
-    track_solo_endpoints: HashMap<String, TrackSolo>,
-    track_rec_arm_endpoints: HashMap<String, TrackRecArm>,
-    track_send_guid_endpoints: HashMap<String, HashMap<i32, TrackSendGuid>>,
-    track_send_volume_endpoints: HashMap<String, HashMap<i32, TrackSendVolume>>,
-    track_send_pan_endpoints: HashMap<String, HashMap<i32, TrackSendPan>>,
-    track_color_endpoints: HashMap<String, TrackColor>,
-    track_fx_guid_endpoints: HashMap<String, HashMap<i32, TrackFxGuid>>,
-    track_fx_name_endpoints: HashMap<String, HashMap<i32, TrackFxName>>,
-    track_fx_enabled_endpoints: HashMap<String, HashMap<i32, TrackFxEnabled>>,
-    track_fx_param_count_endpoints: HashMap<String, HashMap<i32, TrackFxParamCount>>,
-    track_fx_param_name_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamName>>>,
-    track_fx_param_value_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamValue>>>,
-    track_fx_param_min_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamMin>>>,
-    track_fx_param_max_endpoints: HashMap<String, HashMap<i32, HashMap<i32, TrackFxParamMax>>>,
-    track_fx_info_endpoints: HashMap<String, HashMap<i32, TrackFxInfo>>,
+    track_index_endpoints: HashMap<Uuid, TrackIndex>,
+    track_delete_endpoints: HashMap<Uuid, TrackDelete>,
+    track_name_endpoints: HashMap<Uuid, TrackName>,
+    track_selected_endpoints: HashMap<Uuid, TrackSelected>,
+    track_volume_endpoints: HashMap<Uuid, TrackVolume>,
+    track_pan_endpoints: HashMap<Uuid, TrackPan>,
+    track_mute_endpoints: HashMap<Uuid, TrackMute>,
+    track_solo_endpoints: HashMap<Uuid, TrackSolo>,
+    track_rec_arm_endpoints: HashMap<Uuid, TrackRecArm>,
+    track_send_guid_endpoints: HashMap<Uuid, HashMap<i32, TrackSendGuid>>,
+    track_send_volume_endpoints: HashMap<Uuid, HashMap<i32, TrackSendVolume>>,
+    track_send_pan_endpoints: HashMap<Uuid, HashMap<i32, TrackSendPan>>,
+    track_color_endpoints: HashMap<Uuid, TrackColor>,
+    track_fx_guid_endpoints: HashMap<Uuid, HashMap<i32, TrackFxGuid>>,
+    track_fx_name_endpoints: HashMap<Uuid, HashMap<i32, TrackFxName>>,
+    track_fx_enabled_endpoints: HashMap<Uuid, HashMap<i32, TrackFxEnabled>>,
+    track_fx_param_count_endpoints: HashMap<Uuid, HashMap<i32, TrackFxParamCount>>,
+    track_fx_param_name_endpoints: HashMap<Uuid, HashMap<i32, HashMap<i32, TrackFxParamName>>>,
+    track_fx_param_value_endpoints: HashMap<Uuid, HashMap<i32, HashMap<i32, TrackFxParamValue>>>,
+    track_fx_param_min_endpoints: HashMap<Uuid, HashMap<i32, HashMap<i32, TrackFxParamMin>>>,
+    track_fx_param_max_endpoints: HashMap<Uuid, HashMap<i32, HashMap<i32, TrackFxParamMax>>>,
+    track_fx_info_endpoints: HashMap<Uuid, HashMap<i32, TrackFxInfo>>,
     fxinfo_name_endpoints: HashMap<String, FxinfoName>,
     fxinfo_param_count_endpoints: HashMap<String, FxinfoParamCount>,
     fxinfo_param_name_endpoints: HashMap<String, HashMap<i32, FxinfoParamName>>,
@@ -1623,7 +1628,7 @@ impl Reaper {
     pub fn track_all_guids(&mut self) -> &mut TrackAllGuids {
         &mut self.track_all_guids_endpoint
     }
-    pub fn track_index(&mut self, track_guid: String) -> &mut TrackIndex {
+    pub fn track_index(&mut self, track_guid: Uuid) -> &mut TrackIndex {
         self.track_index_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackIndex {
@@ -1632,7 +1637,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_delete(&mut self, track_guid: String) -> &mut TrackDelete {
+    pub fn track_delete(&mut self, track_guid: Uuid) -> &mut TrackDelete {
         self.track_delete_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackDelete {
@@ -1641,7 +1646,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_name(&mut self, track_guid: String) -> &mut TrackName {
+    pub fn track_name(&mut self, track_guid: Uuid) -> &mut TrackName {
         self.track_name_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackName {
@@ -1650,7 +1655,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_selected(&mut self, track_guid: String) -> &mut TrackSelected {
+    pub fn track_selected(&mut self, track_guid: Uuid) -> &mut TrackSelected {
         self.track_selected_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackSelected {
@@ -1659,7 +1664,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_volume(&mut self, track_guid: String) -> &mut TrackVolume {
+    pub fn track_volume(&mut self, track_guid: Uuid) -> &mut TrackVolume {
         self.track_volume_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackVolume {
@@ -1668,7 +1673,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_pan(&mut self, track_guid: String) -> &mut TrackPan {
+    pub fn track_pan(&mut self, track_guid: Uuid) -> &mut TrackPan {
         self.track_pan_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackPan {
@@ -1677,7 +1682,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_mute(&mut self, track_guid: String) -> &mut TrackMute {
+    pub fn track_mute(&mut self, track_guid: Uuid) -> &mut TrackMute {
         self.track_mute_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackMute {
@@ -1686,7 +1691,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_solo(&mut self, track_guid: String) -> &mut TrackSolo {
+    pub fn track_solo(&mut self, track_guid: Uuid) -> &mut TrackSolo {
         self.track_solo_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackSolo {
@@ -1695,7 +1700,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_rec_arm(&mut self, track_guid: String) -> &mut TrackRecArm {
+    pub fn track_rec_arm(&mut self, track_guid: Uuid) -> &mut TrackRecArm {
         self.track_rec_arm_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackRecArm {
@@ -1704,7 +1709,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_send_guid(&mut self, track_guid: String, send_index: i32) -> &mut TrackSendGuid {
+    pub fn track_send_guid(&mut self, track_guid: Uuid, send_index: i32) -> &mut TrackSendGuid {
         self.track_send_guid_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -1716,11 +1721,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_send_volume(
-        &mut self,
-        track_guid: String,
-        send_index: i32,
-    ) -> &mut TrackSendVolume {
+    pub fn track_send_volume(&mut self, track_guid: Uuid, send_index: i32) -> &mut TrackSendVolume {
         self.track_send_volume_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -1732,7 +1733,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_send_pan(&mut self, track_guid: String, send_index: i32) -> &mut TrackSendPan {
+    pub fn track_send_pan(&mut self, track_guid: Uuid, send_index: i32) -> &mut TrackSendPan {
         self.track_send_pan_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -1744,7 +1745,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_color(&mut self, track_guid: String) -> &mut TrackColor {
+    pub fn track_color(&mut self, track_guid: Uuid) -> &mut TrackColor {
         self.track_color_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| TrackColor {
@@ -1753,7 +1754,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_fx_guid(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxGuid {
+    pub fn track_fx_guid(&mut self, track_guid: Uuid, fx_idx: i32) -> &mut TrackFxGuid {
         self.track_fx_guid_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -1765,7 +1766,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_fx_name(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxName {
+    pub fn track_fx_name(&mut self, track_guid: Uuid, fx_idx: i32) -> &mut TrackFxName {
         self.track_fx_name_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -1777,7 +1778,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_fx_enabled(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxEnabled {
+    pub fn track_fx_enabled(&mut self, track_guid: Uuid, fx_idx: i32) -> &mut TrackFxEnabled {
         self.track_fx_enabled_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -1791,7 +1792,7 @@ impl Reaper {
     }
     pub fn track_fx_param_count(
         &mut self,
-        track_guid: String,
+        track_guid: Uuid,
         fx_idx: i32,
     ) -> &mut TrackFxParamCount {
         self.track_fx_param_count_endpoints
@@ -1807,7 +1808,7 @@ impl Reaper {
     }
     pub fn track_fx_param_name(
         &mut self,
-        track_guid: String,
+        track_guid: Uuid,
         fx_idx: i32,
         param_idx: i32,
     ) -> &mut TrackFxParamName {
@@ -1827,7 +1828,7 @@ impl Reaper {
     }
     pub fn track_fx_param_value(
         &mut self,
-        track_guid: String,
+        track_guid: Uuid,
         fx_idx: i32,
         param_idx: i32,
     ) -> &mut TrackFxParamValue {
@@ -1847,7 +1848,7 @@ impl Reaper {
     }
     pub fn track_fx_param_min(
         &mut self,
-        track_guid: String,
+        track_guid: Uuid,
         fx_idx: i32,
         param_idx: i32,
     ) -> &mut TrackFxParamMin {
@@ -1867,7 +1868,7 @@ impl Reaper {
     }
     pub fn track_fx_param_max(
         &mut self,
-        track_guid: String,
+        track_guid: Uuid,
         fx_idx: i32,
         param_idx: i32,
     ) -> &mut TrackFxParamMax {
@@ -1885,7 +1886,7 @@ impl Reaper {
                 handler: None,
             })
     }
-    pub fn track_fx_info(&mut self, track_guid: String, fx_idx: i32) -> &mut TrackFxInfo {
+    pub fn track_fx_info(&mut self, track_guid: Uuid, fx_idx: i32) -> &mut TrackFxInfo {
         self.track_fx_info_endpoints
             .entry(track_guid.clone())
             .or_insert_with(|| HashMap::new())
@@ -2048,7 +2049,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/index") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_index(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_index = match msg.args.get(0) {
@@ -2077,7 +2090,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/delete") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_delete(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             handler(TrackDeleteArgs {});
@@ -2085,7 +2110,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/name") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_name(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_name = match msg.args.get(0) {
@@ -2114,7 +2151,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/selected") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_selected(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_selected = match msg.args.get(0) {
@@ -2143,7 +2192,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/volume") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_volume(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_volume = match msg.args.get(0) {
@@ -2172,7 +2233,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/pan") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_pan(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_pan = match msg.args.get(0) {
@@ -2199,7 +2272,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/mute") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_mute(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_mute = match msg.args.get(0) {
@@ -2228,7 +2313,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/solo") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_solo(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_solo = match msg.args.get(0) {
@@ -2257,7 +2354,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/rec-arm") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_rec_arm(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_rec_arm = match msg.args.get(0) {
@@ -2286,7 +2395,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/guid") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let send_index: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2304,12 +2425,12 @@ pub fn dispatch_osc<F, G>(
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_guid = match msg.args.get(0) {
                 Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
-                    Some(v) => v,
+                    Some(v) => Uuid::parse_str(&v).expect("Invalid UUID string"),
                     None => {
                         log_decode_error(
                             addr,
                             DispatchError::WrongArgumentType {
-                                expected: "string",
+                                expected: "uuid (as string)",
                                 got: osc_type_name(_raw_arg_0),
                             },
                         );
@@ -2328,7 +2449,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/volume") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let send_index: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2370,7 +2503,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/send/{send_index}/pan") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let send_index: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2410,7 +2555,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/color") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let endpoint = reaper.track_color(track_guid);
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_color = match msg.args.get(0) {
@@ -2439,7 +2596,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/guid") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2457,12 +2626,12 @@ pub fn dispatch_osc<F, G>(
         if let Some(handler) = &mut endpoint.handler {
             let _decoded_guid = match msg.args.get(0) {
                 Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
-                    Some(v) => v,
+                    Some(v) => Uuid::parse_str(&v).expect("Invalid UUID string"),
                     None => {
                         log_decode_error(
                             addr,
                             DispatchError::WrongArgumentType {
-                                expected: "string",
+                                expected: "uuid (as string)",
                                 got: osc_type_name(_raw_arg_0),
                             },
                         );
@@ -2481,7 +2650,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/name") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2523,7 +2704,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/enabled") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2565,7 +2758,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/param_count") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2610,7 +2815,19 @@ pub fn dispatch_osc<F, G>(
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/name",
     ) {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2668,7 +2885,19 @@ pub fn dispatch_osc<F, G>(
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/value",
     ) {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2726,7 +2955,19 @@ pub fn dispatch_osc<F, G>(
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/min",
     ) {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2782,7 +3023,19 @@ pub fn dispatch_osc<F, G>(
         addr,
         "/track/{track_guid}/fx/{fx_idx}/param/{param_idx}/max",
     ) {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
@@ -2835,7 +3088,19 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/info") {
-        let track_guid = args[0].clone();
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
         let fx_idx: i32 = match args[1].parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
