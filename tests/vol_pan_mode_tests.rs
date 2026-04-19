@@ -11,6 +11,7 @@ use std::time::Duration;
 use assert2::{assert, check};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use float_cmp::approx_eq;
+use uuid::Uuid;
 
 use arpad_rust::midi::xtouch::{
     ArmPress, EncoderTurnCW, FaderAbsMsg, LEDState, MutePress, SoloPress, XTouchDownstreamMsg,
@@ -282,13 +283,13 @@ macro_rules! check_no_message {
 /// Helper function to assign a track to a hardware channel
 fn assign_track_to_channel(
     mode: &mut VolumePanMode,
-    guid: &str,
+    guid: uuid::Uuid,
     hw_channel: i32,
     curr_mode: ModeState,
 ) -> ModeState {
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: guid.to_string(),
+            guid: guid,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -313,7 +314,7 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-1".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let reaper_index = 2;
 
     let curr_mode = ModeState {
@@ -323,7 +324,7 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
 
     // Send a ReaperTrackIndex message to assign the track to hardware channel 2
     let msg = TrackMsg::TrackDataMsg(TrackDataMsg {
-        guid: track_guid.clone(),
+        guid: track_guid,
         data: DataPayload::ReaperTrackIndex(Some(reaper_index)),
     });
 
@@ -333,7 +334,7 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     assert_eq!(result_mode, curr_mode);
 
     // Verify the track is now assigned to hardware channel 2
-    let found_channel = mode.find_hw_channel(&track_guid);
+    let found_channel = mode.find_hw_channel(track_guid);
     assert_eq!(
         found_channel,
         Some(reaper_index as usize),
@@ -346,7 +347,7 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-2".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 3;
     let test_volume = 0.65;
 
@@ -404,7 +405,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-4".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 0;
     let new_volume = 0.85;
 
@@ -416,7 +417,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     // Assign track to hardware channel
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.clone(),
+            guid: track_guid,
             data: DataPayload::ReaperTrackIndex(Some(hw_channel)),
         }),
         curr_mode,
@@ -464,7 +465,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-mapped-vol".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 2;
     let test_volume = 0.75;
 
@@ -474,7 +475,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     };
 
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Send volume update
@@ -495,7 +496,7 @@ fn test_02_volume_message_for_unmapped_track_is_ignored() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-unmapped-vol".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let test_volume = 0.85;
 
     let curr_mode = ModeState {
@@ -521,7 +522,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-mapped-fader".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let new_volume = 0.65;
 
@@ -531,7 +532,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     };
 
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
 
     // Simulate fader movement from hardware
     mode.handle_upstream_messages(
@@ -581,7 +582,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-remap".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel_1 = 2;
     let hw_channel_2 = 4;
     let volume_1 = 0.5;
@@ -593,7 +594,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     };
 
     // Assign track to first hardware channel and send volume
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel_1, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel_1, curr_mode);
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
@@ -619,7 +620,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_1, volume_2 as f64);
 
     // Remap to different channel - old mapping should be cleared
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel_2, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel_2, curr_mode);
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel_2, volume_2 as f64);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
@@ -627,7 +628,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_2, 0.5);
 
     // Verify the track can be found via find_hw_channel
-    let found_channel = mode.find_hw_channel(&track_guid);
+    let found_channel = mode.find_hw_channel(track_guid);
     assert!(
         found_channel.is_some(),
         "Track should be found after remapping"
@@ -658,7 +659,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-buttons".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 3;
 
     let curr_mode = ModeState {
@@ -667,13 +668,13 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     };
 
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Send mute state
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.clone(),
+            guid: track_guid,
             data: DataPayload::Muted(true),
         }),
         curr_mode,
@@ -683,7 +684,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     // Send solo state
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.clone(),
+            guid: track_guid,
             data: DataPayload::Soloed(true),
         }),
         curr_mode,
@@ -693,7 +694,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     // Send armed state
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.clone(),
+            guid: track_guid,
             data: DataPayload::Armed(true),
         }),
         curr_mode,
@@ -710,7 +711,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-pan".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let pan_value_1 = 0.3;
     let pan_value_2 = 0.7; // Most recent value
@@ -721,7 +722,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     };
 
     // First assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Send pan values - they should accumulate
@@ -756,7 +757,7 @@ fn test_pan_state_accumulates_before_mapping() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-pan-accumulate".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let pan_value_1 = 0.3;
     let pan_value_2 = 0.7; // Most recent value should be sent
@@ -769,7 +770,7 @@ fn test_pan_state_accumulates_before_mapping() {
     // Send pan values BEFORE mapping - they should be accumulated but not sent downstream yet
     mode.handle_downstream_messages(
         TrackMsg::TrackDataMsg(TrackDataMsg {
-            guid: track_guid.clone(),
+            guid: track_guid,
             data: DataPayload::Pan(pan_value_1),
         }),
         curr_mode,
@@ -790,7 +791,7 @@ fn test_pan_state_accumulates_before_mapping() {
     check_no_message!(&to_xtouch_rx, 100);
 
     // NOW assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
@@ -807,7 +808,7 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-mute-flow".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 2;
 
     let curr_mode = ModeState {
@@ -816,7 +817,7 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
     };
 
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Simulate mute button press
@@ -837,7 +838,7 @@ fn test_09_solo_button_sends_correct_messages() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-solo-flow".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 4;
 
     let curr_mode = ModeState {
@@ -846,7 +847,7 @@ fn test_09_solo_button_sends_correct_messages() {
     };
 
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Simulate solo button press
@@ -867,7 +868,7 @@ fn test_10_arm_button_sends_correct_messages() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-arm-flow".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 0;
 
     let curr_mode = ModeState {
@@ -876,7 +877,7 @@ fn test_10_arm_button_sends_correct_messages() {
     };
 
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     // Simulate arm button press
@@ -898,7 +899,7 @@ fn test_11_pan_encoder_changes_forward_correctly() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-encoder".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 5;
     let initial_pan = 0.5;
 
@@ -908,7 +909,7 @@ fn test_11_pan_encoder_changes_forward_correctly() {
     };
 
     // Assign track to hardware channel and set initial pan
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, hw_channel);
 
     mode.handle_downstream_messages(
@@ -948,8 +949,8 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid_1 = "track-guid-transition-1".to_string();
-    let track_guid_2 = "track-guid-transition-2".to_string();
+    let track_guid_1 = uuid::Uuid::new_v4();
+    let track_guid_2 = uuid::Uuid::new_v4();
     let hw_channel_1 = 0;
     let hw_channel_2 = 1;
 
@@ -959,8 +960,8 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
     };
 
     // Assign tracks to hardware channels
-    assign_track_to_channel(&mut mode, &track_guid_1, hw_channel_1, curr_mode);
-    assign_track_to_channel(&mut mode, &track_guid_2, hw_channel_2, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid_1, hw_channel_1, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid_2, hw_channel_2, curr_mode);
 
     // Create an unbounded sender that will be used to send the barrier upstream
     let (upstream_sender, upstream_receiver) = unbounded();
@@ -993,7 +994,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-ordering-downstream".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
 
     let curr_mode = ModeState {
@@ -1002,7 +1003,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     };
 
     // Assign track
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
@@ -1059,7 +1060,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     let (mut mode, _from_reaper_tx, to_reaper_rx, _from_xtouch_tx, _to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-ordering-upstream".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 3;
 
     let curr_mode = ModeState {
@@ -1068,7 +1069,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     };
 
     // Assign track
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_fader_abs_msg!(&_to_xtouch_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&_to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&_to_xtouch_rx, hw_channel, LEDState::Off);
@@ -1119,7 +1120,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-epsilon-vol".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 2;
     let initial_volume = 0.5;
 
@@ -1129,7 +1130,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     };
 
     // Assign track and set initial volume
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
@@ -1165,7 +1166,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-guid-epsilon-pan".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let initial_pan = 0.5;
 
@@ -1175,7 +1176,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     };
 
     // Assign track and set initial pan
-    assign_track_to_channel(&mut mode, &track_guid, hw_channel, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
@@ -1224,10 +1225,10 @@ fn test_complex_multi_track_integration() {
         mode: Mode::ReaperVolPan,
     };
 
-    let track1_guid = "track-1".to_string();
-    let track2_guid = "track-2".to_string();
-    let track3_guid = "track-3".to_string();
-    let track4_guid = "track-4".to_string();
+    let track1_guid = uuid::Uuid::new_v4();
+    let track2_guid = uuid::Uuid::new_v4();
+    let track3_guid = uuid::Uuid::new_v4();
+    let track4_guid = uuid::Uuid::new_v4(); // Unmapped track for state accumulation test
 
     // === PHASE 1: Send state updates to unmapped tracks ===
     // Track 1: Volume only
@@ -1285,9 +1286,9 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 2: Map tracks to hardware channels ===
     // Map all tracks first, then verify messages were sent in correct order
-    assign_track_to_channel(&mut mode, &track1_guid, 1, curr_mode);
-    assign_track_to_channel(&mut mode, &track2_guid, 2, curr_mode);
-    assign_track_to_channel(&mut mode, &track3_guid, 3, curr_mode);
+    assign_track_to_channel(&mut mode, track1_guid, 1, curr_mode);
+    assign_track_to_channel(&mut mode, track2_guid, 2, curr_mode);
+    assign_track_to_channel(&mut mode, track3_guid, 3, curr_mode);
 
     // Verify track 1 accumulated volume state sent to channel 1
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.75);
@@ -1333,7 +1334,7 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 4: Remap track 1 to a different channel ===
     // Remap track 1 from channel 1 to channel 4
-    assign_track_to_channel(&mut mode, &track1_guid, 4, curr_mode);
+    assign_track_to_channel(&mut mode, track1_guid, 4, curr_mode);
     // Should send current state to new channel
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 4, 0.6); // Current volume
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 4, LEDState::Off);
@@ -1395,7 +1396,7 @@ fn test_complex_multi_track_integration() {
     check_no_message!(&to_xtouch_rx, 100); // Still unmapped
 
     // Now map track 4 to channel 5
-    assign_track_to_channel(&mut mode, &track4_guid, 5, curr_mode);
+    assign_track_to_channel(&mut mode, track4_guid, 5, curr_mode);
     // Should send latest accumulated state (not intermediate values)
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 5, 0.4); // Latest volume
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 5, LEDState::On); // Latest mute
@@ -1447,7 +1448,7 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 8: Remap track 2 to channel already mapped (channel 3) ===
     // This should clear track 3's mapping and assign track 2 to channel 3
-    assign_track_to_channel(&mut mode, &track2_guid, 3, curr_mode);
+    assign_track_to_channel(&mut mode, track2_guid, 3, curr_mode);
     // Should send track 2's current state to channel 3
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 3, 0.9); // Track 2's volume (unchanged from phase 1)
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 3, LEDState::Off); // Track 2's mute (was toggled off)
@@ -1508,7 +1509,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
         setup_vol_pan_mode();
 
-    let track_guid = "track-epsilon-remap".to_string();
+    let track_guid = uuid::Uuid::new_v4();
     let channel_1 = 0i32;
     let channel_2 = 1i32;
 
@@ -1518,7 +1519,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     };
 
     // Assign track to channel 1
-    assign_track_to_channel(&mut mode, &track_guid, channel_1, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, channel_1, curr_mode);
     assert_downstream_default_track_mapping(&to_xtouch_rx, channel_1);
 
     // Send volume update (0.8)
@@ -1542,7 +1543,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     check_no_message!(&to_xtouch_rx, 100); // Filtered - change is < EPSILON
 
     // Now remap track to channel 2
-    assign_track_to_channel(&mut mode, &track_guid, channel_2, curr_mode);
+    assign_track_to_channel(&mut mode, track_guid, channel_2, curr_mode);
     // Should send full state to channel 2, including current volume of 0.805
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_2, 0.805);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);

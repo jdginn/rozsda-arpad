@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
+use uuid::Uuid;
 
 use crate::midi::xtouch::{self, EncoderRingLEDRangePointMsg, EncoderTurnCCW};
 use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
@@ -66,12 +67,12 @@ struct TrackState {
 /// LEDS.)
 pub struct VolumePanMode {
     // Maps each channel on the hardware controller to a Reaper track
-    track_hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
+    track_hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     // Store state for each track by track GUID
-    track_states: HashMap<String, TrackState>,
+    track_states: HashMap<Uuid, TrackState>,
     // Store last sent volume/pan values to avoid sending updates for tiny changes
-    last_sent_volume: HashMap<String, f32>,
-    last_sent_pan: HashMap<String, f32>,
+    last_sent_volume: HashMap<Uuid, f32>,
+    last_sent_pan: HashMap<Uuid, f32>,
     to_reaper: Sender<TrackMsg>,
     from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
@@ -101,7 +102,7 @@ impl VolumePanMode {
         }
     }
 
-    fn get_track_state(&mut self, guid: String) -> &mut TrackState {
+    fn get_track_state(&mut self, guid: Uuid) -> &mut TrackState {
         self.track_states.entry(guid).or_insert(TrackState {
             buttons: ButtonState {
                 mute: Button::new(),
@@ -113,18 +114,18 @@ impl VolumePanMode {
         })
     }
 
-    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<String> {
+    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.track_hw_assignments.lock().unwrap();
         assignments[hw_channel].clone()
     }
 
     // For a given track GUID, find which hardware channel it's assigned to (if any)
-    pub fn find_hw_channel(&self, guid: &str) -> Option<usize> {
+    pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
         let assignments = self.track_hw_assignments.lock().unwrap();
         assignments
             .iter()
             .enumerate()
-            .find(|(_, assigned_guid)| *assigned_guid == &Some(guid.to_string()))
+            .find(|(_, assigned_guid)| **assigned_guid == Some(guid))
             .map(|(hw_channel, _)| hw_channel)
     }
 }
@@ -182,7 +183,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         assignments[index as usize] = Some(msg.guid.clone());
                     }
                     // Now, send the current state of the track to the hardware for this channel
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         let track_state = self.get_track_state(msg.guid.clone()).clone();
                         // Send volume
                         let _ = self
@@ -230,7 +231,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 TrackDataPayload::Volume(value) => {
                     self.get_track_state(msg.guid.clone()).volume = value;
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         // Check if the change is significant enough to send
                         let should_send =
                             if let Some(&last_value) = self.last_sent_volume.get(&msg.guid) {
@@ -260,7 +261,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         .buttons
                         .mute
                         .set(muted);
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         // Send mute LED update to XTouch
                         let _ =
                             self.to_xtouch
@@ -276,7 +277,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         .buttons
                         .solo
                         .set(soloed);
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         // Send solo LED update to XTouch
                         let _ =
                             self.to_xtouch
@@ -292,7 +293,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                         .buttons
                         .arm
                         .set(armed);
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         // Send arm LED update to XTouch
                         let _ =
                             self.to_xtouch
@@ -305,7 +306,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 TrackDataPayload::Pan(value) => {
                     self.get_track_state(msg.guid.clone()).pan = value;
-                    if let Some(hw_channel) = self.find_hw_channel(&msg.guid) {
+                    if let Some(hw_channel) = self.find_hw_channel(msg.guid) {
                         // Check if the change is significant enough to send
                         let should_send =
                             if let Some(&last_value) = self.last_sent_pan.get(&msg.guid) {

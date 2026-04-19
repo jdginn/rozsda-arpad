@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use crossbeam_channel::{Receiver, Sender};
+use uuid::Uuid;
 
 use crate::midi::xtouch::{
     EncoderRingLEDMsg, EncoderRingLEDRangePointMsg, FaderAbsMsg, XTouchDownstreamMsg,
@@ -22,9 +23,9 @@ pub struct TrackSendInfo {
 
 pub struct TrackSendsMode {
     // Maps track send index to send guid
-    hw_assignments: Arc<Mutex<Vec<Option<String>>>>,
+    hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     // Maps guid to info about the send it designates
-    track_send_states: Arc<Mutex<BTreeMap<String, TrackSendInfo>>>,
+    track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
     selected_track_guid: Option<String>,
     to_reaper: Sender<TrackMsg>,
     from_reaper: Receiver<TrackMsg>,
@@ -51,13 +52,13 @@ impl TrackSendsMode {
         }
     }
 
-    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<String> {
+    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.hw_assignments.lock().unwrap();
         assignments[hw_channel].clone()
     }
 
-    fn find_hw_channel_for_guid(guid: &str, assignments: Vec<Option<String>>) -> Option<usize> {
-        for (hw_channel, assigned_guid) in assignments.iter().enumerate() {
+    fn find_hw_channel_for_guid(guid: Uuid, assignments: Vec<Option<Uuid>>) -> Option<usize> {
+        for (hw_channel, &assigned_guid) in assignments.iter().enumerate() {
             if let Some(assigned_guid) = assigned_guid {
                 if assigned_guid == guid {
                     return Some(hw_channel);
@@ -98,7 +99,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     let mut assignments = self.hw_assignments.lock().unwrap();
 
                     if let Some(index) =
-                        TrackSendsMode::find_hw_channel_for_guid(&msg.guid, assignments.to_vec())
+                        TrackSendsMode::find_hw_channel_for_guid(msg.guid, assignments.to_vec())
                     {
                         if index as i32 == msg.send_index {
                             // No change, skip
@@ -228,12 +229,12 @@ impl TrackSendsMode {
         &mut self,
         from_mode: Mode,
         upstream: Sender<TrackMsg>,
-        selected_track_guid: &str,
+        selected_track_guid: Uuid,
     ) -> ModeState {
         self.selected_track_guid = Some(selected_track_guid.to_string());
         upstream
             .send(TrackMsg::TrackQuery(TrackQuery {
-                guid: selected_track_guid.to_string(),
+                guid: selected_track_guid,
             }))
             .unwrap();
         let barrier = Barrier::new(from_mode, Mode::ReaperSends);
