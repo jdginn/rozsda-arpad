@@ -10,95 +10,15 @@ use crate::modes::mode_manager::Barrier;
 #[derive(Clone, Debug)]
 pub enum TrackMsg {
     Barrier(Barrier),
-    TrackDataMsg(TrackDataMsg),
-    TrackQuery(TrackQuery),
-}
-
-#[derive(Clone, Debug)]
-pub struct TrackDataMsg {
-    pub guid: Uuid,
-    pub data: DataPayload,
-}
-
-#[derive(Clone, Debug)]
-pub struct TrackQuery {
-    pub guid: Uuid,
-}
-
-#[derive(Clone, Debug)]
-pub struct SendIndex {
-    pub send_index: i32,
-    pub guid: Uuid,
-}
-
-#[derive(Clone, Debug)]
-pub struct SendLevel {
-    pub send_index: i32,
-    pub level: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct SendPan {
-    pub send_index: i32,
-    pub pan: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXName {
-    pub fx_index: i32,
-    pub name: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXGuid {
-    pub fx_index: i32,
-    pub guid: Uuid,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXEnabled {
-    pub fx_index: i32,
-    pub enabled: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXParamName {
-    pub fx_index: i32,
-    pub param_index: i32,
-    pub name: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXParamValue {
-    pub fx_index: i32,
-    pub param_index: i32,
-    pub value: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXParamMin {
-    pub fx_index: i32,
-    pub param_index: i32,
-    pub min: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct FXParamMax {
-    pub fx_index: i32,
-    pub param_index: i32,
-    pub max: f32,
-}
-
-#[derive(Clone, Debug)]
-pub enum DataPayload {
-    Name(String),
-    ReaperTrackIndex(Option<i32>),
-    Selected(bool),
-    Muted(bool),
-    Soloed(bool),
-    Armed(bool),
-    Volume(f32),
-    Pan(f32),
+    Query(TrackQuery),
+    Name(Name),
+    ReaperTrackIndex(ReaperTrackIndex),
+    Selected(Selected),
+    Muted(Muted),
+    Soloed(Soloed),
+    Armed(Armed),
+    Volume(Volume),
+    Pan(Pan),
     SendIndex(SendIndex),
     SendLevel(SendLevel),
     SendPan(SendPan),
@@ -112,8 +32,311 @@ pub enum DataPayload {
     TrackData(TrackData),
 }
 
+impl From<Barrier> for TrackMsg {
+    fn from(msg: Barrier) -> Self {
+        TrackMsg::Barrier(msg)
+    }
+}
+
+impl From<TrackQuery> for TrackMsg {
+    fn from(msg: TrackQuery) -> Self {
+        TrackMsg::Query(msg)
+    }
+}
+
+impl From<Name> for TrackMsg {
+    fn from(msg: Name) -> Self {
+        TrackMsg::Name(msg)
+    }
+}
+
+impl From<ReaperTrackIndex> for TrackMsg {
+    fn from(msg: ReaperTrackIndex) -> Self {
+        TrackMsg::ReaperTrackIndex(msg)
+    }
+}
+
+impl From<Selected> for TrackMsg {
+    fn from(msg: Selected) -> Self {
+        TrackMsg::Selected(msg)
+    }
+}
+
+impl From<Muted> for TrackMsg {
+    fn from(msg: Muted) -> Self {
+        TrackMsg::Muted(msg)
+    }
+}
+
+impl From<Soloed> for TrackMsg {
+    fn from(msg: Soloed) -> Self {
+        TrackMsg::Soloed(msg)
+    }
+}
+
+impl From<Armed> for TrackMsg {
+    fn from(msg: Armed) -> Self {
+        TrackMsg::Armed(msg)
+    }
+}
+
+impl From<Volume> for TrackMsg {
+    fn from(msg: Volume) -> Self {
+        TrackMsg::Volume(msg)
+    }
+}
+
+impl From<Pan> for TrackMsg {
+    fn from(msg: Pan) -> Self {
+        TrackMsg::Pan(msg)
+    }
+}
+
+impl From<SendIndex> for TrackMsg {
+    fn from(msg: SendIndex) -> Self {
+        TrackMsg::SendIndex(msg)
+    }
+}
+
+impl From<SendLevel> for TrackMsg {
+    fn from(msg: SendLevel) -> Self {
+        TrackMsg::SendLevel(msg)
+    }
+}
+
+impl From<SendPan> for TrackMsg {
+    fn from(msg: SendPan) -> Self {
+        TrackMsg::SendPan(msg)
+    }
+}
+
+impl From<FXGuid> for TrackMsg {
+    fn from(msg: FXGuid) -> Self {
+        TrackMsg::FXGuid(msg)
+    }
+}
+
+impl From<FXName> for TrackMsg {
+    fn from(msg: FXName) -> Self {
+        TrackMsg::FXName(msg)
+    }
+}
+
+impl From<FXEnabled> for TrackMsg {
+    fn from(msg: FXEnabled) -> Self {
+        TrackMsg::FXEnabled(msg)
+    }
+}
+
+impl From<FXParamName> for TrackMsg {
+    fn from(msg: FXParamName) -> Self {
+        TrackMsg::FXParamName(msg)
+    }
+}
+
+impl From<FXParamValue> for TrackMsg {
+    fn from(msg: FXParamValue) -> Self {
+        TrackMsg::FXParamValue(msg)
+    }
+}
+
+impl From<FXParamMin> for TrackMsg {
+    fn from(msg: FXParamMin) -> Self {
+        TrackMsg::FXParamMin(msg)
+    }
+}
+
+impl From<FXParamMax> for TrackMsg {
+    fn from(msg: FXParamMax) -> Self {
+        TrackMsg::FXParamMax(msg)
+    }
+}
+
+// DataMsg doesn't need From impls because we expect to only be converting structs into TrackMsg.
+// DataMsg exists to let us inspect whether a TrackMsg falls into this category of messages.
 #[derive(Clone, Debug)]
+pub enum DataMsg {
+    Name(Name),
+    ReaperTrackIndex(ReaperTrackIndex),
+    Selected(Selected),
+    Muted(Muted),
+    Soloed(Soloed),
+    Armed(Armed),
+    Volume(Volume),
+    Pan(Pan),
+    SendIndex(SendIndex),
+    SendLevel(SendLevel),
+    SendPan(SendPan),
+    FXGuid(FXGuid),
+    FXName(FXName),
+    FXEnabled(FXEnabled),
+    FXParamName(FXParamName),
+    FXParamValue(FXParamValue),
+    FXParamMin(FXParamMin),
+    FXParamMax(FXParamMax),
+    TrackData(TrackData),
+}
+
+impl TryFrom<TrackMsg> for DataMsg {
+    type Error = TrackMsg; // “give me back what you couldn’t convert”
+
+    fn try_from(msg: TrackMsg) -> Result<Self, Self::Error> {
+        match msg {
+            TrackMsg::Name(x) => Ok(DataMsg::Name(x)),
+            TrackMsg::ReaperTrackIndex(x) => Ok(DataMsg::ReaperTrackIndex(x)),
+            TrackMsg::Selected(x) => Ok(DataMsg::Selected(x)),
+            TrackMsg::Muted(x) => Ok(DataMsg::Muted(x)),
+            TrackMsg::Soloed(x) => Ok(DataMsg::Soloed(x)),
+            TrackMsg::Armed(x) => Ok(DataMsg::Armed(x)),
+            TrackMsg::Volume(x) => Ok(DataMsg::Volume(x)),
+            TrackMsg::Pan(x) => Ok(DataMsg::Pan(x)),
+            TrackMsg::SendIndex(x) => Ok(DataMsg::SendIndex(x)),
+            TrackMsg::SendLevel(x) => Ok(DataMsg::SendLevel(x)),
+            TrackMsg::SendPan(x) => Ok(DataMsg::SendPan(x)),
+            TrackMsg::FXGuid(x) => Ok(DataMsg::FXGuid(x)),
+            TrackMsg::FXName(x) => Ok(DataMsg::FXName(x)),
+            TrackMsg::FXEnabled(x) => Ok(DataMsg::FXEnabled(x)),
+            TrackMsg::FXParamName(x) => Ok(DataMsg::FXParamName(x)),
+            TrackMsg::FXParamValue(x) => Ok(DataMsg::FXParamValue(x)),
+            TrackMsg::FXParamMin(x) => Ok(DataMsg::FXParamMin(x)),
+            TrackMsg::FXParamMax(x) => Ok(DataMsg::FXParamMax(x)),
+            TrackMsg::TrackData(x) => Ok(DataMsg::TrackData(x)),
+
+            other @ (TrackMsg::Barrier(_) | TrackMsg::Query(_)) => Err(other),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct TrackQuery {
+    pub guid: Uuid,
+}
+
+#[derive(Clone, Debug)]
+pub struct Name {
+    pub track_guid: Uuid,
+    pub name: String,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ReaperTrackIndex {
+    pub track_guid: Uuid,
+    pub track_index: Option<i32>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Selected {
+    pub track_guid: Uuid,
+    pub selected: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Muted {
+    pub track_guid: Uuid,
+    pub muted: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Soloed {
+    pub track_guid: Uuid,
+    pub soloed: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Armed {
+    pub track_guid: Uuid,
+    pub armed: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Volume {
+    pub track_guid: Uuid,
+    pub volume: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Pan {
+    pub track_guid: Uuid,
+    pub pan: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SendIndex {
+    pub track_guid: Uuid,
+    pub send_index: i32,
+    pub send_guid: Uuid,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SendLevel {
+    pub track_guid: Uuid,
+    pub send_index: i32,
+    pub level: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SendPan {
+    pub track_guid: Uuid,
+    pub send_index: i32,
+    pub pan: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct FXName {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub name: String,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct FXGuid {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub guid: Uuid,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct FXEnabled {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct FXParamName {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub name: String,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct FXParamValue {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub value: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct FXParamMin {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub min: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct FXParamMax {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    pub param_index: i32,
+    pub max: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct SendData {
+    pub track_guid: Uuid,
     pub target_guid: Uuid,
     pub send_index: i32,
     pub level: f32,
@@ -122,6 +345,7 @@ pub struct SendData {
 
 #[derive(Clone, Debug)]
 pub struct FXData {
+    pub track_guid: Uuid,
     pub fx_index: i32,
     pub guid: Uuid,
     pub name: String,
@@ -155,23 +379,23 @@ pub struct FXParamData {
 /// Maintains state for a given track to the best of our knowledge
 #[derive(Clone, Debug)]
 pub struct TrackData {
-    guid: Uuid,
-    name: String,
-    reaper_track_index: Option<i32>,
-    selected: bool,
-    muted: bool,
-    soloed: bool,
-    armed: bool,
-    volume: f32,
-    pan: f32,
-    sends: Vec<SendData>,
-    fx: Vec<FXData>,
+    pub track_guid: Uuid,
+    pub name: String,
+    pub reaper_track_index: Option<i32>,
+    pub selected: bool,
+    pub muted: bool,
+    pub soloed: bool,
+    pub armed: bool,
+    pub volume: f32,
+    pub pan: f32,
+    pub sends: Vec<SendData>,
+    pub fx: Vec<FXData>,
 }
 
 impl TrackData {
     fn new(guid: Uuid) -> Self {
         Self {
-            guid,
+            track_guid: guid,
             name: String::new(),
             reaper_track_index: None,
             selected: false,
@@ -193,19 +417,21 @@ impl TrackData {
         // Ensure the sends vector is large enough
         while self.sends.len() <= send_index.send_index as usize {
             self.sends.push(SendData {
+                track_guid: self.track_guid,
                 target_guid: Uuid::nil(),
                 send_index: self.sends.len() as i32,
                 level: 0.0,
                 pan: 0.0,
             });
         }
-        self.sends[send_index.send_index as usize].target_guid = send_index.guid;
+        self.sends[send_index.send_index as usize].target_guid = send_index.track_guid;
     }
 
     fn get_fx_data(&mut self, fx_index: i32) -> Option<&mut FXData> {
         // Ensure the fx vector is large enough
         while self.fx.len() <= fx_index as usize {
             self.fx.push(FXData {
+                track_guid: self.track_guid,
                 guid: Uuid::nil(),
                 fx_index: self.fx.len() as i32,
                 name: String::new(),
@@ -247,29 +473,29 @@ impl TrackManager {
                     recv(manager.from_upstream) -> result=> {
                         match result{
                             Ok(msg) => {
-                                println!("Received upstream message: {:?}", msg);
-                                match msg.clone(){
-                                    TrackMsg::Barrier(barrier_msg) => {
-                                        // Simply forward barriers
-                                        manager.to_downstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
-                                    }
-                                    TrackMsg::TrackQuery(query_msg) => {
-                                        println!("Received track query for GUID: {}", query_msg.guid);
-                                        let msg_cloned = query_msg.clone();
-                                        // Respond with ALL of the current track data
-                                        if let Some(track) = manager.tracks.get(&msg_cloned.guid) {
-                                            println!("Found track data for GUID: {}, sending response", msg_cloned.guid);
-                                            let response = TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: msg_cloned.guid,
-                                                data: DataPayload::TrackData(track.clone()),
-                                            });
-                                            manager.to_downstream.send(response).unwrap();
-                                        }
-                                    }
-                                    TrackMsg::TrackDataMsg(data_msg) => {
+                                println!("Received message from upstream: {:?}", msg);
+                                match DataMsg::try_from(msg.clone()){
+                                    Ok(data_msg) =>  {
                                         manager.handle_track_data_msg(data_msg.clone());
                                         // Forward message after we process it
                                         manager.to_downstream.send(msg).unwrap();
+                                    }
+                                    Err(TrackMsg::Barrier(barrier_msg)) => {
+                                        // Simply forward barriers
+                                        manager.to_downstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
+                                    }
+                                    Err(TrackMsg::Query(query_msg)) => {
+                                        println!("Received track query for GUID: {}", query_msg.guid);
+                                        let msg_cloned = query_msg;
+                                        // Respond with ALL of the current track data
+                                        if let Some(track) = manager.tracks.get(&msg_cloned.guid) {
+                                            println!("Found track data for GUID: {}, sending response", msg_cloned.guid);
+                                            let response = TrackMsg::TrackData(track.clone());
+                                            manager.to_upstream.send(response).unwrap();
+                                        }
+                                    }
+                                    Err(other) => {
+                                        println!("Received unsupported message type from upstream (this should never happen): {:?}", other);
                                     }
                                 }
                             }
@@ -282,28 +508,28 @@ impl TrackManager {
                     recv(manager.from_downstream) -> result=> {
                         match result{
                             Ok(msg) => {
-                                println!("Received upstream message: {:?}", msg);
-                                match msg.clone(){
-                                    TrackMsg::Barrier(barrier_msg) => {
-                                        // Simply forward barriers
-                                        manager.to_upstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
-                                    }
-                                    TrackMsg::TrackQuery(query_msg) => {
-                                        println!("Received track query for GUID: {}", query_msg.guid);
-                                        let msg_cloned = query_msg.clone();
-                                        // Respond with ALL of the current track data
-                                        if let Some(track) = manager.tracks.get(&msg_cloned.guid) {
-                                            let response = TrackMsg::TrackDataMsg(TrackDataMsg {
-                                                guid: msg_cloned.guid,
-                                                data: DataPayload::TrackData(track.clone()),
-                                            });
-                                            manager.to_upstream.send(response).unwrap();
-                                        }
-                                    }
-                                    TrackMsg::TrackDataMsg(data_msg) => {
+                                println!("Received message from downstream: {:?}", msg);
+                                match DataMsg::try_from(msg.clone()){
+                                    Ok(data_msg) =>  {
                                         manager.handle_track_data_msg(data_msg.clone());
                                         // Forward message after we process it
                                         manager.to_upstream.send(msg).unwrap();
+                                    }
+                                    Err(TrackMsg::Barrier(barrier_msg)) => {
+                                        // Simply forward barriers
+                                        manager.to_upstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
+                                    }
+                                    Err(TrackMsg::Query(query_msg)) => {
+                                        println!("Received track query for GUID: {}", query_msg.guid);
+                                        let msg_cloned = query_msg;
+                                        // Respond with ALL of the current track data
+                                        if let Some(track) = manager.tracks.get(&msg_cloned.guid) {
+                                            let response = TrackMsg::TrackData(track.clone());
+                                            manager.to_downstream.send(response).unwrap();
+                                        }
+                                    }
+                                    Err(other) => {
+                                        println!("Received unsupported message type from downstream (this should never happen): {:?}", other);
                                     }
                                 }
                             }
@@ -318,158 +544,178 @@ impl TrackManager {
         });
     }
 
+    fn get_or_create_track(&mut self, guid: Uuid) -> &mut TrackData {
+        // If we've never seen this track before, create a new entry
+        self.tracks
+            .entry(guid)
+            .or_insert_with(|| TrackData::new(guid))
+    }
+
     // Even though this is a method, we define it in terms of in/out/reflect channels so that we
     // can reuse the same code to handle upstream and downstream messages. DRY
-    pub fn handle_track_data_msg(&mut self, msg: TrackDataMsg) {
-        // If we've never seen this track before, create a new entry
-        let track = self
-            .tracks
-            .entry(msg.guid)
-            .or_insert_with(|| TrackData::new(msg.guid));
-        match msg.data {
-            DataPayload::Name(name) => {
-                track.name = name.clone();
-                println!("Track {} name set to {}", msg.guid, name);
+    pub fn handle_track_data_msg(&mut self, msg: DataMsg) {
+        match msg {
+            DataMsg::Name(msg) => {
+                self.get_or_create_track(msg.track_guid).name = msg.name.clone();
+                println!("Track {} name set to {}", msg.track_guid, msg.name);
             }
-            DataPayload::ReaperTrackIndex(index) => {
-                track.reaper_track_index = index;
-                println!("Track {} Reaper index set to {:?}", msg.guid, index);
-            }
-            DataPayload::Selected(selected) => {
-                track.selected = selected;
-                if selected {
-                    self.selected_track = Some(msg.guid.clone());
-                }
-                println!("Track {} selected set to {}", msg.guid, selected);
-            }
-            DataPayload::Muted(muted) => {
-                track.muted = muted;
-                println!("Track {} muted set to {}", msg.guid, muted);
-            }
-            DataPayload::Soloed(soloed) => {
-                track.soloed = soloed;
-                println!("Track {} soloed set to {}", msg.guid, soloed);
-            }
-            DataPayload::Armed(armed) => {
-                track.armed = armed;
-                println!("Track {} armed set to {}", msg.guid, armed);
-            }
-            DataPayload::Volume(volume) => {
-                track.volume = volume;
-                println!("Track {} volume set to {}", msg.guid, volume);
-            }
-            DataPayload::Pan(pan) => {
-                track.pan = pan;
-                println!("Track {} pan set to {}", msg.guid, pan);
-            }
-            // Update everything!
-            DataPayload::TrackData(track_data) => {
-                *track = track_data;
-            }
-            DataPayload::SendIndex(send_index) => {
-                track.set_send_index(send_index.clone());
+            DataMsg::ReaperTrackIndex(msg) => {
+                self.get_or_create_track(msg.track_guid).reaper_track_index = msg.track_index;
                 println!(
-                    "Track {} send {} target GUID set to {}",
-                    msg.guid, send_index.send_index, send_index.guid
+                    "Track {} Reaper index set to {:?}",
+                    msg.track_guid, msg.track_index
                 );
             }
-            DataPayload::SendLevel(send_level) => {
-                if let Some(send) = track.get_send_state(send_level.send_index) {
-                    send.level = send_level.level;
+            DataMsg::Selected(msg) => {
+                self.get_or_create_track(msg.track_guid).selected = msg.selected;
+                if msg.selected {
+                    self.selected_track = Some(msg.track_guid);
+                }
+                println!("Track {} selected set to {}", msg.track_guid, msg.selected);
+            }
+            DataMsg::Muted(msg) => {
+                self.get_or_create_track(msg.track_guid).muted = msg.muted;
+                println!("Track {} muted set to {}", msg.track_guid, msg.muted);
+            }
+            DataMsg::Soloed(msg) => {
+                self.get_or_create_track(msg.track_guid).soloed = msg.soloed;
+                println!("Track {} soloed set to {}", msg.track_guid, msg.soloed);
+            }
+            DataMsg::Armed(msg) => {
+                self.get_or_create_track(msg.track_guid).armed = msg.armed;
+                println!("Track {} armed set to {}", msg.track_guid, msg.armed);
+            }
+            DataMsg::Volume(msg) => {
+                self.get_or_create_track(msg.track_guid).volume = msg.volume;
+                println!("Track {} volume set to {}", msg.track_guid, msg.volume);
+            }
+            DataMsg::Pan(msg) => {
+                self.get_or_create_track(msg.track_guid).pan = msg.pan;
+                println!("Track {} pan set to {}", msg.track_guid, msg.pan);
+            }
+            // Update everything!
+            DataMsg::TrackData(track_data) => {
+                *self.get_or_create_track(track_data.track_guid) = track_data.clone();
+            }
+            DataMsg::SendIndex(msg) => {
+                self.get_or_create_track(msg.track_guid).set_send_index(msg);
+                println!(
+                    "Track {} send {} target GUID set to {}",
+                    msg.track_guid, msg.send_index, msg.send_guid
+                );
+            }
+            DataMsg::SendLevel(msg) => {
+                if let Some(send) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_send_state(msg.send_index)
+                {
+                    send.level = msg.level;
                     println!(
                         "Track {} send {} level set to {}",
-                        msg.guid, send_level.send_index, send_level.level
+                        msg.track_guid, msg.send_index, msg.level
                     );
                 }
             }
-            DataPayload::SendPan(send_pan) => {
-                if let Some(send) = track.get_send_state(send_pan.send_index) {
-                    send.pan = send_pan.pan;
+            DataMsg::SendPan(msg) => {
+                if let Some(send) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_send_state(msg.send_index)
+                {
+                    send.pan = msg.pan;
                     println!(
                         "Track {} send {} pan set to {}",
-                        msg.guid, send.send_index, send_pan.pan
+                        msg.track_guid, send.send_index, msg.pan
                     );
                 }
             }
-            DataPayload::FXGuid(fx_guid) => {
-                if let Some(fx) = track.get_fx_data(fx_guid.fx_index) {
-                    fx.guid = fx_guid.guid.clone();
+            DataMsg::FXGuid(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    fx.guid = msg.guid;
                     println!(
                         "Track {} FX {} GUID set to {}",
-                        msg.guid, fx_guid.fx_index, fx_guid.guid
+                        msg.track_guid, msg.fx_index, msg.guid
                     );
                 }
             }
-            DataPayload::FXName(fx_name) => {
-                if let Some(fx) = track.get_fx_data(fx_name.fx_index) {
-                    fx.name = fx_name.name.clone();
+            DataMsg::FXName(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    fx.name = msg.name.clone();
                     println!(
                         "Track {} FX {} name set to {}",
-                        msg.guid, fx_name.fx_index, fx_name.name
+                        msg.track_guid, msg.fx_index, msg.name
                     );
                 }
             }
-            DataPayload::FXEnabled(fx_enabled) => {
-                if let Some(fx) = track.get_fx_data(fx_enabled.fx_index) {
-                    fx.enabled = fx_enabled.enabled;
+            DataMsg::FXEnabled(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    fx.enabled = msg.enabled;
                     println!(
                         "Track {} FX {} enabled set to {}",
-                        msg.guid, fx_enabled.fx_index, fx_enabled.enabled
+                        msg.track_guid, msg.fx_index, msg.enabled
                     );
                 }
             }
-            DataPayload::FXParamName(fx_param_name) => {
-                if let Some(fx) = track.get_fx_data(fx_param_name.fx_index) {
-                    if let Some(param) = fx.get_param_data(fx_param_name.param_index) {
+            DataMsg::FXParamName(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    if let Some(_param) = fx.get_param_data(msg.param_index) {
                         // We don't store the name in FXParamData currently
                         println!(
                             "Track {} FX {} Param {} name set to {}",
-                            msg.guid,
-                            fx_param_name.fx_index,
-                            fx_param_name.param_index,
-                            fx_param_name.name
+                            msg.track_guid, msg.fx_index, msg.param_index, msg.name
                         );
                     }
                 }
             }
-            DataPayload::FXParamValue(fx_param_value) => {
-                if let Some(fx) = track.get_fx_data(fx_param_value.fx_index) {
-                    if let Some(param) = fx.get_param_data(fx_param_value.param_index) {
-                        param.value = fx_param_value.value;
+            DataMsg::FXParamValue(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    if let Some(param) = fx.get_param_data(msg.param_index) {
+                        param.value = msg.value;
                         println!(
                             "Track {} FX {} Param {} value set to {}",
-                            msg.guid,
-                            fx_param_value.fx_index,
-                            fx_param_value.param_index,
-                            fx_param_value.value
+                            msg.track_guid, msg.fx_index, msg.param_index, msg.value
                         );
                     }
                 }
             }
-            DataPayload::FXParamMin(fx_param_min) => {
-                if let Some(fx) = track.get_fx_data(fx_param_min.fx_index) {
-                    if let Some(param) = fx.get_param_data(fx_param_min.param_index) {
-                        param.min = fx_param_min.min;
+            DataMsg::FXParamMin(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    if let Some(param) = fx.get_param_data(msg.param_index) {
+                        param.min = msg.min;
                         println!(
                             "Track {} FX {} Param {} min set to {}",
-                            msg.guid,
-                            fx_param_min.fx_index,
-                            fx_param_min.param_index,
-                            fx_param_min.min
+                            msg.track_guid, msg.fx_index, msg.param_index, msg.min
                         );
                     }
                 }
             }
-            DataPayload::FXParamMax(fx_param_max) => {
-                if let Some(fx) = track.get_fx_data(fx_param_max.fx_index) {
-                    if let Some(param) = fx.get_param_data(fx_param_max.param_index) {
-                        param.max = fx_param_max.max;
+            DataMsg::FXParamMax(msg) => {
+                if let Some(fx) = self
+                    .get_or_create_track(msg.track_guid)
+                    .get_fx_data(msg.fx_index)
+                {
+                    if let Some(param) = fx.get_param_data(msg.param_index) {
+                        param.max = msg.max;
                         println!(
                             "Track {} FX {} Param {} max set to {}",
-                            msg.guid,
-                            fx_param_max.fx_index,
-                            fx_param_max.param_index,
-                            fx_param_max.max
+                            msg.track_guid, msg.fx_index, msg.param_index, msg.max
                         );
                     }
                 }

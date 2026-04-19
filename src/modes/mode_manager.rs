@@ -175,9 +175,10 @@ impl ModeManager {
                     recv(manager.from_reaper) -> msg => {
                         if let Ok(track_msg) = msg {
                         // Keep track of currently selected track for mode transitions
-                        if let TrackMsg::TrackDataMsg(ref data_msg) = track_msg {
-                            if let crate::track::track::DataPayload::Selected(true) = data_msg.data {
-                                manager.reaper_currently_selected_track_guid = Some(data_msg.guid.clone());
+                        if let TrackMsg::Selected(selected_msg) = track_msg {
+                            // If the message is a track selection message, update the currently selected track guid
+                            if selected_msg.selected {
+                                manager.reaper_currently_selected_track_guid = Some(selected_msg.track_guid);
                             }
                         }
 
