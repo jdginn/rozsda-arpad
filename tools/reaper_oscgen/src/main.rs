@@ -176,13 +176,22 @@ struct ContextParam {
     typ: String,
 }
 
-fn write_imports(code: &mut String) {
+fn routes_use_uuid(routes: &[OscRoute]) -> bool {
+    routes.iter().any(|route| {
+        route.params.iter().any(|p| p.typ == "uuid")
+            || route.arguments.iter().any(|a| a.typ == "uuid")
+    })
+}
+
+fn write_imports(code: &mut String, routes: &[OscRoute]) {
     code.push_str("// AUTO-GENERATED CODE. DO NOT EDIT!\n\n");
     code.push_str("use std::collections::HashMap;\n");
     code.push_str("use std::net::UdpSocket;\n");
     code.push_str("use std::sync::Arc;\n\n");
 
-    code.push_str("use uuid::Uuid;\n\n");
+    if routes_use_uuid(routes) {
+        code.push_str("use uuid::Uuid;\n\n");
+    }
 
     code.push_str("use crate::traits::{Bind, Set, Query};\n\n");
 
@@ -264,7 +273,9 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
 
     // Step 1: put these structs in a module
     writeln!(code, "pub mod context {{").unwrap();
-    writeln!(code, "    use uuid::Uuid;\n\n").unwrap();
+    if routes_use_uuid(routes) {
+        writeln!(code, "    use uuid::Uuid;\n\n").unwrap();
+    }
     writeln!(code, "    use crate::osc::route_context::ContextTrait;\n").unwrap();
 
     // Step 2: Generate context structs
@@ -282,7 +293,9 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
     writeln!(code, "pub mod context_kind {{").unwrap();
     writeln!(code, "    use regex::Regex;").unwrap();
     writeln!(code, "    use super::context;").unwrap();
-    writeln!(code, "    use uuid::Uuid;").unwrap();
+    if routes_use_uuid(routes) {
+        writeln!(code, "    use uuid::Uuid;").unwrap();
+    }
     writeln!(
         code,
         "    use crate::osc::route_context::{{ContextKindTrait}};\n"
@@ -920,7 +933,7 @@ fn main() {
     let routes: Vec<OscRoute> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
 
     let mut code = String::new();
-    write_imports(&mut code);
+    write_imports(&mut code, &routes);
     for route in &routes {
         let mut generated_structs = HashSet::new();
         write_node(&mut code, route, &mut generated_structs);
