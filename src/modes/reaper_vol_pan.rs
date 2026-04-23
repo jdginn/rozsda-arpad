@@ -211,33 +211,37 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 .insert(msg.track_guid, track_state.volume);
 
                             // Send mute LED
-                            let _ = self.to_xtouch.send(XTouchDownstreamMsg::MuteLED(
+                            let _ = self.to_xtouch.send(
                                 xtouch::MuteLEDMsg {
                                     idx: hw_channel as i32,
                                     state: LEDState::from(track_state.buttons.mute.is_on()),
-                                },
-                            ));
+                                }
+                                .into(),
+                            );
                             // Send solo LED
-                            let _ = self.to_xtouch.send(XTouchDownstreamMsg::SoloLED(
+                            let _ = self.to_xtouch.send(
                                 xtouch::SoloLEDMsg {
                                     idx: hw_channel as i32,
                                     state: LEDState::from(track_state.buttons.solo.is_on()),
-                                },
-                            ));
+                                }
+                                .into(),
+                            );
                             // Send arm LED
-                            let _ = self.to_xtouch.send(XTouchDownstreamMsg::ArmLED(
+                            let _ = self.to_xtouch.send(
                                 xtouch::ArmLEDMsg {
                                     idx: hw_channel as i32,
                                     state: LEDState::from(track_state.buttons.arm.is_on()),
-                                },
-                            ));
+                                }
+                                .into(),
+                            );
                             // Send pan
                             let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
                                 EncoderRingMsg {
                                     idx: hw_channel as i32,
                                     mode: xtouch::EncoderRingMode::Point,
                                     val: map_to_0xb(track_state.pan),
-                                },
+                                }
+                                .into(),
                             ));
                             // Update EPSILON tracking for pan since we just sent it
                             self.last_sent_pan.insert(msg.track_guid, track_state.pan);
@@ -262,12 +266,13 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                                 // Send volume update to XTouch for the corresponding fader
                                 let fader_value = msg.volume; // TODO: scale appropriately
-                                let _ = self.to_xtouch.send(XTouchDownstreamMsg::FaderAbs(
+                                let _ = self.to_xtouch.send(
                                     FaderAbsMsg {
                                         idx: hw_channel as i32,
                                         value: fader_value as f64,
-                                    },
-                                ));
+                                    }
+                                    .into(),
+                                );
                             }
                         }
                         curr_mode
@@ -338,13 +343,14 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                                 // Send pan update to XTouch for the corresponding encoder
                                 let pan_value = msg.pan; // TODO: scale appropriately
-                                let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
-                                    EncoderRingMsg {
+                                let _ = self.to_xtouch.send(
+                                    XTouchDownstreamMsg::EncoderRingLED(EncoderRingMsg {
                                         idx: hw_channel as i32,
                                         mode: xtouch::EncoderRingMode::Point,
                                         val: map_to_0xb(pan_value),
-                                    },
-                                ));
+                                    })
+                                    .into(),
+                                );
                             }
                         }
                         curr_mode
