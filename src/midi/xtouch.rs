@@ -3,8 +3,10 @@ use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
 use derive_more::From;
-use helgoboss_midi::Channel;
+use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
 use midir::{MidiInputPort, MidiOutputConnection};
+
+use derive_enum_from::EnumFrom;
 
 use crate::midi::base::{
     ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
@@ -47,7 +49,7 @@ pub struct EncoderRingMsg {
     pub val: u8,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, EnumFrom)]
 pub enum EncoderRingMode {
     Point,
     FromCenter,
@@ -170,7 +172,7 @@ pub struct ScribbleStripBackgroundColorMsg {
     pub color: Color,
 }
 
-#[derive(From, Debug)]
+#[derive(Debug, EnumFrom)]
 pub enum XTouchUpstreamMsg {
     Barrier(Barrier),
 
@@ -224,16 +226,23 @@ pub enum XTouchUpstreamMsg {
     UserRelease,
 }
 
-#[derive(Debug)]
+#[derive(Debug, EnumFrom)]
 pub enum XTouchDownstreamMsg {
+    #[enum_from]
     Barrier(Barrier),
 
     // Channel strip messages
+    #[enum_from]
     FaderAbs(FaderAbsMsg),
+    #[enum_from]
     EncoderRingLED(EncoderRingMsg),
+    #[enum_from]
     MuteLED(MuteLEDMsg),
+    #[enum_from]
     SoloLED(SoloLEDMsg),
+    #[enum_from]
     ArmLED(ArmLEDMsg),
+    #[enum_from]
     SelectLED(SelectLEDMsg),
 
     // Scribble strip messages
@@ -847,7 +856,7 @@ impl XTouchBuilder {
             let upstream_release = upstream.clone();
             e.bind_release(move |_value| {
                 upstream_release
-                    .send(XTouchUpstreamMsg::from(EncoderReleaseMsg { idx: i as i32 }))
+                    .send(EncoderReleaseMsg { idx: i as i32 }.into())
                     .unwrap();
             });
             encoders.push(e);
@@ -882,10 +891,10 @@ impl XTouchBuilder {
             let upstream_press = upstream.clone();
             b.bind_press(move |velocity| match velocity {
                 0 => upstream_press
-                    .send(XTouchUpstreamMsg::from(SoloRelease { idx: i as i32 }))
+                    .send(SoloRelease { idx: i as i32 }.into())
                     .unwrap(),
                 127 => upstream_press
-                    .send(XTouchUpstreamMsg::from(SoloPress { idx: i as i32 }))
+                    .send(SoloPress { idx: i as i32 }.into())
                     .unwrap(),
                 _ => panic!("Unexpected solo button velocity: {}", velocity),
             });

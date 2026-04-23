@@ -4,10 +4,12 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
+use derive_enum_from::EnumFrom;
+
 use crate::modes::mode_manager::Barrier;
 
 /// Set of messages that TrackManager can handle
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, EnumFrom)]
 pub enum TrackMsg {
     Barrier(Barrier),
     Query(TrackQuery),
@@ -30,126 +32,6 @@ pub enum TrackMsg {
     FXParamMin(FXParamMin),
     FXParamMax(FXParamMax),
     TrackData(TrackData),
-}
-
-impl From<Barrier> for TrackMsg {
-    fn from(msg: Barrier) -> Self {
-        TrackMsg::Barrier(msg)
-    }
-}
-
-impl From<TrackQuery> for TrackMsg {
-    fn from(msg: TrackQuery) -> Self {
-        TrackMsg::Query(msg)
-    }
-}
-
-impl From<Name> for TrackMsg {
-    fn from(msg: Name) -> Self {
-        TrackMsg::Name(msg)
-    }
-}
-
-impl From<ReaperTrackIndex> for TrackMsg {
-    fn from(msg: ReaperTrackIndex) -> Self {
-        TrackMsg::ReaperTrackIndex(msg)
-    }
-}
-
-impl From<Selected> for TrackMsg {
-    fn from(msg: Selected) -> Self {
-        TrackMsg::Selected(msg)
-    }
-}
-
-impl From<Muted> for TrackMsg {
-    fn from(msg: Muted) -> Self {
-        TrackMsg::Muted(msg)
-    }
-}
-
-impl From<Soloed> for TrackMsg {
-    fn from(msg: Soloed) -> Self {
-        TrackMsg::Soloed(msg)
-    }
-}
-
-impl From<Armed> for TrackMsg {
-    fn from(msg: Armed) -> Self {
-        TrackMsg::Armed(msg)
-    }
-}
-
-impl From<Volume> for TrackMsg {
-    fn from(msg: Volume) -> Self {
-        TrackMsg::Volume(msg)
-    }
-}
-
-impl From<Pan> for TrackMsg {
-    fn from(msg: Pan) -> Self {
-        TrackMsg::Pan(msg)
-    }
-}
-
-impl From<SendIndex> for TrackMsg {
-    fn from(msg: SendIndex) -> Self {
-        TrackMsg::SendIndex(msg)
-    }
-}
-
-impl From<SendLevel> for TrackMsg {
-    fn from(msg: SendLevel) -> Self {
-        TrackMsg::SendLevel(msg)
-    }
-}
-
-impl From<SendPan> for TrackMsg {
-    fn from(msg: SendPan) -> Self {
-        TrackMsg::SendPan(msg)
-    }
-}
-
-impl From<FXGuid> for TrackMsg {
-    fn from(msg: FXGuid) -> Self {
-        TrackMsg::FXGuid(msg)
-    }
-}
-
-impl From<FXName> for TrackMsg {
-    fn from(msg: FXName) -> Self {
-        TrackMsg::FXName(msg)
-    }
-}
-
-impl From<FXEnabled> for TrackMsg {
-    fn from(msg: FXEnabled) -> Self {
-        TrackMsg::FXEnabled(msg)
-    }
-}
-
-impl From<FXParamName> for TrackMsg {
-    fn from(msg: FXParamName) -> Self {
-        TrackMsg::FXParamName(msg)
-    }
-}
-
-impl From<FXParamValue> for TrackMsg {
-    fn from(msg: FXParamValue) -> Self {
-        TrackMsg::FXParamValue(msg)
-    }
-}
-
-impl From<FXParamMin> for TrackMsg {
-    fn from(msg: FXParamMin) -> Self {
-        TrackMsg::FXParamMin(msg)
-    }
-}
-
-impl From<FXParamMax> for TrackMsg {
-    fn from(msg: FXParamMax) -> Self {
-        TrackMsg::FXParamMax(msg)
-    }
 }
 
 // DataMsg doesn't need From impls because we expect to only be converting structs into TrackMsg.
