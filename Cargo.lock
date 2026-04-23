@@ -97,6 +97,7 @@ dependencies = [
  "bimap",
  "clap",
  "crossbeam-channel",
+ "derive_from_for_msg",
  "derive_more 2.1.0",
  "float-cmp",
  "helgoboss-midi",
@@ -319,6 +320,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
+]
+
+[[package]]
+name = "derive_from_for_msg"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]
