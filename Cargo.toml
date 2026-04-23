@@ -18,7 +18,7 @@ serde_json = "1.0"
 assert2 = "0.3.16"
 float-cmp = "0.10.0"
 uuid = { version = "1", features = ["v4"] }
-derive_from_for_msg = { path = "./derive_from_for_msg" }
+derive_enum_from = { path = "./derive_enum_from" }
 
 [workspace]
 members = ["tools/reaper_oscgen"]

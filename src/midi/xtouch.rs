@@ -2,8 +2,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
-use derive_more::From;
 use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
+
+use derive_enum_from::EnumFrom;
 
 use crate::midi::base::{
     ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
@@ -40,7 +41,7 @@ pub struct EncoderReleaseMsg {
     pub idx: i32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, EnumFrom)]
 pub enum EncoderRingLEDMsg {
     Blank(EncoderRingLEDBlankMsg),
     AllSegments(EncoderRingLEDAllSegmentsMsg),
@@ -156,7 +157,7 @@ pub struct SelectLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(From, Debug)]
+#[derive(Debug, EnumFrom)]
 pub enum XTouchUpstreamMsg {
     Barrier(Barrier),
 
@@ -210,16 +211,23 @@ pub enum XTouchUpstreamMsg {
     UserRelease,
 }
 
-#[derive(Debug)]
+#[derive(Debug, EnumFrom)]
 pub enum XTouchDownstreamMsg {
+    #[enum_from]
     Barrier(Barrier),
 
     // Channel strip messages
+    #[enum_from]
     FaderAbs(FaderAbsMsg),
+    #[enum_from]
     EncoderRingLED(EncoderRingLEDMsg),
+    #[enum_from]
     MuteLED(MuteLEDMsg),
+    #[enum_from]
     SoloLED(SoloLEDMsg),
+    #[enum_from]
     ArmLED(ArmLEDMsg),
+    #[enum_from]
     SelectLED(SelectLEDMsg),
 
     // Encoder assign messages
@@ -467,7 +475,7 @@ impl XTouchBuilder {
             let upstream_release = upstream.clone();
             e.bind_release(move |_value| {
                 upstream_release
-                    .send(XTouchUpstreamMsg::from(EncoderReleaseMsg { idx: i as i32 }))
+                    .send(EncoderReleaseMsg { idx: i as i32 }.into())
                     .unwrap();
             });
             encoders.push(e);
@@ -500,7 +508,7 @@ impl XTouchBuilder {
             };
             let upstream_press = upstream.clone();
             b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(SoloPress { idx: i as i32 }));
+                let _ = upstream_press.send(SoloPress { idx: i as i32 }.into());
             });
             let upstream_release = upstream.clone();
             b.bind_release(move |_velocity| {
