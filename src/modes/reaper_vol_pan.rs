@@ -30,9 +30,9 @@ pub fn map_to_0xb(x: f32) -> u8 {
 pub struct VolumePanMode {
     core: VolumeFadersCore,
     to_reaper: Sender<TrackMsg>,
-    from_reaper: Receiver<TrackMsg>,
+    _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
+    _from_xtouch: Receiver<XTouchUpstreamMsg>,
     pan_states: HashMap<Uuid, f32>,
 }
 
@@ -48,9 +48,9 @@ impl VolumePanMode {
             core: VolumeFadersCore::new(num_channels),
             pan_states: HashMap::new(),
             to_reaper,
-            from_reaper,
+            _from_reaper: from_reaper,
             to_xtouch,
-            from_xtouch,
+            _from_xtouch: from_xtouch,
         }
     }
 

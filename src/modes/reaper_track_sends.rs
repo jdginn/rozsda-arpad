@@ -31,9 +31,9 @@ pub struct TrackSendsMode {
     track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
     selected_track_guid: Option<String>,
     to_reaper: Sender<TrackMsg>,
-    from_reaper: Receiver<TrackMsg>,
+    _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
+    _from_xtouch: Receiver<XTouchUpstreamMsg>,
 }
 
 impl TrackSendsMode {
@@ -49,9 +49,9 @@ impl TrackSendsMode {
             track_send_states: Arc::new(Mutex::new(BTreeMap::new())),
             selected_track_guid: None,
             to_reaper,
-            from_reaper,
+            _from_reaper: from_reaper,
             to_xtouch,
-            from_xtouch,
+            _from_xtouch: from_xtouch,
         }
     }
 
