@@ -6,7 +6,7 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::xtouch::{
-    EncoderRingMode, EncoderRingMsg, FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg,
+    DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, UpstreamMsg,
 };
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track;
@@ -32,8 +32,8 @@ pub struct TrackSendsMode {
     selected_track_guid: Option<String>,
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
-    to_xtouch: Sender<XTouchDownstreamMsg>,
-    _from_xtouch: Receiver<XTouchUpstreamMsg>,
+    to_xtouch: Sender<DownstreamMsg>,
+    _from_xtouch: Receiver<UpstreamMsg>,
 }
 
 impl TrackSendsMode {
@@ -41,8 +41,8 @@ impl TrackSendsMode {
         num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<XTouchUpstreamMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        from_xtouch: Receiver<UpstreamMsg>,
+        to_xtouch: Sender<DownstreamMsg>,
     ) -> Self {
         TrackSendsMode {
             hw_assignments: Arc::new(Mutex::new(vec![None; num_channels])),
@@ -72,14 +72,14 @@ impl TrackSendsMode {
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for TrackSendsMode {
+impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsMode {
     fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
         match track::DataMsg::try_from(msg) {
             Err(TrackMsg::Barrier(barrier)) => {
                 // Forward barriers downstream (they need to reflect back upstream for the mode to
                 // transition)
                 self.to_xtouch
-                    .send(XTouchDownstreamMsg::Barrier(barrier))
+                    .send(DownstreamMsg::Barrier(barrier))
                     .unwrap();
                 match curr_mode.state {
                     // If we were already waiting on a barrier from upstream, check if this is the one
@@ -130,13 +130,13 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             .clone();
                         // Send current state to hardware for this send index
                         self.to_xtouch
-                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                            .send(DownstreamMsg::FaderAbs(FaderAbsMsg {
                                 idx: msg.send_index,
                                 value: state.level as f64, // TODO: scale appropriately
                             }))
                             .unwrap();
                         self.to_xtouch
-                            .send(XTouchDownstreamMsg::EncoderRingLED(
+                            .send(DownstreamMsg::EncoderRingLED(
                                 // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
                                 //     idx: msg.send_index,
                                 //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
@@ -162,7 +162,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                             let fader_value = msg.level; // TODO: scale appropriately
                             self.to_xtouch
-                                .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                .send(DownstreamMsg::FaderAbs(FaderAbsMsg {
                                     idx: msg.send_index,
                                     value: fader_value as f64,
                                 }))
@@ -181,7 +181,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 .pan = msg.pan;
 
                             self.to_xtouch
-                                .send(XTouchDownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                                .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                                     idx: msg.send_index,
                                     mode: EncoderRingMode::Point,
                                     val: map_to_0xb(msg.pan),
@@ -207,19 +207,19 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
     fn handle_messages_from_downstream(
         &mut self,
-        msg: XTouchUpstreamMsg,
+        msg: UpstreamMsg,
         curr_mode: ModeState,
     ) -> ModeState {
         match msg {
-            XTouchUpstreamMsg::GlobalPress => {
+            UpstreamMsg::GlobalPress => {
                 // Request transition to ReaperVolPan mode
                 ModeState {
                     mode: Mode::ReaperVolPan,
                     state: State::RequestingModeTransition,
                 }
             }
-            XTouchUpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
-            XTouchUpstreamMsg::FaderAbs(fader_msg) => {
+            UpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
+            UpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
                     self.to_reaper
                         .send(

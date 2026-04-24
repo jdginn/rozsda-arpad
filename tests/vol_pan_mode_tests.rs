@@ -13,8 +13,8 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use float_cmp::approx_eq;
 
 use arpad_rust::midi::xtouch::{
-    ArmPress, EncoderRingMode, EncoderTurnCW, FaderAbsMsg, LEDState, MutePress, SoloPress,
-    XTouchDownstreamMsg, XTouchUpstreamMsg,
+    ArmPress, DownstreamMsg, EncoderRingMode, EncoderTurnCW, FaderAbsMsg, LEDState, MutePress,
+    SoloPress, UpstreamMsg,
 };
 use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_vol_pan::{FADER_0DB, VolumePanMode};
@@ -28,8 +28,8 @@ fn setup_vol_pan_mode() -> (
     VolumePanMode,
     Sender<TrackMsg>,
     Receiver<TrackMsg>,
-    Sender<XTouchUpstreamMsg>,
-    Receiver<XTouchDownstreamMsg>,
+    Sender<UpstreamMsg>,
+    Receiver<DownstreamMsg>,
 ) {
     let (from_reaper_tx, from_reaper_rx) = unbounded();
     let (to_reaper_tx, to_reaper_rx) = unbounded();
@@ -72,7 +72,7 @@ macro_rules! assert_downstream_fader_abs_msg {
             .recv_timeout(Duration::from_millis(100))
             .expect("Expected to receive a FaderAbs message.");
 
-        if let XTouchDownstreamMsg::FaderAbs(fader_msg) = msg {
+        if let DownstreamMsg::FaderAbs(fader_msg) = msg {
             check!(fader_msg.idx == $expected_idx);
             check!(
                 approx_eq!(
@@ -86,7 +86,7 @@ macro_rules! assert_downstream_fader_abs_msg {
                 fader_msg.value
             );
         } else {
-            panic!("Expected XTouchDownstreamMsg::FaderAbs, but got {:?}", msg);
+            panic!("Expected DownstreamMsg::FaderAbs, but got {:?}", msg);
         }
     }};
 }
@@ -102,7 +102,7 @@ macro_rules! assert_downstream_encoder_ring_led_msg {
         );
 
         match result {
-            Ok(XTouchDownstreamMsg::EncoderRingLED(msg)) => {
+            Ok(DownstreamMsg::EncoderRingLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Encoder index should match");
                 check!(msg.val == $expected_val, "Encoder value should match");
             }
@@ -122,7 +122,7 @@ macro_rules! assert_downstream_mute_led_msg {
         check!(result.is_ok(), "Should receive MuteLED message");
 
         match result {
-            Ok(XTouchDownstreamMsg::MuteLED(msg)) => {
+            Ok(DownstreamMsg::MuteLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Mute LED index should match");
                 check!(
                     &msg.state == &$expected_state,
@@ -142,7 +142,7 @@ macro_rules! assert_downstream_solo_led_msg {
         check!(result.is_ok(), "Should receive SoloLED message");
 
         match result {
-            Ok(XTouchDownstreamMsg::SoloLED(msg)) => {
+            Ok(DownstreamMsg::SoloLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Solo LED index should match");
                 check!(
                     &msg.state == &$expected_state,
@@ -162,7 +162,7 @@ macro_rules! assert_downstream_arm_led_msg {
         check!(result.is_ok(), "Should receive ArmLED message");
 
         match result {
-            Ok(XTouchDownstreamMsg::ArmLED(msg)) => {
+            Ok(DownstreamMsg::ArmLED(msg)) => {
                 check!(msg.idx == $expected_idx, "Arm LED index should match");
                 check!(&msg.state == &$expected_state, "Arm LED state should match");
             }
@@ -277,7 +277,7 @@ fn assign_track_to_channel(
 /// Helper function to assert default track state messages after mapping
 /// Expects: fader at 0dB, all buttons off (LEDs off), pan at center (0.5)
 fn assert_downstream_default_track_mapping(
-    to_xtouch_rx: &Receiver<XTouchDownstreamMsg>,
+    to_xtouch_rx: &Receiver<DownstreamMsg>,
     hw_channel: i32,
 ) {
     assert_downstream_fader_abs_msg!(to_xtouch_rx, hw_channel, FADER_0DB as f64);
@@ -363,7 +363,7 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
 
     check!(result.is_ok(), "Should receive XTouch fader message");
 
-    if let Ok(XTouchDownstreamMsg::FaderAbs(fader_msg)) = result {
+    if let Ok(DownstreamMsg::FaderAbs(fader_msg)) = result {
         check!(fader_msg.idx == hw_channel, "Fader index should match");
         check!(
             approx_eq!(
@@ -406,7 +406,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     );
 
     // Simulate fader movement
-    let msg = XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+    let msg = UpstreamMsg::FaderAbs(FaderAbsMsg {
         idx: hw_channel,
         value: new_volume,
     });
@@ -516,7 +516,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
 
     // Simulate fader movement from hardware
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: hw_channel,
             value: new_volume,
         }),
@@ -542,7 +542,7 @@ fn test_04_upstream_fader_for_unmapped_channel_is_ignored() {
 
     // Simulate fader movement WITHOUT assigning any track to this channel
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: hw_channel,
             value: new_volume,
         }),
@@ -812,7 +812,7 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
 
     // Simulate mute button press
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::MutePress(MutePress { idx: hw_channel }),
+        UpstreamMsg::MutePress(MutePress { idx: hw_channel }),
         curr_mode,
     );
 
@@ -842,7 +842,7 @@ fn test_09_solo_button_sends_correct_messages() {
 
     // Simulate solo button press
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::SoloPress(SoloPress { idx: hw_channel }),
+        UpstreamMsg::SoloPress(SoloPress { idx: hw_channel }),
         curr_mode,
     );
 
@@ -872,7 +872,7 @@ fn test_10_arm_button_sends_correct_messages() {
 
     // Simulate arm button press
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::ArmPress(ArmPress { idx: hw_channel }),
+        UpstreamMsg::ArmPress(ArmPress { idx: hw_channel }),
         curr_mode,
     );
 
@@ -915,7 +915,7 @@ fn test_11_pan_encoder_changes_forward_correctly() {
 
     // Simulate encoder turn clockwise
     let result_mode = mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::EncoderTurnInc(EncoderTurnCW { idx: hw_channel }),
+        UpstreamMsg::EncoderTurnInc(EncoderTurnCW { idx: hw_channel }),
         curr_mode,
     );
 
@@ -1032,19 +1032,19 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     // Verify messages received in order
     let msg1 = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     assert!(
-        matches!(msg1, Ok(XTouchDownstreamMsg::FaderAbs(_))),
+        matches!(msg1, Ok(DownstreamMsg::FaderAbs(_))),
         "First should be fader"
     );
 
     let msg2 = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     assert!(
-        matches!(msg2, Ok(XTouchDownstreamMsg::EncoderRingLED(_))),
+        matches!(msg2, Ok(DownstreamMsg::EncoderRingLED(_))),
         "Second should be encoder"
     );
 
     let msg3 = to_xtouch_rx.recv_timeout(Duration::from_millis(100));
     assert!(
-        matches!(msg3, Ok(XTouchDownstreamMsg::MuteLED(_))),
+        matches!(msg3, Ok(DownstreamMsg::MuteLED(_))),
         "Third should be mute LED"
     );
 }
@@ -1072,7 +1072,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
 
     // Send multiple upstream messages in order
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: hw_channel,
             value: 0.6,
         }),
@@ -1080,7 +1080,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     );
 
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::MutePress(MutePress { idx: hw_channel }),
+        UpstreamMsg::MutePress(MutePress { idx: hw_channel }),
         curr_mode,
     );
 
@@ -1275,10 +1275,7 @@ fn test_complex_multi_track_integration() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.6);
 
     // Toggle mute on track 2 via hardware
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::MutePress(MutePress { idx: 2 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 2 }), curr_mode);
     // Should send upstream to Reaper (unmute)
     assert_upstream_muted_track_msg!(&to_reaper_rx, &track2_guid, false);
     // Should update LED
@@ -1308,10 +1305,7 @@ fn test_complex_multi_track_integration() {
     check_no_message!(&to_xtouch_rx, 100); // No additional messages
 
     // Verify upstream messages from old channel (1) have no effect
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::MutePress(MutePress { idx: 1 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 1 }), curr_mode);
     // Should have no effect since track 1 is no longer mapped to channel 1
     check_no_message!(&to_reaper_rx, 100);
     check_no_message!(&to_xtouch_rx, 100);
@@ -1379,26 +1373,20 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 7: Hardware interaction on multiple channels ===
     // Press arm button on channel 3 (track 3)
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::ArmPress(ArmPress { idx: 3 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::ArmPress(ArmPress { idx: 3 }), curr_mode);
     // Should toggle arm state (was on, now off)
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track3_guid, false);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 3, LEDState::Off);
 
     // Press solo button on channel 4 (track 1)
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::SoloPress(SoloPress { idx: 4 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::SoloPress(SoloPress { idx: 4 }), curr_mode);
     // Should toggle solo state (was off, now on)
     assert_upstream_soloed_track_msg!(&to_reaper_rx, &track1_guid, true);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 4, LEDState::On);
 
     // Move fader on channel 5 (track 4)
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 5,
             value: 0.55,
         }),
@@ -1449,22 +1437,13 @@ fn test_complex_multi_track_integration() {
     // Track 3: Unmapped
 
     // Final state verification via hardware interaction
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::MutePress(MutePress { idx: 4 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 4 }), curr_mode);
     assert_upstream_muted_track_msg!(&to_reaper_rx, &track1_guid, true); // Track 1 on channel 4
 
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::SoloPress(SoloPress { idx: 3 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::SoloPress(SoloPress { idx: 3 }), curr_mode);
     assert_upstream_soloed_track_msg!(&to_reaper_rx, &track2_guid, true); // Track 2 on channel 3
 
-    mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::ArmPress(ArmPress { idx: 5 }),
-        curr_mode,
-    );
+    mode.handle_messages_from_downstream(UpstreamMsg::ArmPress(ArmPress { idx: 5 }), curr_mode);
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track4_guid, true); // Track 4 on channel 5
 }
 
