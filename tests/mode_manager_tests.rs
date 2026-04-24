@@ -5,7 +5,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use float_cmp::approx_eq;
 use uuid::Uuid;
 
-use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
+use arpad_rust::midi::xtouch::{DownstreamMsg, FaderAbsMsg, UpstreamMsg};
 use arpad_rust::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeManager, ModeState};
 use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
 use arpad_rust::track::track;
@@ -152,13 +152,13 @@ macro_rules! assert_no_message {
     }};
 }
 
-fn drain_downstream_until_barrier(rx: &Receiver<XTouchDownstreamMsg>) -> Option<Barrier> {
+fn drain_downstream_until_barrier(rx: &Receiver<DownstreamMsg>) -> Option<Barrier> {
     let deadline = std::time::Instant::now() + Duration::from_millis(1); // pick a test-friendly bound
 
     loop {
         // Drain anything currently queued without waiting.
         while let Ok(msg) = rx.try_recv() {
-            if let XTouchDownstreamMsg::Barrier(b) = msg {
+            if let DownstreamMsg::Barrier(b) = msg {
                 return Some(b);
             }
         }
@@ -171,7 +171,7 @@ fn drain_downstream_until_barrier(rx: &Receiver<XTouchDownstreamMsg>) -> Option<
         let remaining = deadline - now;
 
         match rx.recv_timeout(remaining.min(Duration::from_millis(1))) {
-            Ok(XTouchDownstreamMsg::Barrier(b)) => return Some(b),
+            Ok(DownstreamMsg::Barrier(b)) => return Some(b),
             Ok(_) => continue, // got something else; loop and keep draining
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return None,
@@ -199,8 +199,8 @@ fn drain_and_print<T: std::fmt::Debug>(rx: &Receiver<T>) {
 fn setup_mode_manager_channels() -> (
     Sender<TrackMsg>,
     Receiver<TrackMsg>,
-    Sender<XTouchUpstreamMsg>,
-    Receiver<XTouchDownstreamMsg>,
+    Sender<UpstreamMsg>,
+    Receiver<DownstreamMsg>,
 ) {
     let (reaper_tx, reaper_rx) = bounded(128);
     let (xtouch_tx, xtouch_rx) = bounded(128);
@@ -240,9 +240,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     // We start in VolPan mode
 
     // Try to initiate transition from VolPan to Sends by simulating a MIDITracksPress
-    xtouch_tx
-        .send(XTouchUpstreamMsg::MIDITracksPress {})
-        .unwrap();
+    xtouch_tx.send(UpstreamMsg::MIDITracksPress {}).unwrap();
 
     // We should not transition modes if no track is selected
     assert_no_message!(to_reaper_rx, 1);
@@ -284,7 +282,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // XTouch messages should be forwarded upstream to reaper
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.75,
         }))
@@ -292,9 +290,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     assert_upstream_volume_track_msg!(to_reaper_rx, &track1_guid, 0.75);
 
     // Initiate mode transition
-    xtouch_tx
-        .send(XTouchUpstreamMsg::MIDITracksPress {})
-        .unwrap();
+    xtouch_tx.send(UpstreamMsg::MIDITracksPress {}).unwrap();
 
     // Swallow the track data query message
     to_reaper_rx.recv().unwrap();
@@ -304,7 +300,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     // From here on out, any messages from XTouch should be blocked until the mode transition is complete and the barrier is reflected back.
     // We will periodicially send more messages from XTouch and verify that they are blocked until we reflect the barrier back.
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.75,
         }))
@@ -325,7 +321,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // XTouch messages should still be blocked...
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.75,
         }))
@@ -342,7 +338,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // XTouch messages should still be blocked...
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.75,
         }))
@@ -358,7 +354,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // XTouch messages should still be blocked...
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.75,
         }))
@@ -367,12 +363,12 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
 
     // Once XTouch reflects the barrier, the mode transition should be complete and messages should flow again
     xtouch_tx
-        .send(XTouchUpstreamMsg::Barrier(barrier.unwrap()))
+        .send(UpstreamMsg::Barrier(barrier.unwrap()))
         .unwrap();
 
     // Messages should now be forwarded
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 1,
             value: 0.75,
         }))
@@ -432,9 +428,7 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     std::thread::sleep(Duration::from_millis(1));
 
     // Initiate mode transition
-    xtouch_tx
-        .send(XTouchUpstreamMsg::MIDITracksPress {})
-        .unwrap();
+    xtouch_tx.send(UpstreamMsg::MIDITracksPress {}).unwrap();
 
     // Swallow the track data query message
     to_reaper_rx.recv().unwrap();
@@ -470,12 +464,12 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
 
     // Once XTouch reflects the barrier, the mode transition should be complete and messages should flow again
     xtouch_tx
-        .send(XTouchUpstreamMsg::Barrier(barrier.unwrap()))
+        .send(UpstreamMsg::Barrier(barrier.unwrap()))
         .unwrap();
 
     // Messages should now be forwarded
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 1,
             value: 0.75,
         }))
@@ -484,7 +478,7 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     assert_upstream_send_level_track_msg!(to_reaper_rx, &track2_guid, 1, 0.75);
 
     // Now we are in Sends mode. Transition back to VolPan.
-    xtouch_tx.send(XTouchUpstreamMsg::GlobalPress {}).unwrap();
+    xtouch_tx.send(UpstreamMsg::GlobalPress {}).unwrap();
 
     // Swallow the track data query messages (one per track)
     to_reaper_rx.recv().unwrap();
@@ -505,18 +499,18 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
 
     // Once XTouch reflects the barrier, the mode transition should be complete and messages should flow again
     xtouch_tx
-        .send(XTouchUpstreamMsg::Barrier(barrier.unwrap()))
+        .send(UpstreamMsg::Barrier(barrier.unwrap()))
         .unwrap();
 
     // Transition complete; messages should now be forwarded to the correct track parameter again
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.11,
         }))
         .unwrap();
     xtouch_tx
-        .send(XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        .send(UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 1,
             value: 0.33,
         }))

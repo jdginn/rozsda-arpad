@@ -173,7 +173,7 @@ pub struct ScribbleStripBackgroundColorMsg {
 }
 
 #[derive(Clone, Copy, Debug, EnumFrom)]
-pub enum XTouchUpstreamMsg {
+pub enum UpstreamMsg {
     Barrier(Barrier),
 
     // Channel strip messages
@@ -227,7 +227,7 @@ pub enum XTouchUpstreamMsg {
 }
 
 #[derive(Debug, EnumFrom)]
-pub enum XTouchDownstreamMsg {
+pub enum DownstreamMsg {
     #[enum_from]
     Barrier(Barrier),
 
@@ -813,7 +813,7 @@ impl XTouchBuilder {
         }
     }
 
-    pub fn build(self, input: Receiver<XTouchDownstreamMsg>, upstream: Sender<XTouchUpstreamMsg>) {
+    pub fn build(self, input: Receiver<DownstreamMsg>, upstream: Sender<UpstreamMsg>) {
         let mut faders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut f = Fader {
@@ -822,7 +822,7 @@ impl XTouchBuilder {
             };
             let upstream_fader = upstream.clone();
             f.bind(move |value| {
-                let _ = upstream_fader.send(XTouchUpstreamMsg::from(FaderAbsMsg {
+                let _ = upstream_fader.send(UpstreamMsg::from(FaderAbsMsg {
                     idx: i as i32,
                     value: value as f64 / 16383.0, // TODO: check this...
                 }));
@@ -840,17 +840,17 @@ impl XTouchBuilder {
             let upstream_turn = upstream.clone();
             e.bind_turn(move |value| match value {
                 1 => upstream_turn
-                    .send(XTouchUpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
+                    .send(UpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
                     .unwrap(),
                 65 => upstream_turn
-                    .send(XTouchUpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
+                    .send(UpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
                     .unwrap(),
                 _ => panic!("Unexpected encoder turn value: {}", value),
             });
             let upstream_press = upstream.clone();
             e.bind_press(move |_value| {
                 upstream_press
-                    .send(XTouchUpstreamMsg::from(EncoderPressMsg { idx: i as i32 }))
+                    .send(UpstreamMsg::from(EncoderPressMsg { idx: i as i32 }))
                     .unwrap();
             });
             let upstream_release = upstream.clone();
@@ -872,10 +872,10 @@ impl XTouchBuilder {
             let upstream_press = upstream.clone();
             b.bind_press(move |velocity| match velocity {
                 0 => upstream_press
-                    .send(XTouchUpstreamMsg::from(MuteRelease { idx: i as i32 }))
+                    .send(UpstreamMsg::from(MuteRelease { idx: i as i32 }))
                     .unwrap(),
                 127 => upstream_press
-                    .send(XTouchUpstreamMsg::from(MutePress { idx: i as i32 }))
+                    .send(UpstreamMsg::from(MutePress { idx: i as i32 }))
                     .unwrap(),
                 _ => panic!("Unexpected mute button velocity: {}", velocity),
             });
@@ -910,10 +910,10 @@ impl XTouchBuilder {
             let upstream_press = upstream.clone();
             b.bind_press(move |velocity| match velocity {
                 0 => upstream_press
-                    .send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }))
+                    .send(UpstreamMsg::from(ArmRelease { idx: i as i32 }))
                     .unwrap(),
                 127 => upstream_press
-                    .send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }))
+                    .send(UpstreamMsg::from(ArmPress { idx: i as i32 }))
                     .unwrap(),
                 _ => panic!("Unexpected arm button velocity: {}", velocity),
             });
@@ -929,10 +929,10 @@ impl XTouchBuilder {
             let upstream_press = upstream.clone();
             b.bind_press(move |velocity| match velocity {
                 0 => upstream_press
-                    .send(XTouchUpstreamMsg::from(SelectRelease { idx: i as i32 }))
+                    .send(UpstreamMsg::from(SelectRelease { idx: i as i32 }))
                     .unwrap(),
                 127 => upstream_press
-                    .send(XTouchUpstreamMsg::from(SelectPress { idx: i as i32 }))
+                    .send(UpstreamMsg::from(SelectPress { idx: i as i32 }))
                     .unwrap(),
                 _ => panic!("Unexpected select button velocity: {}", velocity),
             });
@@ -947,10 +947,8 @@ impl XTouchBuilder {
         };
         let upstream_press = upstream.clone();
         b.bind_press(move |velocity| match velocity {
-            0 => upstream_press.send(XTouchUpstreamMsg::GlobalPress).unwrap(),
-            127 => upstream_press
-                .send(XTouchUpstreamMsg::GlobalRelease)
-                .unwrap(),
+            0 => upstream_press.send(UpstreamMsg::GlobalPress).unwrap(),
+            127 => upstream_press.send(UpstreamMsg::GlobalRelease).unwrap(),
             _ => panic!("Unexpected global button velocity: {}", velocity),
         });
         // MIDITracks view
@@ -961,12 +959,8 @@ impl XTouchBuilder {
         };
         let upstream_press = upstream.clone();
         b.bind_press(move |velocity| match velocity {
-            0 => upstream_press
-                .send(XTouchUpstreamMsg::MIDITracksPress)
-                .unwrap(),
-            127 => upstream_press
-                .send(XTouchUpstreamMsg::MIDITracksRelease)
-                .unwrap(),
+            0 => upstream_press.send(UpstreamMsg::MIDITracksPress).unwrap(),
+            127 => upstream_press.send(UpstreamMsg::MIDITracksRelease).unwrap(),
             _ => panic!("Unexpected MIDITracks button velocity: {}", velocity),
         });
 
@@ -988,12 +982,10 @@ impl XTouchBuilder {
             loop {
                 if let Ok(msg) = xtouch.input.recv() {
                     match msg {
-                        XTouchDownstreamMsg::Barrier(barrier_msg) => {
-                            let _ = xtouch
-                                .upstream
-                                .send(XTouchUpstreamMsg::Barrier(barrier_msg));
+                        DownstreamMsg::Barrier(barrier_msg) => {
+                            let _ = xtouch.upstream.send(UpstreamMsg::Barrier(barrier_msg));
                         }
-                        XTouchDownstreamMsg::FaderAbs(fader_msg) => {
+                        DownstreamMsg::FaderAbs(fader_msg) => {
                             println!(
                                 "Setting fader {} to value {} (raw value {})\n",
                                 fader_msg.idx,
@@ -1004,38 +996,38 @@ impl XTouchBuilder {
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::EncoderRingLED(encoder_led_msg) => {
+                        DownstreamMsg::EncoderRingLED(encoder_led_msg) => {
                             xtouch.encoders[encoder_led_msg.idx as usize]
                                 .set(encoder_led_msg.mode, encoder_led_msg.val)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::MuteLED(mute_msg) => {
+                        DownstreamMsg::MuteLED(mute_msg) => {
                             xtouch.mutes[mute_msg.idx as usize]
                                 .set(mute_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::SoloLED(solo_msg) => {
+                        DownstreamMsg::SoloLED(solo_msg) => {
                             xtouch.solos[solo_msg.idx as usize]
                                 .set(solo_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::ArmLED(arm_msg) => {
+                        DownstreamMsg::ArmLED(arm_msg) => {
                             xtouch.arms[arm_msg.idx as usize]
                                 .set(arm_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::SelectLED(select_msg) => {
+                        DownstreamMsg::SelectLED(select_msg) => {
                             xtouch.selects[select_msg.idx as usize]
                                 .set(select_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
+                        DownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
                             xtouch.scribbles.set(scribble_msg).unwrap();
                         }
-                        XTouchDownstreamMsg::ScribbleStripLine2Text(scribble_msg) => {
+                        DownstreamMsg::ScribbleStripLine2Text(scribble_msg) => {
                             xtouch.scribbles.set(scribble_msg).unwrap();
                         }
-                        XTouchDownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
+                        DownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
                             xtouch.scribbles.set(scribble_msg).unwrap();
                         }
                         _ => panic!("Message {:?} implemented yet!", msg),
@@ -1054,8 +1046,8 @@ pub struct XTouch {
     pub arms: Vec<Button>,
     pub selects: Vec<Button>,
     pub scribbles: ScribbleStrips,
-    input: Receiver<XTouchDownstreamMsg>,
-    upstream: Sender<XTouchUpstreamMsg>,
+    input: Receiver<DownstreamMsg>,
+    upstream: Sender<UpstreamMsg>,
 }
 
 #[cfg(test)]

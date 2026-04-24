@@ -5,7 +5,7 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use float_cmp::approx_eq;
 use uuid::Uuid;
 
-use arpad_rust::midi::xtouch::{FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg};
+use arpad_rust::midi::xtouch::{DownstreamMsg, FaderAbsMsg, UpstreamMsg};
 use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
 use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
 use arpad_rust::track::track;
@@ -27,8 +27,8 @@ fn setup_track_sends_mode() -> (
     TrackSendsMode,
     Sender<TrackMsg>,
     Receiver<TrackMsg>,
-    Sender<XTouchUpstreamMsg>,
-    Receiver<XTouchDownstreamMsg>,
+    Sender<UpstreamMsg>,
+    Receiver<DownstreamMsg>,
 ) {
     let (from_reaper_tx, from_reaper_rx) = unbounded();
     let (to_reaper_tx, to_reaper_rx) = unbounded();
@@ -66,7 +66,7 @@ macro_rules! assert_downstream_fader_abs_msg {
             .recv_timeout(Duration::from_millis(1))
             .expect("Expected to receive a FaderAbs message.");
 
-        if let XTouchDownstreamMsg::FaderAbs(fader_msg) = msg {
+        if let DownstreamMsg::FaderAbs(fader_msg) = msg {
             check!(fader_msg.idx == $expected_idx);
             check!(
                 approx_eq!(
@@ -80,7 +80,7 @@ macro_rules! assert_downstream_fader_abs_msg {
                 fader_msg.value
             );
         } else {
-            panic!("Expected XTouchDownstreamMsg::FaderAbs, but got {:?}", msg);
+            panic!("Expected DownstreamMsg::FaderAbs, but got {:?}", msg);
         }
     }};
 }
@@ -281,7 +281,7 @@ fn test_upstream_fader_for_mapped_channel_forwards_to_reaper() {
 
     // Simulate fader movement from hardware
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: new_level,
         }),
@@ -312,7 +312,7 @@ fn test_upstream_fader_for_unmapped_channel_is_ignored() {
 
     // Simulate fader movement WITHOUT assigning any send to this channel
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: new_level,
         }),
@@ -360,7 +360,7 @@ fn test_simultaneous_upstream_downstream_messages() {
 
     // Immediately send upstream message from hardware
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: 0.8,
         }),
@@ -433,7 +433,7 @@ fn test_remapping_sends_across_hardware_channels() {
 
     // Test hardware interaction on channel 1
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel_1,
             value: 0.7,
         }),
@@ -475,7 +475,7 @@ fn test_remapping_sends_across_hardware_channels() {
 
     // Channel 1 should now control target_guid_2
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel_1,
             value: 0.9,
         }),
@@ -748,7 +748,7 @@ fn test_fader_movement_sends_correct_upstream_message() {
 
     // Simulate fader movement
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: test_value,
         }),
@@ -854,7 +854,7 @@ fn test_upstream_messages_processed_in_correct_order() {
 
     // Send multiple upstream messages in order
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: 0.6,
         }),
@@ -862,7 +862,7 @@ fn test_upstream_messages_processed_in_correct_order() {
     );
 
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: 0.7,
         }),
@@ -1095,21 +1095,21 @@ fn test_complex_multi_send_integration() {
     // === PHASE 3: Hardware interaction on multiple channels ===
     // Move fader on channel 0
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx: 0, value: 0.4 }),
+        UpstreamMsg::FaderAbs(FaderAbsMsg { idx: 0, value: 0.4 }),
         curr_mode,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send1_guid, 0, 0.4);
 
     // Move fader on channel 1
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx: 1, value: 0.7 }),
+        UpstreamMsg::FaderAbs(FaderAbsMsg { idx: 1, value: 0.7 }),
         curr_mode,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send2_guid, 1, 0.7);
 
     // Move fader on channel 2
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 2,
             value: 0.95,
         }),
@@ -1259,7 +1259,7 @@ fn test_expanded_real_world_integration() {
     // === SCENARIO 2: User adjusts faders on hardware ===
     for (idx, level) in [(0, 0.4), (1, 0.6), (2, 0.8)] {
         mode.handle_messages_from_downstream(
-            XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx, value: level }),
+            UpstreamMsg::FaderAbs(FaderAbsMsg { idx, value: level }),
             curr_mode,
         );
     }
@@ -1337,7 +1337,7 @@ fn test_expanded_real_world_integration() {
 
     // Hardware interaction should work
     mode.handle_messages_from_downstream(
-        XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
+        UpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.65,
         }),

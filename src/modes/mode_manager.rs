@@ -6,7 +6,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
-use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
+use crate::midi::xtouch;
 use crate::modes::reaper_track_sends::TrackSendsMode;
 use crate::modes::reaper_vol_pan::VolumePanMode;
 use crate::track::track::TrackMsg;
@@ -91,8 +91,8 @@ pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
 pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
     to_reaper: Sender<TrackMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
-    _to_xtouch: Sender<XTouchDownstreamMsg>,
+    from_xtouch: Receiver<xtouch::UpstreamMsg>,
+    _to_xtouch: Sender<xtouch::DownstreamMsg>,
     pub curr_mode: ModeState,
 
     reaper_currently_selected_track_guid: Option<Uuid>,
@@ -104,8 +104,8 @@ impl ModeManager {
     pub fn start(
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<XTouchUpstreamMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        from_xtouch: Receiver<xtouch::UpstreamMsg>,
+        to_xtouch: Sender<xtouch::DownstreamMsg>,
     ) {
         let mut manager = ModeManager {
             from_reaper: from_reaper.clone(),
@@ -225,7 +225,7 @@ impl ModeManager {
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
                                             match xtouch_msg {
-                                                XTouchUpstreamMsg::Barrier(barrier) => {
+                                                xtouch::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
@@ -257,7 +257,7 @@ impl ModeManager {
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
                                             match xtouch_msg {
-                                                XTouchUpstreamMsg::Barrier(barrier) => {
+                                                xtouch::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
