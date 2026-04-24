@@ -134,7 +134,7 @@ fn assign_send_to_channel(
     send_index: i32,
     curr_mode: ModeState,
 ) -> ModeState {
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendIndex {
             track_guid: selected_track_guid,
             send_index,
@@ -170,7 +170,7 @@ fn test_track_sends_mode_assigns_sends_by_index() {
         send_guid: selected_track_guid, // For testing, we can use the same GUID
     };
 
-    let result_mode = mode.handle_downstream_messages(msg.into(), curr_mode);
+    let result_mode = mode.handle_messages_from_upstream(msg.into(), curr_mode);
 
     // Mode should remain unchanged
     assert_eq!(result_mode, curr_mode);
@@ -210,7 +210,7 @@ fn test_send_level_for_mapped_send_forwards_to_hardware() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send level update
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -240,7 +240,7 @@ fn test_send_level_for_unmapped_send_is_ignored() {
     let selected_track_guid = Uuid::new_v4();
 
     // Send level update WITHOUT assigning send to hardware channel
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -280,7 +280,7 @@ fn test_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     drain(&to_reaper_rx); // Clear any previous messages
 
     // Simulate fader movement from hardware
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: new_level,
@@ -311,7 +311,7 @@ fn test_upstream_fader_for_unmapped_channel_is_ignored() {
     };
 
     // Simulate fader movement WITHOUT assigning any send to this channel
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: new_level,
@@ -348,7 +348,7 @@ fn test_simultaneous_upstream_downstream_messages() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send downstream level update from Reaper
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -359,7 +359,7 @@ fn test_simultaneous_upstream_downstream_messages() {
     );
 
     // Immediately send upstream message from hardware
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: 0.8,
@@ -374,7 +374,7 @@ fn test_simultaneous_upstream_downstream_messages() {
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, 0.8);
 
     // Send another downstream update
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -420,7 +420,7 @@ fn test_remapping_sends_across_hardware_channels() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send level update to channel 1
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: channel_1,
@@ -432,7 +432,7 @@ fn test_remapping_sends_across_hardware_channels() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, channel_1, 0.5);
 
     // Test hardware interaction on channel 1
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel_1,
             value: 0.7,
@@ -452,7 +452,7 @@ fn test_remapping_sends_across_hardware_channels() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send level to second channel should work
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: channel_2,
@@ -474,7 +474,7 @@ fn test_remapping_sends_across_hardware_channels() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Channel 1 should now control target_guid_2
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel_1,
             value: 0.9,
@@ -529,7 +529,7 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
         curr_mode,
     );
     drain(&to_xtouch_rx); // Clear any previous messages
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: send_index_1,
@@ -541,7 +541,7 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, send_index_1, level_1 as f64);
 
     // Update level
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: send_index_1,
@@ -564,7 +564,7 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send level update to new send
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: send_index_2,
@@ -623,7 +623,7 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send levels to all three
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: send_index_1,
@@ -632,7 +632,7 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
         .into(),
         curr_mode,
     );
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: send_index_2,
@@ -641,7 +641,7 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
         .into(),
         curr_mode,
     );
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: send_index_3,
@@ -674,7 +674,7 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
     };
 
     // Send level updates BEFORE mapping - they should not be sent to hardware yet
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -688,7 +688,7 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
     check_no_message!(&to_xtouch_rx, 1);
 
     // Send another level update
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -747,7 +747,7 @@ fn test_fader_movement_sends_correct_upstream_message() {
     );
 
     // Simulate fader movement
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: test_value,
@@ -793,7 +793,7 @@ fn test_downstream_messages_sent_in_correct_order() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send multiple messages in order
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -803,7 +803,7 @@ fn test_downstream_messages_sent_in_correct_order() {
         curr_mode,
     );
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -813,7 +813,7 @@ fn test_downstream_messages_sent_in_correct_order() {
         curr_mode,
     );
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -853,7 +853,7 @@ fn test_upstream_messages_processed_in_correct_order() {
     );
 
     // Send multiple upstream messages in order
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: 0.6,
@@ -861,7 +861,7 @@ fn test_upstream_messages_processed_in_correct_order() {
         curr_mode,
     );
 
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: send_index,
             value: 0.7,
@@ -904,7 +904,7 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
         curr_mode,
     );
     drain(&to_xtouch_rx); // Clear any previous messages
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -917,7 +917,7 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
 
     // Send level change smaller than EPSILON
     let small_change = initial_level + (EPSILON / 2.0);
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -962,7 +962,7 @@ fn test_send_level_changes_above_epsilon_propagate() {
         curr_mode,
     );
     drain(&to_xtouch_rx); // Clear any previous messages
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -975,7 +975,7 @@ fn test_send_level_changes_above_epsilon_propagate() {
 
     // Send level change larger than EPSILON
     let large_change = initial_level + (EPSILON * 3.0);
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index,
@@ -1059,7 +1059,7 @@ fn test_complex_multi_send_integration() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // === PHASE 2: Send levels to all sends ===
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
@@ -1070,7 +1070,7 @@ fn test_complex_multi_send_integration() {
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.3);
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 1,
@@ -1081,7 +1081,7 @@ fn test_complex_multi_send_integration() {
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 1, 0.6);
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 2,
@@ -1094,21 +1094,21 @@ fn test_complex_multi_send_integration() {
 
     // === PHASE 3: Hardware interaction on multiple channels ===
     // Move fader on channel 0
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx: 0, value: 0.4 }),
         curr_mode,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send1_guid, 0, 0.4);
 
     // Move fader on channel 1
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx: 1, value: 0.7 }),
         curr_mode,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send2_guid, 1, 0.7);
 
     // Move fader on channel 2
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 2,
             value: 0.95,
@@ -1118,7 +1118,7 @@ fn test_complex_multi_send_integration() {
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send3_guid, 2, 0.95);
 
     // === PHASE 4: Update send levels from Reaper ===
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
@@ -1129,7 +1129,7 @@ fn test_complex_multi_send_integration() {
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.5);
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 1,
@@ -1166,7 +1166,7 @@ fn test_multiple_tracks_and_switching_selections() {
     drain(&to_xtouch_rx); // Clear any previous messages
 
     // Send levels for track 1 sends
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
@@ -1177,7 +1177,7 @@ fn test_multiple_tracks_and_switching_selections() {
     );
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.3);
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 1,
@@ -1193,7 +1193,7 @@ fn test_multiple_tracks_and_switching_selections() {
     drain(&to_xtouch_rx); // Clear messages from track 1
 
     // Send level for track 2 send 1
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
@@ -1209,7 +1209,7 @@ fn test_multiple_tracks_and_switching_selections() {
     drain(&to_xtouch_rx); // Clear messages from track 2
 
     // Send level should update correctly
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
@@ -1244,7 +1244,7 @@ fn test_expanded_real_world_integration() {
 
     // Set initial levels
     for (idx, level) in [(0, 0.3), (1, 0.5), (2, 0.7)] {
-        mode.handle_downstream_messages(
+        mode.handle_messages_from_upstream(
             track::SendLevel {
                 track_guid: selected_track_guid,
                 send_index: idx,
@@ -1258,7 +1258,7 @@ fn test_expanded_real_world_integration() {
 
     // === SCENARIO 2: User adjusts faders on hardware ===
     for (idx, level) in [(0, 0.4), (1, 0.6), (2, 0.8)] {
-        mode.handle_upstream_messages(
+        mode.handle_messages_from_downstream(
             XTouchUpstreamMsg::FaderAbs(FaderAbsMsg { idx, value: level }),
             curr_mode,
         );
@@ -1280,7 +1280,7 @@ fn test_expanded_real_world_integration() {
 
     // Track B levels
     for (idx, level) in [(0, 0.2), (1, 0.9)] {
-        mode.handle_downstream_messages(
+        mode.handle_messages_from_upstream(
             track::SendLevel {
                 track_guid: selected_track_guid,
                 send_index: idx,
@@ -1296,7 +1296,7 @@ fn test_expanded_real_world_integration() {
     assign_send_to_channel(&mut mode, selected_track_guid, track_b_send_1, 5, curr_mode);
     drain(&to_xtouch_rx); // Clear previous messages
 
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 5,
@@ -1324,7 +1324,7 @@ fn test_expanded_real_world_integration() {
     drain(&to_xtouch_rx); // Clear messages from Track B
 
     // Track A send 1 should work on channel 0 again
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
@@ -1336,7 +1336,7 @@ fn test_expanded_real_world_integration() {
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 0, 0.55);
 
     // Hardware interaction should work
-    mode.handle_upstream_messages(
+    mode.handle_messages_from_downstream(
         XTouchUpstreamMsg::FaderAbs(FaderAbsMsg {
             idx: 0,
             value: 0.65,
