@@ -111,9 +111,9 @@ pub struct ChannelStripMode {
     track_hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     track_states: HashMap<Uuid, MuteSoloArmButtonState>,
     to_reaper: Sender<TrackMsg>,
-    from_reaper: Receiver<TrackMsg>,
+    _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
+    _from_xtouch: Receiver<XTouchUpstreamMsg>,
 }
 
 impl ChannelStripMode {
@@ -131,9 +131,9 @@ impl ChannelStripMode {
             track_hw_assignments,
             track_states: button_states,
             to_reaper,
-            from_reaper,
+            _from_reaper: from_reaper,
             to_xtouch,
-            from_xtouch,
+            _from_xtouch: from_xtouch,
         }
     }
 

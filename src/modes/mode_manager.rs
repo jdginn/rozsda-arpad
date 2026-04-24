@@ -92,7 +92,7 @@ pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
     to_reaper: Sender<TrackMsg>,
     from_xtouch: Receiver<XTouchUpstreamMsg>,
-    to_xtouch: Sender<XTouchDownstreamMsg>,
+    _to_xtouch: Sender<XTouchDownstreamMsg>,
     pub curr_mode: ModeState,
 
     reaper_currently_selected_track_guid: Option<Uuid>,
@@ -111,7 +111,7 @@ impl ModeManager {
             from_reaper: from_reaper.clone(),
             to_reaper: to_reaper.clone(),
             from_xtouch: from_xtouch.clone(),
-            to_xtouch: to_xtouch.clone(),
+            _to_xtouch: to_xtouch.clone(),
             curr_mode: ModeState {
                 mode: Mode::ReaperVolPan,
                 state: State::Active,
