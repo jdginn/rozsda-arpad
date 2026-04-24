@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
-use crate::midi::xtouch;
 use crate::midi::xtouch::{
     ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, XTouchDownstreamMsg,
     XTouchUpstreamMsg,
