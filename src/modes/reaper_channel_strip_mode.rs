@@ -369,12 +369,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             }
             XTouchUpstreamMsg::ArmPress(arm_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid.clone()).arm.toggle();
+                    let new_state = self.get_track_state(guid).arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(
                             track::Armed {
-                                track_guid: guid.clone(),
+                                track_guid: guid,
                                 armed: new_state,
                             }
                             .into(),

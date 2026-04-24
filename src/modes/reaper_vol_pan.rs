@@ -155,15 +155,15 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             XTouchUpstreamMsg::EncoderTurnInc(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and increment it
-                    let current_pan = self.pan_states.entry(guid.clone()).or_insert(0.5); // Default center pan
+                    let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
                     let new_pan = (*current_pan + 0.05).min(1.0); // Clamp to max 1.0
-                    self.pan_states.insert(guid.clone(), new_pan);
+                    self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
                     self.to_reaper
                         .send(
                             track::Pan {
-                                track_guid: guid.clone(),
+                                track_guid: guid,
                                 pan: new_pan,
                             }
                             .into(),
@@ -184,15 +184,15 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             XTouchUpstreamMsg::EncoderTurnDec(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and decrement it
-                    let current_pan = self.pan_states.entry(guid.clone()).or_insert(0.5); // Default center pan
+                    let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
                     let new_pan = (*current_pan + 0.05).min(1.0); // Clamp to max 1.0
-                    self.pan_states.insert(guid.clone(), new_pan);
+                    self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
                     self.to_reaper
                         .send(
                             track::Pan {
-                                track_guid: guid.clone(),
+                                track_guid: guid,
                                 pan: new_pan,
                             }
                             .into(),
