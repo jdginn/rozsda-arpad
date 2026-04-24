@@ -67,8 +67,16 @@ pub struct ModeState {
 /// Each mode implementation should also implement initiate_mode_transition(self, ...) -> ModeState. This implementation
 /// will vary from mode to mode but usually will require sending a barrier to the upstream channel.
 pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
-    fn handle_upstream_messages(&mut self, msg: FromDownstream, curr_mode: ModeState) -> ModeState;
-    fn handle_downstream_messages(&mut self, msg: FromUpstream, curr_mode: ModeState) -> ModeState;
+    fn handle_messages_from_downstream(
+        &mut self,
+        msg: FromDownstream,
+        curr_mode: ModeState,
+    ) -> ModeState;
+    fn handle_messages_from_upstream(
+        &mut self,
+        msg: FromUpstream,
+        curr_mode: ModeState,
+    ) -> ModeState;
 }
 
 /// Presents all modes with a uniform interface, (mostly) seamlessly handling switching between modes.
@@ -194,10 +202,10 @@ impl ModeManager {
                                 // of jitter on the hw. But even then, we are not propagating
                                 // hardware settings upstream, so upstream should still always be
                                 // correct.
-                            handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
+                            handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
                         },
                         Mode::ReaperSends => {
-                            handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
+                            handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
                         },
                         _ => {panic!("Inside unknown mode in ModeManager")},
                         }
@@ -210,7 +218,7 @@ impl ModeManager {
                                 Mode::ReaperVolPan => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_upstream_messages(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
@@ -242,7 +250,7 @@ impl ModeManager {
                                 Mode::ReaperSends => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_track_sends.lock().unwrap().handle_upstream_messages(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
