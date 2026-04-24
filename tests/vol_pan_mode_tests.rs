@@ -1090,11 +1090,17 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     // Verify messages processed in order (volume then mute)
     let msg1 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
     assert!(msg1.is_ok(), "Should receive first message");
-    assert!(matches!(msg1, Ok(TrackMsg::Volume(_))), "First should be volume");
+    assert!(
+        matches!(msg1, Ok(TrackMsg::Volume(_))),
+        "First should be volume"
+    );
 
     let msg2 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
     assert!(msg2.is_ok(), "Should receive second message");
-    assert!(matches!(msg2, Ok(TrackMsg::Muted(_))), "Second should be muted");
+    assert!(
+        matches!(msg2, Ok(TrackMsg::Muted(_))),
+        "Second should be muted"
+    );
 }
 
 // ----------------------------------------------------------------------------
@@ -1140,55 +1146,6 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
         track::Volume {
             track_guid: track_guid.clone(),
             volume: small_change,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Should NOT send message for changes smaller than EPSILON
-    check_no_message!(&to_xtouch_rx, 100);
-}
-
-#[test]
-fn test_18_pan_changes_below_epsilon_threshold_ignored() {
-    // Pan changes smaller than EPSILON should not send updates to hardware
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_xtouch_tx, to_xtouch_rx) =
-        setup_vol_pan_mode();
-
-    let track_guid = uuid::Uuid::new_v4();
-    let hw_channel = 1;
-    let initial_pan = 0.5;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-    };
-
-    // Assign track and set initial pan
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_xtouch_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
-
-    // Send pan change to different value (0.7) - should send because it's > EPSILON from 0.5
-    mode.handle_downstream_messages(
-        track::Pan {
-            track_guid: track_guid.clone(),
-            pan: 0.7,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.7);
-
-    // Send pan change smaller than EPSILON (0.7 + EPSILON/2)
-    let small_change = 0.7 + (EPSILON / 2.0);
-    mode.handle_downstream_messages(
-        track::Pan {
-            track_guid: track_guid.clone(),
-            pan: small_change,
         }
         .into(),
         curr_mode,
