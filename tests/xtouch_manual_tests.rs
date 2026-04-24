@@ -7,8 +7,8 @@
 // Run with: cargo test --test xtouch_manual_tests -- --nocapture --test-threads=1
 
 use arpad_rust::midi::xtouch::{
-    ArmLEDMsg, ArmPress, ArmRelease, FaderAbsMsg, LEDState, MuteLEDMsg, MutePress, MuteRelease,
-    SoloLEDMsg, SoloPress, SoloRelease, XTouchDownstreamMsg, XTouchUpstreamMsg,
+    ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg,
+    SoloLEDMsg, XTouchDownstreamMsg, XTouchUpstreamMsg,
 };
 use crossbeam_channel::{Receiver, Sender, bounded};
 use std::io::{self, Write};

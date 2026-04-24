@@ -11,7 +11,6 @@ use std::time::Duration;
 use assert2::{assert, check};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use float_cmp::approx_eq;
-use uuid::Uuid;
 
 use arpad_rust::midi::xtouch::{
     ArmPress, EncoderTurnCW, FaderAbsMsg, LEDState, MutePress, SoloPress, XTouchDownstreamMsg,

@@ -8,7 +8,6 @@ use uuid::Uuid;
 
 use crate::traits::{Bind, Query, Set};
 
-use crate::osc::route_context::ContextTrait;
 
 #[derive(Debug)]
 pub struct OscError;
