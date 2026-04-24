@@ -4,7 +4,6 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::xtouch::{self, EncoderRingLEDRangePointMsg};
-use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
@@ -24,8 +23,8 @@ pub struct VolumePanMode {
     core: VolumeFadersCore,
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
-    to_xtouch: Sender<XTouchDownstreamMsg>,
-    _from_xtouch: Receiver<XTouchUpstreamMsg>,
+    to_xtouch: Sender<xtouch::DownstreamMsg>,
+    _from_xtouch: Receiver<xtouch::UpstreamMsg>,
     pan_states: HashMap<Uuid, f32>,
 }
 
@@ -34,8 +33,8 @@ impl VolumePanMode {
         num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<XTouchUpstreamMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        from_xtouch: Receiver<xtouch::UpstreamMsg>,
+        to_xtouch: Sender<xtouch::DownstreamMsg>,
     ) -> Self {
         VolumePanMode {
             core: VolumeFadersCore::new(num_channels),
@@ -52,14 +51,14 @@ impl VolumePanMode {
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for VolumePanMode {
+impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg> for VolumePanMode {
     fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
         match track::DataMsg::try_from(msg) {
             Err(TrackMsg::Barrier(barrier)) => {
                 // Forward barriers downstream (they need to reflect back upstream for the mode to
                 // transition)
                 self.to_xtouch
-                    .send(XTouchDownstreamMsg::Barrier(barrier))
+                    .send(xtouch::DownstreamMsg::Barrier(barrier))
                     .unwrap();
                 match curr_mode.state {
                     // If we were already waiting on a barrier from upstream, check if this is the one
@@ -133,21 +132,21 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
     }
     fn handle_messages_from_downstream(
         &mut self,
-        msg: XTouchUpstreamMsg,
+        msg: xtouch::UpstreamMsg,
         curr_mode: ModeState,
     ) -> ModeState {
         match msg {
             // GlobalPress maps to this mode!
-            XTouchUpstreamMsg::GlobalPress => curr_mode,
+            xtouch::UpstreamMsg::GlobalPress => curr_mode,
             // MIDITracksPress maps to ReaperSends mode
-            XTouchUpstreamMsg::MIDITracksPress => {
+            xtouch::UpstreamMsg::MIDITracksPress => {
                 // Request transition to ReaperSends mode
                 ModeState {
                     mode: Mode::ReaperSends,
                     state: State::RequestingModeTransition,
                 }
             }
-            XTouchUpstreamMsg::EncoderTurnInc(encoder_msg) => {
+            xtouch::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and increment it
                     let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
@@ -167,7 +166,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                     // Send encoder LED update downstream to hardware
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::EncoderRingLED(
+                        .send(xtouch::DownstreamMsg::EncoderRingLED(
                             xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
                                 idx: encoder_msg.idx,
                                 pos: new_pan,
@@ -177,7 +176,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                 }
                 curr_mode
             }
-            XTouchUpstreamMsg::EncoderTurnDec(encoder_msg) => {
+            xtouch::UpstreamMsg::EncoderTurnDec(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and decrement it
                     let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
@@ -197,7 +196,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                     // Send encoder LED update downstream to hardware
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::EncoderRingLED(
+                        .send(xtouch::DownstreamMsg::EncoderRingLED(
                             xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
                                 idx: encoder_msg.idx,
                                 pos: new_pan,

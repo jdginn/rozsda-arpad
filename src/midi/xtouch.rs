@@ -157,8 +157,8 @@ pub struct SelectLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(Debug, EnumFrom, Copy)]
-pub enum XTouchUpstreamMsg {
+#[derive(Debug, EnumFrom)]
+pub enum UpstreamMsg {
     Barrier(Barrier),
 
     // Channel strip messages
@@ -212,7 +212,7 @@ pub enum XTouchUpstreamMsg {
 }
 
 #[derive(Debug, EnumFrom)]
-pub enum XTouchDownstreamMsg {
+pub enum DownstreamMsg {
     #[enum_from]
     Barrier(Barrier),
 
@@ -430,7 +430,7 @@ pub struct XTouchBuilder {
 }
 
 impl XTouchBuilder {
-    pub fn build(self, input: Receiver<XTouchDownstreamMsg>, upstream: Sender<XTouchUpstreamMsg>) {
+    pub fn build(self, input: Receiver<DownstreamMsg>, upstream: Sender<UpstreamMsg>) {
         let mut faders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut f = Fader {
@@ -439,7 +439,7 @@ impl XTouchBuilder {
             };
             let upstream_fader = upstream.clone();
             f.bind(move |value| {
-                let _ = upstream_fader.send(XTouchUpstreamMsg::from(FaderAbsMsg {
+                let _ = upstream_fader.send(UpstreamMsg::from(FaderAbsMsg {
                     idx: i as i32,
                     value: value as f64 / 16383.0, // TODO: check this...
                 }));
@@ -459,17 +459,17 @@ impl XTouchBuilder {
             let upstream_turn = upstream.clone();
             e.bind_turn(move |value| match value {
                 1 => upstream_turn
-                    .send(XTouchUpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
+                    .send(UpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
                     .unwrap(),
                 65 => upstream_turn
-                    .send(XTouchUpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
+                    .send(UpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
                     .unwrap(),
                 _ => panic!("Unexpected encoder turn value: {}", value),
             });
             let upstream_press = upstream.clone();
             e.bind_press(move |_value| {
                 upstream_press
-                    .send(XTouchUpstreamMsg::from(EncoderPressMsg { idx: i as i32 }))
+                    .send(UpstreamMsg::from(EncoderPressMsg { idx: i as i32 }))
                     .unwrap();
             });
             let upstream_release = upstream.clone();
@@ -490,12 +490,11 @@ impl XTouchBuilder {
             };
             let upstream_press = upstream.clone();
             b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(MutePress { idx: i as i32 }));
+                let _ = upstream_press.send(UpstreamMsg::from(MutePress { idx: i as i32 }));
             });
             let upstream_release = upstream.clone();
             b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(MuteRelease { idx: i as i32 }));
+                let _ = upstream_release.send(UpstreamMsg::from(MuteRelease { idx: i as i32 }));
             });
             mutes.push(b);
         }
@@ -512,8 +511,7 @@ impl XTouchBuilder {
             });
             let upstream_release = upstream.clone();
             b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(SoloRelease { idx: i as i32 }));
+                let _ = upstream_release.send(UpstreamMsg::from(SoloRelease { idx: i as i32 }));
             });
             solos.push(b);
         }
@@ -526,12 +524,11 @@ impl XTouchBuilder {
             };
             let upstream_press = upstream.clone();
             b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }));
+                let _ = upstream_press.send(UpstreamMsg::from(ArmPress { idx: i as i32 }));
             });
             let upstream_release = upstream.clone();
             b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }));
+                let _ = upstream_release.send(UpstreamMsg::from(ArmRelease { idx: i as i32 }));
             });
             arms.push(b);
         }
@@ -544,12 +541,11 @@ impl XTouchBuilder {
             };
             let upstream_press = upstream.clone();
             b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }));
+                let _ = upstream_press.send(UpstreamMsg::from(ArmPress { idx: i as i32 }));
             });
             let upstream_release = upstream.clone();
             b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }));
+                let _ = upstream_release.send(UpstreamMsg::from(ArmRelease { idx: i as i32 }));
             });
             selects.push(b);
         }
@@ -569,59 +565,53 @@ impl XTouchBuilder {
             loop {
                 if let Ok(msg) = xtouch.input.recv() {
                     match msg {
-                        XTouchDownstreamMsg::Barrier(barrier_msg) => {
-                            let _ = xtouch
-                                .upstream
-                                .send(XTouchUpstreamMsg::Barrier(barrier_msg));
+                        DownstreamMsg::Barrier(barrier_msg) => {
+                            let _ = xtouch.upstream.send(UpstreamMsg::Barrier(barrier_msg));
                         }
-                        XTouchDownstreamMsg::FaderAbs(fader_msg) => {
+                        DownstreamMsg::FaderAbs(fader_msg) => {
                             xtouch.faders[fader_msg.idx as usize]
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::EncoderRingLED(encoder_led_msg) => {
-                            match encoder_led_msg {
-                                EncoderRingLEDMsg::Blank(blank_msg) => {
-                                    xtouch.encoders[blank_msg.idx as usize].set(0, 0).unwrap();
-                                }
-                                EncoderRingLEDMsg::AllSegments(all_msg) => {
-                                    xtouch.encoders[all_msg.idx as usize].set(127, 127).unwrap();
-                                }
-                                EncoderRingLEDMsg::RangePoint(range_msg) => {
-                                    let (val1, val2) =
-                                        encoder_led_mappings::range_point(range_msg.pos);
-                                    xtouch.encoders[range_msg.idx as usize]
-                                        .set(val1, val2)
-                                        .unwrap();
-                                }
-                                EncoderRingLEDMsg::RangeFill(fill_msg) => {
-                                    let (val1, val2) =
-                                        encoder_led_mappings::range_fill(fill_msg.pos);
-                                    xtouch.encoders[fill_msg.idx as usize]
-                                        .set(val1, val2)
-                                        .unwrap();
-                                }
-                                EncoderRingLEDMsg::Edges(edges_msg) => {
-                                    xtouch.encoders[edges_msg.idx as usize].set(1, 32).unwrap();
-                                }
+                        DownstreamMsg::EncoderRingLED(encoder_led_msg) => match encoder_led_msg {
+                            EncoderRingLEDMsg::Blank(blank_msg) => {
+                                xtouch.encoders[blank_msg.idx as usize].set(0, 0).unwrap();
                             }
-                        }
-                        XTouchDownstreamMsg::MuteLED(mute_msg) => {
+                            EncoderRingLEDMsg::AllSegments(all_msg) => {
+                                xtouch.encoders[all_msg.idx as usize].set(127, 127).unwrap();
+                            }
+                            EncoderRingLEDMsg::RangePoint(range_msg) => {
+                                let (val1, val2) = encoder_led_mappings::range_point(range_msg.pos);
+                                xtouch.encoders[range_msg.idx as usize]
+                                    .set(val1, val2)
+                                    .unwrap();
+                            }
+                            EncoderRingLEDMsg::RangeFill(fill_msg) => {
+                                let (val1, val2) = encoder_led_mappings::range_fill(fill_msg.pos);
+                                xtouch.encoders[fill_msg.idx as usize]
+                                    .set(val1, val2)
+                                    .unwrap();
+                            }
+                            EncoderRingLEDMsg::Edges(edges_msg) => {
+                                xtouch.encoders[edges_msg.idx as usize].set(1, 32).unwrap();
+                            }
+                        },
+                        DownstreamMsg::MuteLED(mute_msg) => {
                             xtouch.mutes[mute_msg.idx as usize]
                                 .set(mute_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::SoloLED(solo_msg) => {
+                        DownstreamMsg::SoloLED(solo_msg) => {
                             xtouch.solos[solo_msg.idx as usize]
                                 .set(solo_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::ArmLED(arm_msg) => {
+                        DownstreamMsg::ArmLED(arm_msg) => {
                             xtouch.arms[arm_msg.idx as usize]
                                 .set(arm_msg.state)
                                 .unwrap();
                         }
-                        XTouchDownstreamMsg::SelectLED(select_msg) => {
+                        DownstreamMsg::SelectLED(select_msg) => {
                             xtouch.selects[select_msg.idx as usize]
                                 .set(select_msg.state)
                                 .unwrap();
@@ -641,6 +631,6 @@ pub struct XTouch {
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,
     pub selects: Vec<Button>,
-    input: Receiver<XTouchDownstreamMsg>,
-    upstream: Sender<XTouchUpstreamMsg>,
+    input: Receiver<DownstreamMsg>,
+    upstream: Sender<UpstreamMsg>,
 }

@@ -7,8 +7,7 @@
 // Run with: cargo test --test xtouch_manual_tests -- --nocapture --test-threads=1
 
 use arpad_rust::midi::xtouch::{
-    ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, XTouchDownstreamMsg,
-    XTouchUpstreamMsg,
+    ArmLEDMsg, DownstreamMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, UpstreamMsg,
 };
 use crossbeam_channel::{Receiver, Sender, bounded};
 use std::io::{self, Write};
@@ -107,7 +106,7 @@ fn print_summary(summaries: &[TestSummary]) {
 // ============================================================================
 
 /// Test suite for XTouch downstream (output) messages
-fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
+fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     println!("\n========================================");
     println!("XTouch Output Tests");
     println!("========================================");
@@ -121,7 +120,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_min", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel,
             value: 0.0,
         }))
@@ -138,7 +137,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_max", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel,
             value: 1.0,
         }))
@@ -155,7 +154,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_unity", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
             idx: channel,
             value: 0.75, // Approximate unity gain position
         }))
@@ -173,7 +172,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("mute_led_channel_{}_on", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::MuteLED(MuteLEDMsg {
+        tx.send(DownstreamMsg::MuteLED(MuteLEDMsg {
             idx: channel,
             state: LEDState::On,
         }))
@@ -190,7 +189,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("mute_led_channel_{}_off", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::MuteLED(MuteLEDMsg {
+        tx.send(DownstreamMsg::MuteLED(MuteLEDMsg {
             idx: channel,
             state: LEDState::Off,
         }))
@@ -208,7 +207,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("solo_led_channel_{}_on", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::SoloLED(SoloLEDMsg {
+        tx.send(DownstreamMsg::SoloLED(SoloLEDMsg {
             idx: channel,
             state: LEDState::On,
         }))
@@ -225,7 +224,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("solo_led_channel_{}_off", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::SoloLED(SoloLEDMsg {
+        tx.send(DownstreamMsg::SoloLED(SoloLEDMsg {
             idx: channel,
             state: LEDState::Off,
         }))
@@ -243,7 +242,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("arm_led_channel_{}_on", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::ArmLED(ArmLEDMsg {
+        tx.send(DownstreamMsg::ArmLED(ArmLEDMsg {
             idx: channel,
             state: LEDState::On,
         }))
@@ -260,7 +259,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("arm_led_channel_{}_off", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(XTouchDownstreamMsg::ArmLED(ArmLEDMsg {
+        tx.send(DownstreamMsg::ArmLED(ArmLEDMsg {
             idx: channel,
             state: LEDState::Off,
         }))
@@ -276,27 +275,25 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
     // Test view button LEDs
     let test_name = "global_view_led_on";
     println!("\nTest: {}", test_name);
-    tx.send(XTouchDownstreamMsg::Global(LEDState::On)).unwrap();
+    tx.send(DownstreamMsg::Global(LEDState::On)).unwrap();
     let result = prompt_user("Did the 'Global View' LED turn ON?");
     results.push(TestSummary::new(test_name, result));
 
     let test_name = "global_view_led_off";
     println!("\nTest: {}", test_name);
-    tx.send(XTouchDownstreamMsg::Global(LEDState::Off)).unwrap();
+    tx.send(DownstreamMsg::Global(LEDState::Off)).unwrap();
     let result = prompt_user("Did the 'Global View' LED turn OFF?");
     results.push(TestSummary::new(test_name, result));
 
     let test_name = "midi_tracks_led_on";
     println!("\nTest: {}", test_name);
-    tx.send(XTouchDownstreamMsg::MIDITracks(LEDState::On))
-        .unwrap();
+    tx.send(DownstreamMsg::MIDITracks(LEDState::On)).unwrap();
     let result = prompt_user("Did the 'MIDI Tracks' LED turn ON?");
     results.push(TestSummary::new(test_name, result));
 
     let test_name = "midi_tracks_led_off";
     println!("\nTest: {}", test_name);
-    tx.send(XTouchDownstreamMsg::MIDITracks(LEDState::Off))
-        .unwrap();
+    tx.send(DownstreamMsg::MIDITracks(LEDState::Off)).unwrap();
     let result = prompt_user("Did the 'MIDI Tracks' LED turn OFF?");
     results.push(TestSummary::new(test_name, result));
 
@@ -308,7 +305,7 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
 // ============================================================================
 
 /// Test suite for XTouch upstream (input) messages
-fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
+fn run_input_tests(rx: &Receiver<UpstreamMsg>) -> Vec<TestSummary> {
     println!("\n========================================");
     println!("XTouch Input Tests");
     println!("========================================");
@@ -332,11 +329,11 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
         while timeout.elapsed() < Duration::from_secs(2) {
             if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
                 match msg {
-                    XTouchUpstreamMsg::MutePress(press) if press.idx == channel => {
+                    UpstreamMsg::MutePress(press) if press.idx == channel => {
                         received_press = true;
                         println!("  ✓ Received MutePress{{idx: {}}}", press.idx);
                     }
-                    XTouchUpstreamMsg::MuteRelease(release) if release.idx == channel => {
+                    UpstreamMsg::MuteRelease(release) if release.idx == channel => {
                         received_release = true;
                         println!("  ✓ Received MuteRelease{{idx: {}}}", release.idx);
                     }
@@ -376,11 +373,11 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
         while timeout.elapsed() < Duration::from_secs(2) {
             if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
                 match msg {
-                    XTouchUpstreamMsg::SoloPress(press) if press.idx == channel => {
+                    UpstreamMsg::SoloPress(press) if press.idx == channel => {
                         received_press = true;
                         println!("  ✓ Received SoloPress{{idx: {}}}", press.idx);
                     }
-                    XTouchUpstreamMsg::SoloRelease(release) if release.idx == channel => {
+                    UpstreamMsg::SoloRelease(release) if release.idx == channel => {
                         received_release = true;
                         println!("  ✓ Received SoloRelease{{idx: {}}}", release.idx);
                     }
@@ -420,11 +417,11 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
         while timeout.elapsed() < Duration::from_secs(2) {
             if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
                 match msg {
-                    XTouchUpstreamMsg::ArmPress(press) if press.idx == channel => {
+                    UpstreamMsg::ArmPress(press) if press.idx == channel => {
                         received_press = true;
                         println!("  ✓ Received ArmPress{{idx: {}}}", press.idx);
                     }
-                    XTouchUpstreamMsg::ArmRelease(release) if release.idx == channel => {
+                    UpstreamMsg::ArmRelease(release) if release.idx == channel => {
                         received_release = true;
                         println!("  ✓ Received ArmRelease{{idx: {}}}", release.idx);
                     }
@@ -463,7 +460,7 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
         let timeout = std::time::Instant::now();
         while timeout.elapsed() < Duration::from_secs(3) {
             if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
-                if let XTouchUpstreamMsg::FaderAbs(fader) = msg {
+                if let UpstreamMsg::FaderAbs(fader) = msg {
                     if fader.idx == channel {
                         received_message = true;
                         println!(
@@ -497,11 +494,11 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
     while timeout.elapsed() < Duration::from_secs(2) {
         if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
             match msg {
-                XTouchUpstreamMsg::GlobalPress => {
+                UpstreamMsg::GlobalPress => {
                     received_press = true;
                     println!("  ✓ Received GlobalPress");
                 }
-                XTouchUpstreamMsg::GlobalRelease => {
+                UpstreamMsg::GlobalRelease => {
                     received_release = true;
                     println!("  ✓ Received GlobalRelease");
                 }
@@ -537,11 +534,11 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
     while timeout.elapsed() < Duration::from_secs(2) {
         if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
             match msg {
-                XTouchUpstreamMsg::MIDITracksPress => {
+                UpstreamMsg::MIDITracksPress => {
                     received_press = true;
                     println!("  ✓ Received MIDITracksPress");
                 }
-                XTouchUpstreamMsg::MIDITracksRelease => {
+                UpstreamMsg::MIDITracksRelease => {
                     received_release = true;
                     println!("  ✓ Received MIDITracksRelease");
                 }
@@ -596,7 +593,7 @@ fn xtouch_manual_output_tests() {
 
     // Create channels for testing
     // In a real implementation, these would be connected to actual XTouch hardware
-    let (tx, _rx) = bounded::<XTouchDownstreamMsg>(128);
+    let (tx, _rx) = bounded::<DownstreamMsg>(128);
 
     println!("\nWARNING: This is a mock test - channels are not connected to real hardware.");
     println!("In production, these channels would be connected to XTouch MIDI device.\n");
@@ -628,7 +625,7 @@ fn xtouch_manual_input_tests() {
 
     // Create channels for testing
     // In a real implementation, these would be connected to actual XTouch hardware
-    let (_tx, rx) = bounded::<XTouchUpstreamMsg>(128);
+    let (_tx, rx) = bounded::<UpstreamMsg>(128);
 
     println!("\nWARNING: This is a mock test - channels are not connected to real hardware.");
     println!("In production, these channels would be connected to XTouch MIDI device.\n");
