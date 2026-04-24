@@ -304,7 +304,7 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
 
     // Send a ReaperTrackIndex message to assign the track to hardware channel 2
     let msg = track::ReaperTrackIndex {
-        track_guid: track_guid,
+        track_guid,
         track_index: Some(reaper_index),
     }
     .into();
@@ -340,7 +340,7 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     // First, assign the track to a hardware channel
     mode.handle_messages_from_upstream(
         track::ReaperTrackIndex {
-            track_guid: track_guid.clone(),
+            track_guid,
             track_index: Some(hw_channel),
         }
         .into(),
@@ -352,7 +352,7 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     // Now send a volume update
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: test_volume,
         }
         .into(),
@@ -400,7 +400,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     // Assign track to hardware channel
     mode.handle_messages_from_upstream(
         track::ReaperTrackIndex {
-            track_guid: track_guid,
+            track_guid,
             track_index: Some(hw_channel),
         }
         .into(),
@@ -461,7 +461,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     // Send volume update
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: test_volume,
         }
         .into(),
@@ -488,7 +488,7 @@ fn test_02_volume_message_for_unmapped_track_is_ignored() {
     // Send volume update WITHOUT assigning track to hardware channel
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: test_volume,
         }
         .into(),
@@ -584,7 +584,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_1, 0.5);
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: volume_1,
         }
         .into(),
@@ -595,7 +595,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     // Update volume
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: volume_2,
         }
         .into(),
@@ -628,7 +628,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     let volume_3 = 0.9;
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: volume_3,
         }
         .into(),
@@ -659,7 +659,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     // Send mute state
     mode.handle_messages_from_upstream(
         track::Muted {
-            track_guid: track_guid,
+            track_guid,
             muted: true,
         }
         .into(),
@@ -670,7 +670,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     // Send solo state
     mode.handle_messages_from_upstream(
         track::Soloed {
-            track_guid: track_guid,
+            track_guid,
             soloed: true,
         }
         .into(),
@@ -681,7 +681,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     // Send armed state
     mode.handle_messages_from_upstream(
         track::Armed {
-            track_guid: track_guid,
+            track_guid,
             armed: true,
         }
         .into(),
@@ -716,7 +716,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     // Send pan values - they should accumulate
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track_guid.clone(),
+            track_guid,
             pan: pan_value_1,
         }
         .into(),
@@ -728,7 +728,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
 
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track_guid.clone(),
+            track_guid,
             pan: pan_value_2,
         }
         .into(),
@@ -760,7 +760,7 @@ fn test_pan_state_accumulates_before_mapping() {
     // Send pan values BEFORE mapping - they should be accumulated but not sent downstream yet
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track_guid,
+            track_guid,
             pan: pan_value_1,
         }
         .into(),
@@ -772,7 +772,7 @@ fn test_pan_state_accumulates_before_mapping() {
 
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track_guid.clone(),
+            track_guid,
             pan: pan_value_2,
         }
         .into(),
@@ -906,7 +906,7 @@ fn test_11_pan_encoder_changes_forward_correctly() {
 
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track_guid.clone(),
+            track_guid,
             pan: initial_pan,
         }
         .into(),
@@ -1006,7 +1006,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     // Send multiple messages in order
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: 0.5,
         }
         .into(),
@@ -1015,7 +1015,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
 
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track_guid.clone(),
+            track_guid,
             pan: 0.3,
         }
         .into(),
@@ -1024,7 +1024,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
 
     mode.handle_messages_from_upstream(
         track::Muted {
-            track_guid: track_guid.clone(),
+            track_guid,
             muted: true,
         }
         .into(),
@@ -1131,7 +1131,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
 
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: initial_volume,
         }
         .into(),
@@ -1143,7 +1143,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     let small_change = initial_volume + (EPSILON / 2.0);
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: small_change,
         }
         .into(),
@@ -1181,7 +1181,7 @@ fn test_complex_multi_track_integration() {
     // Track 1: Volume only
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track1_guid.clone(),
+            track_guid: track1_guid,
             volume: 0.75,
         }
         .into(),
@@ -1192,7 +1192,7 @@ fn test_complex_multi_track_integration() {
     // Track 2: Multiple updates (pan, mute, volume)
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track2_guid.clone(),
+            track_guid: track2_guid,
             pan: 0.3,
         }
         .into(),
@@ -1200,7 +1200,7 @@ fn test_complex_multi_track_integration() {
     );
     mode.handle_messages_from_upstream(
         track::Muted {
-            track_guid: track2_guid.clone(),
+            track_guid: track2_guid,
             muted: true,
         }
         .into(),
@@ -1208,7 +1208,7 @@ fn test_complex_multi_track_integration() {
     );
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track2_guid.clone(),
+            track_guid: track2_guid,
             volume: 0.9,
         }
         .into(),
@@ -1221,7 +1221,7 @@ fn test_complex_multi_track_integration() {
     // This test documents current behavior
     mode.handle_messages_from_upstream(
         track::Soloed {
-            track_guid: track3_guid.clone(),
+            track_guid: track3_guid,
             soloed: true,
         }
         .into(),
@@ -1229,7 +1229,7 @@ fn test_complex_multi_track_integration() {
     );
     mode.handle_messages_from_upstream(
         track::Armed {
-            track_guid: track3_guid.clone(),
+            track_guid: track3_guid,
             armed: true,
         }
         .into(),
@@ -1268,7 +1268,7 @@ fn test_complex_multi_track_integration() {
     // Update track 1 volume (should send to hardware)
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track1_guid.clone(),
+            track_guid: track1_guid,
             volume: 0.6,
         }
         .into(),
@@ -1299,7 +1299,7 @@ fn test_complex_multi_track_integration() {
     // Verify old channel (1) no longer responds to track 1 updates
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track1_guid.clone(),
+            track_guid: track1_guid,
             volume: 0.5,
         }
         .into(),
@@ -1322,7 +1322,7 @@ fn test_complex_multi_track_integration() {
     // Track 4 gets multiple updates while unmapped
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track4_guid.clone(),
+            track_guid: track4_guid,
             pan: 0.2,
         }
         .into(),
@@ -1330,7 +1330,7 @@ fn test_complex_multi_track_integration() {
     );
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track4_guid.clone(),
+            track_guid: track4_guid,
             pan: 0.8, // Updated pan value
         }
         .into(),
@@ -1338,7 +1338,7 @@ fn test_complex_multi_track_integration() {
     );
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track4_guid.clone(),
+            track_guid: track4_guid,
             volume: 0.4,
         }
         .into(),
@@ -1346,7 +1346,7 @@ fn test_complex_multi_track_integration() {
     );
     mode.handle_messages_from_upstream(
         track::Muted {
-            track_guid: track4_guid.clone(),
+            track_guid: track4_guid,
             muted: true,
         }
         .into(),
@@ -1371,7 +1371,7 @@ fn test_complex_multi_track_integration() {
     // Large volume change on track 4 - should go through
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track4_guid.clone(),
+            track_guid: track4_guid,
             volume: 0.7,
         }
         .into(),
@@ -1422,7 +1422,7 @@ fn test_complex_multi_track_integration() {
     // Verify track 3 no longer responds on channel 3
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track3_guid.clone(),
+            track_guid: track3_guid,
             volume: 0.1,
         }
         .into(),
@@ -1433,7 +1433,7 @@ fn test_complex_multi_track_integration() {
     // Verify track 2 responds on new channel 3 but not old channel 2
     mode.handle_messages_from_upstream(
         track::Pan {
-            track_guid: track2_guid.clone(),
+            track_guid: track2_guid,
             pan: 0.65,
         }
         .into(),
@@ -1493,7 +1493,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send volume update (0.8)
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: 0.8,
         }
         .into(),
@@ -1504,7 +1504,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send small volume update (0.805) - should be filtered by EPSILON
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: 0.805,
         }
         .into(),
@@ -1524,7 +1524,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send another small volume update (0.81) - should be filtered again
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: 0.81,
         }
         .into(),
@@ -1535,7 +1535,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     // Send larger volume update (0.82) - should not be filtered
     mode.handle_messages_from_upstream(
         track::Volume {
-            track_guid: track_guid.clone(),
+            track_guid,
             volume: 0.82,
         }
         .into(),

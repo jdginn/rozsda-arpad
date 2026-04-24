@@ -154,7 +154,7 @@ impl ModeManager {
                         }
                         Mode::ReaperSends => {
                             if let Some(currently_selected_track_guid) =
-                                manager.reaper_currently_selected_track_guid.clone()
+                                manager.reaper_currently_selected_track_guid
                             {
                                 manager.curr_mode = reaper_track_sends_clone
                                     .lock()
