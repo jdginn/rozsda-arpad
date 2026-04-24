@@ -23,9 +23,9 @@ pub const FADER_0DB: f32 = 0.72; // Placeholder value for 0dB on fader scale
 pub struct VolumePanMode {
     core: VolumeFadersCore,
     to_reaper: Sender<TrackMsg>,
-    from_reaper: Receiver<TrackMsg>,
+    _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<XTouchDownstreamMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
+    _from_xtouch: Receiver<XTouchUpstreamMsg>,
     pan_states: HashMap<Uuid, f32>,
 }
 
@@ -41,9 +41,9 @@ impl VolumePanMode {
             core: VolumeFadersCore::new(num_channels),
             pan_states: HashMap::new(),
             to_reaper,
-            from_reaper,
+            _from_reaper: from_reaper,
             to_xtouch,
-            from_xtouch,
+            _from_xtouch: from_xtouch,
         }
     }
 
