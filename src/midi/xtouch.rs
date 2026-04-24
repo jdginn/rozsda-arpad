@@ -15,7 +15,7 @@ use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct FaderAbsMsg {
     pub idx: i32,
     pub value: f64, // Probably too much precision?
@@ -93,71 +93,71 @@ impl From<bool> for LEDState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct MutePress {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct MuteRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct MuteLEDMsg {
     pub idx: i32,
     pub state: LEDState,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct SoloPress {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct SoloRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct SoloLEDMsg {
     pub idx: i32,
     pub state: LEDState,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct ArmPress {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct ArmRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct ArmLEDMsg {
     pub idx: i32,
     pub state: LEDState,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct SelectPress {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct SelectRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct SelectLEDMsg {
     pub idx: i32,
     pub state: LEDState,
 }
 
-#[derive(Debug, EnumFrom)]
+#[derive(Debug, EnumFrom, Copy)]
 pub enum XTouchUpstreamMsg {
     Barrier(Barrier),
 
