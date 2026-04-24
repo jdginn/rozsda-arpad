@@ -223,7 +223,7 @@ fn assign_track_to_channel(
     hw_channel: i32,
     curr_mode: ModeState,
 ) -> ModeState {
-    mode.handle_downstream_messages(
+    mode.handle_messages_from_upstream(
         track::ReaperTrackIndex {
             track_guid: guid,
             track_index: Some(hw_channel),

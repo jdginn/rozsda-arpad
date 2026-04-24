@@ -53,7 +53,7 @@ impl VolumePanMode {
 }
 
 impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for VolumePanMode {
-    fn handle_downstream_messages(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+    fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
         match track::DataMsg::try_from(msg) {
             Err(TrackMsg::Barrier(barrier)) => {
                 // Forward barriers downstream (they need to reflect back upstream for the mode to
@@ -131,7 +131,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             }
         }
     }
-    fn handle_upstream_messages(
+    fn handle_messages_from_downstream(
         &mut self,
         msg: XTouchUpstreamMsg,
         curr_mode: ModeState,
