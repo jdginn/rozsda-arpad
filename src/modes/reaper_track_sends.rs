@@ -29,7 +29,9 @@ pub struct TrackSendsMode {
     hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     // Maps guid to info about the send it designates
     track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
-    selected_track_guid: Option<String>,
+    //FIXME: this should be UUID!!!
+    selected_track_guid: Option<Uuid>, //FIXME: when selected track changes, we need to initiate
+    //a mode transition!
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<DownstreamMsg>,
@@ -99,6 +101,17 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
             }
             Ok(msg) => {
                 match msg {
+                    // If a new track is selected, we need to initiate a mode transition so that we
+                    // are controlling sends for that new track
+                    track::DataMsg::Selected(msg) => {
+                        if msg.selected {
+                            self.selected_track_guid = Some(msg.track_guid);
+                            return ModeState {
+                                mode: Mode::ReaperSends,
+                                state: State::RequestingModeTransition,
+                            };
+                        }
+                    }
                     track::DataMsg::SendIndex(msg) => {
                         let mut assignments = self.hw_assignments.lock().unwrap();
 
@@ -219,6 +232,25 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 }
             }
             UpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
+            UpstreamMsg::InputsPress => {
+                // Request transition to ReaperChannelStrip mode
+                ModeState {
+                    mode: Mode::ReaperChannelStrip,
+                    state: State::RequestingModeTransition,
+                }
+            }
+            // If a new track is selected, we need to initiate a mode transition so that the
+            // widgets are controlling the new track
+            //
+            // TODO: do we need to handle this case separately or do we simply expect a reflected
+            // message back from Reaper?
+            UpstreamMsg::SelectPress(msg) => {
+                self.selected_track_guid = self.get_guid_for_hw_channel(msg.idx as usize);
+                ModeState {
+                    mode: Mode::ReaperSends,
+                    state: State::RequestingModeTransition,
+                }
+            }
             UpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
                     self.to_reaper
@@ -246,7 +278,7 @@ impl TrackSendsMode {
         upstream: Sender<TrackMsg>,
         selected_track_guid: Uuid,
     ) -> ModeState {
-        self.selected_track_guid = Some(selected_track_guid.to_string());
+        self.selected_track_guid = Some(selected_track_guid);
         upstream
             .send(TrackMsg::Query(TrackQuery {
                 guid: selected_track_guid,

@@ -11,6 +11,8 @@ use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
 use arpad_rust::track::track;
 use arpad_rust::track::track::TrackMsg;
 
+//FIXME: test switching selected track. Fader assignments should change.
+
 pub fn drain<T>(rx: &Receiver<T>) {
     // Drops (flushes) all messages currently buffered at the time we start draining,
     // plus any that arrive before we hit Empty.
