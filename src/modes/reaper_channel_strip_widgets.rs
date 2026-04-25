@@ -84,9 +84,7 @@ struct ChannelWidgetColors {
 /// ChannelWidgetCore handles shared logic around mode switching and message passing.
 struct ChannelWidgetCore {
     mode: ChannelWidgetMode,
-
-    upstream_tx: Sender<ChannelStripMsg>,
-    downstream_tx: Sender<xtouch::DownstreamMsg>,
+    to_downstream: Sender<xtouch::DownstreamMsg>,
 }
 
 impl ChannelWidgetCore {
@@ -131,11 +129,14 @@ impl ChannelWidgetCore {
 }
 
 /// ChannelWidetBehavior defines the specific behavior of some specific widget.
-trait ChannelWidgetBehavior {
+pub trait ChannelWidgetBehavior {
     const LABELS: ChannelWidgetLabels;
     const COLORS: ChannelWidgetColors;
     const INDEX: usize; // Which encoder this widget is associated with (0-15)
 
+    fn new() -> Self
+    where
+        Self: Sized;
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         None
     }
@@ -166,18 +167,28 @@ trait ChannelWidgetBehavior {
     fn on_click_shift(&mut self) -> Option<ChannelStripMsg> {
         None
     }
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg);
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg);
 
     // TODO: need to expose downstream updates somehow...
 }
 
 /// ChannelWidget is the full implementation of some widget.
-struct ChannelWidget<B: ChannelWidgetBehavior> {
+pub struct ChannelWidget<B: ChannelWidgetBehavior> {
     core: ChannelWidgetCore,
     behavior: B,
 }
 
 impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
+    pub fn new(to_downstream: Sender<xtouch::DownstreamMsg>) -> Self {
+        Self {
+            core: ChannelWidgetCore {
+                mode: ChannelWidgetMode::Default,
+                to_downstream,
+            },
+            behavior: B::new(),
+        }
+    }
+
     // By default, colors and labels switch between static values based on the mode.
     // In some situations, labels may need to change based on plugin state. In these cases,
     // override the method.
@@ -264,8 +275,8 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         self.behavior.on_click_shift();
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
-        self.behavior.handle_downstream_message(msg);
+    pub fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
+        self.behavior.handle_message_from_upstream(msg);
 
         // TODO: send feedback
     }
@@ -281,9 +292,21 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetLabel4(B::INDEX, self.label4()));
         // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetRange(B::INDEX, self.behavior.range())); FIXME: add to trait
         // self.core.downstream_tx.send(XtouchDownstreaMsg::SetLabel2(B::INDEX, self.behavior.label2()) FIXME: add to trait
+
+        // Toy example
+        self.core
+            .to_downstream
+            .send(xtouch::DownstreamMsg::EncoderRingLED(
+                xtouch::EncoderRingLEDRangePointMsg {
+                    idx: B::INDEX as i32,
+                    pos: 0.0, // TODO: get from behavior
+                }
+                .into(),
+            ))
+            .unwrap();
     }
 
-    fn handle_upstream_message(&mut self, msg: xtouch::UpstreamMsg) {
+    pub fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) {
         let index = B::INDEX;
         match msg {
             xtouch::UpstreamMsg::EncoderPress(msg) => {
@@ -332,7 +355,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
 // Widget implementations
 // ----------------------
 
-struct HPWidgetBehavior {
+pub struct HPWidgetBehavior {
     hpf_freq: f32,
     hpf_slope: f32,
     eq_type: EqType,
@@ -352,6 +375,14 @@ impl ChannelWidgetBehavior for HPWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            hpf_freq: 0.0,
+            hpf_slope: 0.0,
+            eq_type: EqType::Digital,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.hpf_freq += 1.0; // TODO: scale appropriately and add limits
@@ -381,7 +412,7 @@ impl ChannelWidgetBehavior for HPWidgetBehavior {
         Some(ChannelStripMsg::EqType(self.eq_type))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::HpfFreq(freq) => self.hpf_freq = freq,
             ChannelStripMsg::HpfSlope(slope) => self.hpf_slope = slope,
@@ -392,7 +423,7 @@ impl ChannelWidgetBehavior for HPWidgetBehavior {
     }
 }
 
-struct LowFreqWidgetBehavior {
+pub struct LowFreqWidgetBehavior {
     low_freq: f32,
     low_q: f32,
     low_slope: f32,
@@ -413,6 +444,15 @@ impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            low_freq: 80.0,
+            low_q: 1.0,
+            low_slope: 1.0,
+            low_band_mode: BandMode::Shelf,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.low_freq += 1.0; // TODO: scale appropriately and add limits
@@ -468,7 +508,7 @@ impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
         Some(ChannelStripMsg::LowBandMode(self.low_band_mode))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::LowFreq(freq) => self.low_freq = freq,
             ChannelStripMsg::LowQ(q) => self.low_q = q,
@@ -498,7 +538,7 @@ impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
 /// | 15 | Saturation  |                                  | Saturation type  |                | bypass Sat     |                 |
 /// | 16 | Gain        | Interface gain (only if armed)   | Trim             |                |                |                 |
 
-struct LowGainWidgetBehavior {
+pub struct LowGainWidgetBehavior {
     low_gain: f32,
 }
 
@@ -517,6 +557,10 @@ impl ChannelWidgetBehavior for LowGainWidgetBehavior {
         shift_press: 0xFFFF00,
     };
 
+    fn new() -> Self {
+        Self { low_gain: 0.0 }
+    }
+
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.low_gain += 1.0; // TODO: scale appropriately and add limits
         Some(ChannelStripMsg::LowGain(self.low_gain))
@@ -532,14 +576,14 @@ impl ChannelWidgetBehavior for LowGainWidgetBehavior {
         Some(ChannelStripMsg::LowGain(self.low_gain))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         if let ChannelStripMsg::LowGain(gain) = msg {
             self.low_gain = gain;
         }
     }
 }
 
-struct LmFreqWidgetBehavior {
+pub struct LmFreqWidgetBehavior {
     lm_freq: f32,
     lm_q: f32,
 }
@@ -558,6 +602,13 @@ impl ChannelWidgetBehavior for LmFreqWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            lm_freq: 800.0,
+            lm_q: 1.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.lm_freq += 1.0; // TODO: scale appropriately and add limits
@@ -579,7 +630,7 @@ impl ChannelWidgetBehavior for LmFreqWidgetBehavior {
         Some(ChannelStripMsg::LmQ(self.lm_q))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::LmFreq(freq) => self.lm_freq = freq,
             ChannelStripMsg::LmQ(q) => self.lm_q = q,
@@ -588,7 +639,7 @@ impl ChannelWidgetBehavior for LmFreqWidgetBehavior {
     }
 }
 
-struct LmGainWidgetBehavior {
+pub struct LmGainWidgetBehavior {
     lm_gain: f32,
 }
 
@@ -607,6 +658,10 @@ impl ChannelWidgetBehavior for LmGainWidgetBehavior {
         shift_press: 0xFFFF00,
     };
 
+    fn new() -> Self {
+        Self { lm_gain: 0.0 }
+    }
+
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.lm_gain += 1.0; // TODO: scale appropriately and add limits
         Some(ChannelStripMsg::LmGain(self.lm_gain))
@@ -622,14 +677,14 @@ impl ChannelWidgetBehavior for LmGainWidgetBehavior {
         Some(ChannelStripMsg::LmGain(self.lm_gain))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         if let ChannelStripMsg::LmGain(gain) = msg {
             self.lm_gain = gain;
         }
     }
 }
 
-struct HmFreqWidgetBehavior {
+pub struct HmFreqWidgetBehavior {
     hm_freq: f32,
     hm_q: f32,
 }
@@ -648,6 +703,13 @@ impl ChannelWidgetBehavior for HmFreqWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            hm_freq: 1500.0,
+            hm_q: 1.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.hm_freq += 1.0; // TODO: scale appropriately and add limits
@@ -669,7 +731,7 @@ impl ChannelWidgetBehavior for HmFreqWidgetBehavior {
         Some(ChannelStripMsg::HmQ(self.hm_q))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::HmFreq(freq) => self.hm_freq = freq,
             ChannelStripMsg::HmQ(q) => self.hm_q = q,
@@ -678,7 +740,7 @@ impl ChannelWidgetBehavior for HmFreqWidgetBehavior {
     }
 }
 
-struct HmGainWidgetBehavior {
+pub struct HmGainWidgetBehavior {
     hm_gain: f32,
 }
 
@@ -697,6 +759,10 @@ impl ChannelWidgetBehavior for HmGainWidgetBehavior {
         shift_press: 0xFFFF00,
     };
 
+    fn new() -> Self {
+        Self { hm_gain: 0.0 }
+    }
+
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.hm_gain += 1.0; // TODO: scale appropriately and add limits
         Some(ChannelStripMsg::HmGain(self.hm_gain))
@@ -712,14 +778,14 @@ impl ChannelWidgetBehavior for HmGainWidgetBehavior {
         Some(ChannelStripMsg::HmGain(self.hm_gain))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         if let ChannelStripMsg::HmGain(gain) = msg {
             self.hm_gain = gain;
         }
     }
 }
 
-struct HighFreqWidgetBehavior {
+pub struct HighFreqWidgetBehavior {
     high_freq: f32,
     high_q: f32,
     high_band_mode: BandMode,
@@ -739,6 +805,14 @@ impl ChannelWidgetBehavior for HighFreqWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            high_freq: 4000.0,
+            high_q: 1.0,
+            high_band_mode: BandMode::Bell,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.high_freq += 1.0; // TODO: scale appropriately and add limits
@@ -794,7 +868,7 @@ impl ChannelWidgetBehavior for HighFreqWidgetBehavior {
         Some(ChannelStripMsg::HighBandMode(self.high_band_mode))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::HighFreq(freq) => self.high_freq = freq,
             ChannelStripMsg::HighQ(q) => self.high_q = q,
@@ -804,7 +878,7 @@ impl ChannelWidgetBehavior for HighFreqWidgetBehavior {
     }
 }
 
-struct HighGainWidgetBehavior {
+pub struct HighGainWidgetBehavior {
     high_gain: f32,
     sides_gain: f32,
 }
@@ -823,6 +897,13 @@ impl ChannelWidgetBehavior for HighGainWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            high_gain: 1.0,
+            sides_gain: 1.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.high_gain += 1.0; // TODO: scale appropriately and add limits
@@ -854,7 +935,7 @@ impl ChannelWidgetBehavior for HighGainWidgetBehavior {
         Some(ChannelStripMsg::HighSidesGain(self.sides_gain))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::HighGain(gain) => self.high_gain = gain,
             ChannelStripMsg::HighSidesGain(gain) => self.sides_gain = gain,
@@ -863,7 +944,7 @@ impl ChannelWidgetBehavior for HighGainWidgetBehavior {
     }
 }
 
-struct EqPosWidgetBehavior {
+pub struct EqPosWidgetBehavior {
     eq_pos: EqPosition,
     comp_order: CompOrder,
     eq_bpyass: BypassMode,
@@ -883,6 +964,14 @@ impl ChannelWidgetBehavior for EqPosWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            eq_pos: EqPosition::First,
+            comp_order: CompOrder::FtoS,
+            eq_bpyass: BypassMode::Engaged,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         // Cycle through EQ positions
@@ -931,7 +1020,7 @@ impl ChannelWidgetBehavior for EqPosWidgetBehavior {
         Some(ChannelStripMsg::EqBypass(self.eq_bpyass))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::EqPos(pos) => self.eq_pos = pos,
             ChannelStripMsg::CompOrder(order) => self.comp_order = order,
@@ -941,7 +1030,7 @@ impl ChannelWidgetBehavior for EqPosWidgetBehavior {
     }
 }
 
-struct CompThreshWidgetBehavior {
+pub struct CompThreshWidgetBehavior {
     comp_thresh: f32,
     comp_sc_filter: f32,
     comp2_thresh: f32,
@@ -962,6 +1051,15 @@ impl ChannelWidgetBehavior for CompThreshWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            comp_thresh: -4.0,
+            comp_sc_filter: 60.0,
+            comp2_thresh: -4.0,
+            comp2_sc_filter: 60.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.comp_thresh += 1.0; // TODO: scale appropriately and add limits
@@ -1003,7 +1101,7 @@ impl ChannelWidgetBehavior for CompThreshWidgetBehavior {
         Some(ChannelStripMsg::Comp2ScFilter(self.comp2_sc_filter))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::CompThresh(thresh) => self.comp_thresh = thresh,
             ChannelStripMsg::CompScFilter(filter) => self.comp_sc_filter = filter,
@@ -1014,7 +1112,7 @@ impl ChannelWidgetBehavior for CompThreshWidgetBehavior {
     }
 }
 
-struct CompRatioWidgetBehavior {
+pub struct CompRatioWidgetBehavior {
     comp_ratio: f32,
     comp_attack: f32,
     comp2_ratio: f32,
@@ -1035,6 +1133,15 @@ impl ChannelWidgetBehavior for CompRatioWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            comp_ratio: 1.0,
+            comp_attack: 10.0,
+            comp2_ratio: 1.0,
+            comp2_attack: 10.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.comp_ratio += 1.0; // TODO: scale appropriately and add limits
@@ -1076,7 +1183,7 @@ impl ChannelWidgetBehavior for CompRatioWidgetBehavior {
         Some(ChannelStripMsg::Comp2Attack(self.comp2_attack))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::CompRatio(ratio) => self.comp_ratio = ratio,
             ChannelStripMsg::CompAttack(attack) => self.comp_attack = attack,
@@ -1087,7 +1194,7 @@ impl ChannelWidgetBehavior for CompRatioWidgetBehavior {
     }
 }
 
-struct CompMakeupWidgetBehavior {
+pub struct CompMakeupWidgetBehavior {
     comp_makeup: f32,
     comp_release: f32,
     comp2_makeup: f32,
@@ -1108,6 +1215,15 @@ impl ChannelWidgetBehavior for CompMakeupWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            comp_makeup: 0.0,
+            comp_release: 100.0,
+            comp2_makeup: 0.0,
+            comp2_release: 100.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.comp_makeup += 1.0; // TODO: scale appropriately and add limits
@@ -1149,7 +1265,7 @@ impl ChannelWidgetBehavior for CompMakeupWidgetBehavior {
         Some(ChannelStripMsg::Comp2Release(self.comp2_release))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::CompMakeup(makeup) => self.comp_makeup = makeup,
             ChannelStripMsg::CompRelease(release) => self.comp_release = release,
@@ -1160,7 +1276,7 @@ impl ChannelWidgetBehavior for CompMakeupWidgetBehavior {
     }
 }
 
-struct CompTypeWidgetBehavior {
+pub struct CompTypeWidgetBehavior {
     comp_type: CompType,
     comp2_type: CompType,
     comp_bypass: BypassMode,
@@ -1181,6 +1297,15 @@ impl ChannelWidgetBehavior for CompTypeWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            comp_type: CompType::Digital,
+            comp2_type: CompType::Digital,
+            comp_bypass: BypassMode::Engaged,
+            comp2_bypass: BypassMode::Bypassed,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         // Cycle through Comp types
@@ -1232,7 +1357,7 @@ impl ChannelWidgetBehavior for CompTypeWidgetBehavior {
         Some(ChannelStripMsg::Comp2Bypass(self.comp2_bypass))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::CompType(comp_type) => self.comp_type = comp_type,
             ChannelStripMsg::CompBypass(bypass) => self.comp_bypass = bypass,
@@ -1243,7 +1368,7 @@ impl ChannelWidgetBehavior for CompTypeWidgetBehavior {
     }
 }
 
-struct SaturationWidgetBehavior {
+pub struct SaturationWidgetBehavior {
     saturation: f32,
     saturation_type: SaturationType,
     saturation_bypass: BypassMode,
@@ -1263,6 +1388,14 @@ impl ChannelWidgetBehavior for SaturationWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            saturation: 0.0,
+            saturation_type: SaturationType::Console,
+            saturation_bypass: BypassMode::Bypassed,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.saturation += 1.0; // TODO: scale appropriately and add limits
@@ -1299,7 +1432,7 @@ impl ChannelWidgetBehavior for SaturationWidgetBehavior {
         Some(ChannelStripMsg::SaturationType(self.saturation_type))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::Saturation(saturation) => self.saturation = saturation,
             ChannelStripMsg::SaturationType(sat_type) => self.saturation_type = sat_type,
@@ -1309,7 +1442,7 @@ impl ChannelWidgetBehavior for SaturationWidgetBehavior {
     }
 }
 
-struct GainWidgetBehavior {
+pub struct GainWidgetBehavior {
     gain: f32,
     interface_gain: f32,
     trim: f32,
@@ -1329,6 +1462,14 @@ impl ChannelWidgetBehavior for GainWidgetBehavior {
         shift: 0x0000FF,
         shift_press: 0xFFFF00,
     };
+
+    fn new() -> Self {
+        Self {
+            gain: 0.0,
+            interface_gain: 0.0,
+            trim: 0.0,
+        }
+    }
 
     fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
         self.gain += 1.0; // TODO: scale appropriately and add limits
@@ -1360,7 +1501,7 @@ impl ChannelWidgetBehavior for GainWidgetBehavior {
         Some(ChannelStripMsg::Trim(self.trim))
     }
 
-    fn handle_downstream_message(&mut self, msg: ChannelStripMsg) {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
         match msg {
             ChannelStripMsg::Gain(gain) => self.gain = gain,
             ChannelStripMsg::InterfaceGain(interface_gain) => self.interface_gain = interface_gain,

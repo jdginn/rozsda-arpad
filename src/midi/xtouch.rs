@@ -157,7 +157,7 @@ pub struct SelectLEDMsg {
     pub state: LEDState,
 }
 
-#[derive(Debug, EnumFrom)]
+#[derive(Debug, EnumFrom, Copy, Clone)]
 pub enum UpstreamMsg {
     Barrier(Barrier),
 
