@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 
+use uuid::Uuid;
+
 use crate::track::track;
 use crate::track::track::TrackMsg;
-
-use uuid::Uuid;
 
 /// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
 /// |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
@@ -113,6 +113,11 @@ pub enum ChannelStripMsg {
     InterfaceGain(f32),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TranslationErr {
+    Dummy,
+}
+
 // ----
 //
 // ----
@@ -127,7 +132,7 @@ struct FXParamIdent {
 /// NOTE: we have one of these *PER TRACK*
 ///
 /// TODO: the hard part will be getting this to update dynamically based on the actual FX chain on the track
-struct ChannelStripMap {
+pub struct ChannelStripRouter {
     mux: Mutex<()>,
     plugin_names_by_index: Vec<String>,
     hp_filter: Option<FXParamIdent>,
@@ -188,9 +193,9 @@ struct ChannelStripMap {
     interface_gain: Option<FXParamIdent>,
 }
 
-impl ChannelStripMap {
-    fn new() -> Self {
-        ChannelStripMap {
+impl ChannelStripRouter {
+    pub fn new() -> Self {
+        ChannelStripRouter {
             mux: Mutex::new(()),
             plugin_names_by_index: Vec::new(),
             hp_filter: None,
@@ -239,7 +244,7 @@ impl ChannelStripMap {
         }
     }
 
-    fn update_plugin_state(&mut self, plugin_index: i32, plugin_name: &str) {
+    pub fn update_plugin_state(&mut self, plugin_index: i32, plugin_name: &str) {
         let _lock = self.mux.lock().unwrap();
         if (plugin_index as usize) >= self.plugin_names_by_index.len() {
             self.plugin_names_by_index
@@ -250,17 +255,25 @@ impl ChannelStripMap {
 
     fn update_mapping_locked(&mut self) {}
 
-    fn translate_downstream_msg(&self, msg: TrackMsg) -> Result<ChannelStripMsg, String> {
+    pub fn translate_message_from_upstream(
+        &self,
+        msg: track::DataMsg,
+    ) -> Result<Vec<ChannelStripMsg>, TranslationErr> {
         // FIXME: implement
-        Ok(ChannelStripMsg::HpfFreq(0.0))
+        Ok(vec![ChannelStripMsg::HpfFreq(0.0)])
     }
 
-    fn translate_upstream_msg(&self, msg: ChannelStripMsg) -> Result<TrackMsg, String> {
+    pub fn translate_message_from_downstream(
+        &self,
+        msg: ChannelStripMsg,
+    ) -> Result<Vec<TrackMsg>, TranslationErr> {
         // FIXME: implement
-        Ok(track::Muted {
-            track_guid: Uuid::new_v4(),
-            muted: true,
-        }
-        .into())
+        Ok(vec![
+            track::Muted {
+                track_guid: Uuid::new_v4(),
+                muted: true,
+            }
+            .into(),
+        ])
     }
 }

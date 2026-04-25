@@ -1,45 +1,95 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
 use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::xtouch;
-use crate::midi::xtouch::{ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg};
-use crate::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
-use crate::track::track;
-use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg};
+use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
+use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
+use crate::modes::reaper_channel_strip_widgets as widgets;
+use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
+use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg, TrackQuery};
 
-struct Button {
-    state: bool,
+struct Widgets {
+    hp_filter: widgets::ChannelWidget<widgets::HPWidgetBehavior>,
+    low_freq: widgets::ChannelWidget<widgets::LowFreqWidgetBehavior>,
+    low_gain: widgets::ChannelWidget<widgets::LowGainWidgetBehavior>,
+    lm_freq: widgets::ChannelWidget<widgets::LmFreqWidgetBehavior>,
+    lm_gain: widgets::ChannelWidget<widgets::LmGainWidgetBehavior>,
+    hm_freq: widgets::ChannelWidget<widgets::HmFreqWidgetBehavior>,
+    hm_gain: widgets::ChannelWidget<widgets::HmGainWidgetBehavior>,
+    high_freq: widgets::ChannelWidget<widgets::HighFreqWidgetBehavior>,
+    high_gain: widgets::ChannelWidget<widgets::HighGainWidgetBehavior>,
+    eq_pos: widgets::ChannelWidget<widgets::EqPosWidgetBehavior>,
+    comp_thresh: widgets::ChannelWidget<widgets::CompThreshWidgetBehavior>,
+    comp_ratio: widgets::ChannelWidget<widgets::CompRatioWidgetBehavior>,
+    comp_makeup: widgets::ChannelWidget<widgets::CompMakeupWidgetBehavior>,
+    comp_type: widgets::ChannelWidget<widgets::CompTypeWidgetBehavior>,
+    saturation: widgets::ChannelWidget<widgets::SaturationWidgetBehavior>,
+    gain: widgets::ChannelWidget<widgets::GainWidgetBehavior>,
 }
 
-impl Button {
-    fn new() -> Self {
-        Button { state: false }
+impl Widgets {
+    fn new(to_downstream: Sender<xtouch::DownstreamMsg>) -> Self {
+        Widgets {
+            hp_filter: widgets::ChannelWidget::new(to_downstream.clone()),
+            low_freq: widgets::ChannelWidget::new(to_downstream.clone()),
+            low_gain: widgets::ChannelWidget::new(to_downstream.clone()),
+            lm_freq: widgets::ChannelWidget::new(to_downstream.clone()),
+            lm_gain: widgets::ChannelWidget::new(to_downstream.clone()),
+            hm_freq: widgets::ChannelWidget::new(to_downstream.clone()),
+            hm_gain: widgets::ChannelWidget::new(to_downstream.clone()),
+            high_freq: widgets::ChannelWidget::new(to_downstream.clone()),
+            high_gain: widgets::ChannelWidget::new(to_downstream.clone()),
+            eq_pos: widgets::ChannelWidget::new(to_downstream.clone()),
+            comp_thresh: widgets::ChannelWidget::new(to_downstream.clone()),
+            comp_ratio: widgets::ChannelWidget::new(to_downstream.clone()),
+            comp_makeup: widgets::ChannelWidget::new(to_downstream.clone()),
+            comp_type: widgets::ChannelWidget::new(to_downstream.clone()),
+            saturation: widgets::ChannelWidget::new(to_downstream.clone()),
+            gain: widgets::ChannelWidget::new(to_downstream.clone()),
+        }
     }
 
-    fn is_on(&self) -> bool {
-        self.state
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
+        self.hp_filter.handle_message_from_upstream(msg);
+        self.low_freq.handle_message_from_upstream(msg);
+        self.low_gain.handle_message_from_upstream(msg);
+        self.lm_freq.handle_message_from_upstream(msg);
+        self.lm_gain.handle_message_from_upstream(msg);
+        self.hm_freq.handle_message_from_upstream(msg);
+        self.hm_gain.handle_message_from_upstream(msg);
+        self.high_freq.handle_message_from_upstream(msg);
+        self.high_gain.handle_message_from_upstream(msg);
+        self.eq_pos.handle_message_from_upstream(msg);
+        self.comp_thresh.handle_message_from_upstream(msg);
+        self.comp_ratio.handle_message_from_upstream(msg);
+        self.comp_makeup.handle_message_from_upstream(msg);
+        self.comp_type.handle_message_from_upstream(msg);
+        self.saturation.handle_message_from_upstream(msg);
+        self.gain.handle_message_from_upstream(msg);
     }
 
-    fn set(&mut self, new_state: bool) {
-        self.state = new_state;
-    }
+    fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) -> Vec<ChannelStripMsg> {
+        let mut responses = Vec::new();
 
-    fn toggle(&mut self) -> bool {
-        self.state = !self.state;
-        self.state
-    }
-}
+        responses.extend(self.hp_filter.handle_message_from_downstream(msg));
+        responses.extend(self.low_freq.handle_message_from_downstream(msg));
+        responses.extend(self.low_gain.handle_message_from_downstream(msg));
+        responses.extend(self.lm_freq.handle_message_from_downstream(msg));
+        responses.extend(self.lm_gain.handle_message_from_downstream(msg));
+        responses.extend(self.hm_freq.handle_message_from_downstream(msg));
+        responses.extend(self.hm_gain.handle_message_from_downstream(msg));
+        responses.extend(self.high_freq.handle_message_from_downstream(msg));
+        responses.extend(self.high_gain.handle_message_from_downstream(msg));
+        responses.extend(self.eq_pos.handle_message_from_downstream(msg));
+        responses.extend(self.comp_thresh.handle_message_from_downstream(msg));
+        responses.extend(self.comp_ratio.handle_message_from_downstream(msg));
+        responses.extend(self.comp_makeup.handle_message_from_downstream(msg));
+        responses.extend(self.comp_type.handle_message_from_downstream(msg));
+        responses.extend(self.saturation.handle_message_from_downstream(msg));
+        responses.extend(self.gain.handle_message_from_downstream(msg));
 
-// Collection of state for the buttons repeated for each channel on the hw controller
-//
-// TODO: this might be too implementation-specific to live here?
-struct MuteSoloArmButtonState {
-    mute: Button,
-    solo: Button,
-    arm: Button,
+        responses
+    }
 }
 
 /// Implements a mode where the faders and Arm/Mute/Solo/Select buttons behave the same as VolumePanMode
@@ -105,9 +155,10 @@ struct MuteSoloArmButtonState {
 /// - Trim adjust level leaving the channel strip.
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
 pub struct ChannelStripMode {
-    // Maps each channel on the hardware controller to a Reaper track
-    track_hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
-    track_states: HashMap<Uuid, MuteSoloArmButtonState>,
+    core: VolumeFadersCore,
+    router: ChannelStripRouter,
+    widgets: Widgets,
+    selected_track_guid: Option<Uuid>,
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<xtouch::DownstreamMsg>,
@@ -122,42 +173,16 @@ impl ChannelStripMode {
         from_xtouch: Receiver<xtouch::UpstreamMsg>,
         to_xtouch: Sender<xtouch::DownstreamMsg>,
     ) -> Self {
-        let track_hw_assignments = Arc::new(Mutex::new(vec![None; num_channels]));
-        let button_states = HashMap::new();
-
         ChannelStripMode {
-            track_hw_assignments,
-            track_states: button_states,
+            core: VolumeFadersCore::new(num_channels),
+            router: ChannelStripRouter::new(),
+            widgets: Widgets::new(to_xtouch.clone()),
+            selected_track_guid: None,
             to_reaper,
             _from_reaper: from_reaper,
             to_xtouch,
             _from_xtouch: from_xtouch,
         }
-    }
-
-    fn get_track_state(&mut self, guid: Uuid) -> &mut MuteSoloArmButtonState {
-        self.track_states
-            .entry(guid)
-            .or_insert(MuteSoloArmButtonState {
-                mute: Button::new(),
-                solo: Button::new(),
-                arm: Button::new(),
-            })
-    }
-
-    fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
-        let assignments = self.track_hw_assignments.lock().unwrap();
-        assignments[hw_channel + 1]
-    }
-
-    // For a given track GUID, find which hardware channel it's assigned to (if any)
-    pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
-        let assignments = self.track_hw_assignments.lock().unwrap();
-        assignments
-            .iter()
-            .enumerate()
-            .find(|(_, assigned_guid)| *assigned_guid == &Some(guid))
-            .map(|(hw_channel, _)| hw_channel - 1)
     }
 }
 
@@ -177,92 +202,57 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                     // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
                     State::WaitingBarrierFromUpstream(expected_barrier) => {
                         if barrier == expected_barrier {
-                            return ModeState {
+                            ModeState {
                                 mode: curr_mode.mode,
                                 state: State::WaitingBarrierFromDownstream(barrier),
-                            };
+                            }
                         } else {
-                            return curr_mode;
+                            curr_mode
                         }
                     }
-                    _ => return curr_mode,
+                    _ => curr_mode,
                 }
             }
             Ok(msg) => {
                 match msg {
-                    // We use track index according to reaper to assign tracks to hardware channels
-                    TrackDataMsg::ReaperTrackIndex(msg) => {
-                        if let Some(index) = msg.track_index {
-                            self.track_hw_assignments.lock().unwrap()[index as usize] =
-                                Some(msg.track_guid);
-                            return curr_mode;
+                    // If a new track is selected, initiate a mode transition to make widgets now
+                    // point to that new track.
+                    TrackDataMsg::Selected(msg) => {
+                        if msg.selected {
+                            self.selected_track_guid = Some(msg.track_guid);
+                            ModeState {
+                                mode: Mode::ReaperChannelStrip,
+                                state: State::RequestingModeTransition,
+                            }
+                        } else {
+                            curr_mode
                         }
-                    }
-                    TrackDataMsg::Volume(msg) => {
-                        if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                            // Send volume update to XTouch for the corresponding fader
-                            let fader_value = msg.volume; // TODO: scale appropriately
-                            let _ =
-                                self.to_xtouch
-                                    .send(xtouch::DownstreamMsg::FaderAbs(FaderAbsMsg {
-                                        idx: hw_channel as i32,
-                                        value: fader_value as f64,
-                                    }));
-                        }
-                        return curr_mode;
-                    }
-                    TrackDataMsg::Muted(msg) => {
-                        if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                            self.get_track_state(msg.track_guid).mute.set(msg.muted);
-                            // Send mute LED update to XTouch
-                            let _ =
-                                self.to_xtouch
-                                    .send(xtouch::DownstreamMsg::MuteLED(MuteLEDMsg {
-                                        idx: hw_channel as i32,
-                                        state: LEDState::from(msg.muted),
-                                    }));
-                        }
-                        return curr_mode;
-                    }
-                    TrackDataMsg::Soloed(msg) => {
-                        if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                            self.get_track_state(msg.track_guid).solo.set(msg.soloed);
-                            // Send solo LED update to XTouch
-                            let _ =
-                                self.to_xtouch
-                                    .send(xtouch::DownstreamMsg::SoloLED(SoloLEDMsg {
-                                        idx: hw_channel as i32,
-                                        state: LEDState::from(msg.soloed),
-                                    }));
-                        }
-                        return curr_mode;
-                    }
-                    TrackDataMsg::Armed(msg) => {
-                        if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                            self.get_track_state(msg.track_guid).arm.set(msg.armed);
-                            // Send arm LED update to XTouch
-                            let _ = self
-                                .to_xtouch
-                                .send(xtouch::DownstreamMsg::ArmLED(ArmLEDMsg {
-                                    idx: hw_channel as i32,
-                                    state: LEDState::from(msg.armed),
-                                }));
-                        }
-                        return curr_mode;
                     }
                     _ => {
+                        // First handle the functionality that is not unique to ChannelStripMode
+                        // (e.g. volume on faders, mute/arm/solo buttons)
+                        self.core.handle_message_from_upstream(
+                            msg.clone(),
+                            self.to_xtouch.clone(),
+                            |_| {},
+                        );
+                        if let Ok(translated_msgs) =
+                            self.router.translate_message_from_upstream(msg)
+                        {
+                            for translated_msg in translated_msgs {
+                                self.widgets.handle_message_from_upstream(translated_msg);
+                            }
+                        };
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
-                        return curr_mode;
+                        curr_mode
                     }
                 }
             }
             Err(_) => {
                 // Ignore messages that fail to parse as TrackDataMsg (e.g., ModeTransition, etc.)
-                return curr_mode;
+                curr_mode
             }
         }
-
-        curr_mode
     }
     fn handle_messages_from_downstream(
         &mut self,
@@ -309,89 +299,64 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 state: State::RequestingModeTransition,
             },
             xtouch::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
-            xtouch::UpstreamMsg::FaderAbs(fader_msg) => {
-                if let Some(guid) =
-                    &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
-                {
-                    // Send volume update to Reaper for the corresponding track
-                    let _ = self.to_reaper.send(
-                        track::Volume {
-                            track_guid: *guid,
-                            volume: fader_msg.value as f32, // TODO: Need to scale appropriately
+            // If a new track is selected, we need to initiate a mode transition so that the
+            // widgets are controlling the new track
+            //
+            // TODO: do we need to handle this case separately or do we simply expect a reflected
+            // message back from Reaper?
+            xtouch::UpstreamMsg::SelectPress(msg) => {
+                self.selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
+                ModeState {
+                    mode: Mode::ReaperChannelStrip,
+                    state: State::RequestingModeTransition,
+                }
+            }
+            _ => {
+                // Handle messages not specific to ChannelStripMode (e.g. faders, mute/arm/solo)
+                self.core.handle_message_from_downstream(
+                    msg,
+                    self.to_reaper.clone(),
+                    self.to_xtouch.clone(),
+                );
+                // Handle messages to the widgets
+                let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
+                // Each upstream message may generate one or more ChannelStripMsgs
+                for channel_strip_msg in channel_strip_msgs {
+                    // Each channel_strip_msg may be translated into one or more reaper TrackMsgs
+                    if let Ok(translated_msgs) = self
+                        .router
+                        .translate_message_from_downstream(channel_strip_msg)
+                    {
+                        for translated_msg in translated_msgs {
+                            // FIXME: unwrap
+                            self.to_reaper.send(translated_msg).unwrap();
                         }
-                        .into(),
-                    );
+                    }
                 }
                 curr_mode
             }
-            xtouch::UpstreamMsg::MutePress(mute_msg) => {
-                if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid).mute.toggle();
-                    // Send mute toggle to Reaper for the corresponding track
-                    self.to_reaper
-                        .send(
-                            track::Muted {
-                                track_guid: guid,
-                                muted: new_state,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
-                    // Update the toggle on the hardware
-                    self.to_xtouch
-                        .send(xtouch::DownstreamMsg::MuteLED(MuteLEDMsg {
-                            idx: mute_msg.idx,
-                            state: LEDState::from(new_state),
-                        }))
-                        .unwrap();
-                }
-                curr_mode
-            }
-            xtouch::UpstreamMsg::SoloPress(solo_msg) => {
-                if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid).solo.toggle();
-                    // Send solo toggle to Reaper for the corresponding track
-                    self.to_reaper
-                        .send(
-                            track::Soloed {
-                                track_guid: guid,
-                                soloed: new_state,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
-                    self.to_xtouch
-                        .send(xtouch::DownstreamMsg::SoloLED(SoloLEDMsg {
-                            idx: solo_msg.idx,
-                            state: LEDState::from(new_state),
-                        }))
-                        .unwrap();
-                }
-                curr_mode
-            }
-            xtouch::UpstreamMsg::ArmPress(arm_msg) => {
-                if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid).arm.toggle();
-                    // Send arm toggle to Reaper for the corresponding track
-                    self.to_reaper
-                        .send(
-                            track::Armed {
-                                track_guid: guid,
-                                armed: new_state,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
-                    self.to_xtouch
-                        .send(xtouch::DownstreamMsg::ArmLED(ArmLEDMsg {
-                            idx: arm_msg.idx,
-                            state: LEDState::from(new_state),
-                        }))
-                        .unwrap();
-                }
-                curr_mode
-            }
-            _ => curr_mode,
+        }
+    }
+}
+
+impl ChannelStripMode {
+    pub fn initiate_mode_transition(
+        &mut self,
+        from_mode: Mode,
+        upstream: Sender<TrackMsg>,
+        selected_track_guid: Uuid,
+    ) -> ModeState {
+        self.selected_track_guid = Some(selected_track_guid);
+        upstream
+            .send(TrackMsg::Query(TrackQuery {
+                guid: selected_track_guid,
+            }))
+            .unwrap();
+        let barrier = Barrier::new(from_mode, Mode::ReaperSends);
+        upstream.send(TrackMsg::Barrier(barrier)).unwrap();
+        ModeState {
+            mode: Mode::ReaperSends,
+            state: State::WaitingBarrierFromUpstream(barrier),
         }
     }
 }

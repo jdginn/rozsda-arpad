@@ -1,3 +1,4 @@
+use helgoboss_midi::Channel;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -7,9 +8,12 @@ use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
 use crate::midi::xtouch;
+use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends::TrackSendsMode;
 use crate::modes::reaper_vol_pan::VolumePanMode;
 use crate::track::track::TrackMsg;
+
+use super::reaper_channel_strip_mode;
 
 // Global atomic counter for unique IDs
 static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
@@ -52,6 +56,7 @@ pub enum State {
 pub enum Mode {
     ReaperVolPan,
     ReaperSends,
+    ReaperChannelStrip,
     MotuVolPan,
 }
 
@@ -136,8 +141,17 @@ impl ModeManager {
             to_xtouch.clone(),
         )));
 
+        let reaper_channel_strip = Arc::new(Mutex::new(ChannelStripMode::new(
+            8,
+            from_reaper.clone(),
+            to_reaper.clone(),
+            from_xtouch.clone(),
+            to_xtouch.clone(),
+        )));
+
         let reaper_pan_vol_clone = reaper_pan_vol.clone();
         let reaper_track_sends_clone = reaper_track_sends.clone();
+        let reaper_channel_strip_clone = reaper_channel_strip.clone();
 
         thread::spawn(move || {
             let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
@@ -168,6 +182,20 @@ impl ModeManager {
                                 // If we can't transition, stay in current mode
                             }
                         }
+                        Mode::ReaperChannelStrip => {
+                            if let Some(currently_selected_track_guid) =
+                                manager.reaper_currently_selected_track_guid
+                            {
+                                manager.curr_mode = reaper_channel_strip_clone
+                                    .lock()
+                                    .unwrap()
+                                    .initiate_mode_transition(
+                                        manager.curr_mode.mode,
+                                        manager.to_reaper.clone(),
+                                        currently_selected_track_guid,
+                                    );
+                            }
+                        }
                         Mode::MotuVolPan => {
                             panic!("MotuVolPan mode transition not implemented yet!")
                         }
@@ -183,10 +211,30 @@ impl ModeManager {
                     recv(manager.from_reaper) -> msg => {
                         if let Ok(track_msg) = msg {
                         // Keep track of currently selected track for mode transitions
+                        // FIXME: very often, when this changes we need to initiate a mode
+                        // transition!
                         if let TrackMsg::Selected(selected_msg) = track_msg {
                             // If the message is a track selection message, update the currently selected track guid
                             if selected_msg.selected {
                                 manager.reaper_currently_selected_track_guid = Some(selected_msg.track_guid);
+                                //FIXME: initiate mode transition here depending on which mode we
+                                //are in?
+                                //OR maybe better: just implement in each mode's
+                                //handle_messages_from_upstream
+                                //Make sure we short-circuit the core.handle_messages_from_upstream
+                                //in all relevant cases
+                                match manager.curr_mode.mode {
+                                    Mode::ReaperVolPan => {},
+                                    Mode::ReaperSends => {
+                                        reaper_track_sends_clone.lock().unwrap().initiate_mode_transition(Mode::ReaperSends, manager.to_reaper.clone(), selected_msg.track_guid);
+                                    },
+                                    Mode::ReaperChannelStrip => {
+                                        reaper_track_sends_clone.lock().unwrap().initiate_mode_transition(Mode::ReaperChannelStrip, manager.to_reaper.clone(), selected_msg.track_guid);
+                                    },
+                                    Mode::MotuVolPan => {
+                                        panic!("unimplemented mode MotuVolPan")
+                                    },
+                                }
                             }
                         }
 
