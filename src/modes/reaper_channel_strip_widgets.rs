@@ -306,6 +306,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
             .unwrap();
     }
 
+    // TODO: this needs to return ChannelStripMsg (and possibly send upstream through a channel?)
     pub fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) {
         let index = B::INDEX;
         match msg {

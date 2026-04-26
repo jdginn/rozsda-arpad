@@ -2,7 +2,7 @@ use crossbeam_channel::{Receiver, Sender};
 
 use crate::midi::xtouch;
 use crate::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
-use crate::modes::reaper_channel_strip_router::ChannelStripMsg;
+use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg};
@@ -151,6 +151,7 @@ impl Widgets {
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
 pub struct ChannelStripMode {
     core: VolumeFadersCore,
+    router: ChannelStripRouter,
     widgets: Widgets,
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
@@ -168,6 +169,7 @@ impl ChannelStripMode {
     ) -> Self {
         ChannelStripMode {
             core: VolumeFadersCore::new(num_channels),
+            router: ChannelStripRouter::new(),
             widgets: Widgets::new(to_xtouch.clone()),
             to_reaper,
             _from_reaper: from_reaper,
@@ -206,8 +208,10 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             }
             Ok(msg) => {
                 self.core
-                    .handle_message_from_upstream(msg, self.to_xtouch.clone(), |_| {});
-                //FIXME: router goes here!
+                    .handle_message_from_upstream(msg.clone(), self.to_xtouch.clone(), |_| {});
+                if let Ok(translated_msg) = self.router.translate_message_from_upstream(msg) {
+                    self.widgets.handle_message_from_upstream(translated_msg);
+                };
                 // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
                 curr_mode
             }
@@ -269,6 +273,9 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                     self.to_xtouch.clone(),
                 );
                 self.widgets.handle_message_from_downstream(msg);
+                if let Some(translated_msg) = self.router.translate_message_from_downstream(msg) {
+                    self.to_reaper.send(translated_msg);
+                }
                 curr_mode
             }
         }
