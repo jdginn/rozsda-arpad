@@ -1,11 +1,12 @@
 use crossbeam_channel::{Receiver, Sender};
+use uuid::Uuid;
 
 use crate::midi::xtouch;
-use crate::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
+use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
-use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg};
+use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg, TrackQuery};
 
 struct Widgets {
     hp_filter: widgets::ChannelWidget<widgets::HPWidgetBehavior>,
@@ -67,23 +68,27 @@ impl Widgets {
         self.gain.handle_message_from_upstream(msg);
     }
 
-    fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) {
-        self.hp_filter.handle_message_from_downstream(msg);
-        self.low_freq.handle_message_from_downstream(msg);
-        self.low_gain.handle_message_from_downstream(msg);
-        self.lm_freq.handle_message_from_downstream(msg);
-        self.lm_gain.handle_message_from_downstream(msg);
-        self.hm_freq.handle_message_from_downstream(msg);
-        self.hm_gain.handle_message_from_downstream(msg);
-        self.high_freq.handle_message_from_downstream(msg);
-        self.high_gain.handle_message_from_downstream(msg);
-        self.eq_pos.handle_message_from_downstream(msg);
-        self.comp_thresh.handle_message_from_downstream(msg);
-        self.comp_ratio.handle_message_from_downstream(msg);
-        self.comp_makeup.handle_message_from_downstream(msg);
-        self.comp_type.handle_message_from_downstream(msg);
-        self.saturation.handle_message_from_downstream(msg);
-        self.gain.handle_message_from_downstream(msg);
+    fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) -> Vec<ChannelStripMsg> {
+        let mut responses = Vec::new();
+
+        responses.extend(self.hp_filter.handle_message_from_downstream(msg));
+        responses.extend(self.low_freq.handle_message_from_downstream(msg));
+        responses.extend(self.low_gain.handle_message_from_downstream(msg));
+        responses.extend(self.lm_freq.handle_message_from_downstream(msg));
+        responses.extend(self.lm_gain.handle_message_from_downstream(msg));
+        responses.extend(self.hm_freq.handle_message_from_downstream(msg));
+        responses.extend(self.hm_gain.handle_message_from_downstream(msg));
+        responses.extend(self.high_freq.handle_message_from_downstream(msg));
+        responses.extend(self.high_gain.handle_message_from_downstream(msg));
+        responses.extend(self.eq_pos.handle_message_from_downstream(msg));
+        responses.extend(self.comp_thresh.handle_message_from_downstream(msg));
+        responses.extend(self.comp_ratio.handle_message_from_downstream(msg));
+        responses.extend(self.comp_makeup.handle_message_from_downstream(msg));
+        responses.extend(self.comp_type.handle_message_from_downstream(msg));
+        responses.extend(self.saturation.handle_message_from_downstream(msg));
+        responses.extend(self.gain.handle_message_from_downstream(msg));
+
+        responses
     }
 }
 
@@ -153,6 +158,7 @@ pub struct ChannelStripMode {
     core: VolumeFadersCore,
     router: ChannelStripRouter,
     widgets: Widgets,
+    selected_track_guid: Option<Uuid>,
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<xtouch::DownstreamMsg>,
@@ -171,6 +177,7 @@ impl ChannelStripMode {
             core: VolumeFadersCore::new(num_channels),
             router: ChannelStripRouter::new(),
             widgets: Widgets::new(to_xtouch.clone()),
+            selected_track_guid: None,
             to_reaper,
             _from_reaper: from_reaper,
             to_xtouch,
@@ -209,8 +216,10 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             Ok(msg) => {
                 self.core
                     .handle_message_from_upstream(msg.clone(), self.to_xtouch.clone(), |_| {});
-                if let Ok(translated_msg) = self.router.translate_message_from_upstream(msg) {
-                    self.widgets.handle_message_from_upstream(translated_msg);
+                if let Ok(translated_msgs) = self.router.translate_message_from_upstream(msg) {
+                    for translated_msg in translated_msgs {
+                        self.widgets.handle_message_from_upstream(translated_msg);
+                    }
                 };
                 // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
                 curr_mode
@@ -267,17 +276,51 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             },
             xtouch::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
             _ => {
+                // Handle messages not specific to ChannelStripMode (e.g. faders, mute/arm/solo)
                 self.core.handle_message_from_downstream(
                     msg,
                     self.to_reaper.clone(),
                     self.to_xtouch.clone(),
                 );
-                self.widgets.handle_message_from_downstream(msg);
-                if let Some(translated_msg) = self.router.translate_message_from_downstream(msg) {
-                    self.to_reaper.send(translated_msg);
+                // Handle messages to the widgets
+                let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
+                // Each upstream message may generate one or more ChannelStripMsgs
+                for channel_strip_msg in channel_strip_msgs {
+                    // Each channel_strip_msg may be translated into one or more reaper TrackMsgs
+                    if let Ok(translated_msgs) = self
+                        .router
+                        .translate_message_from_downstream(channel_strip_msg)
+                    {
+                        for translated_msg in translated_msgs {
+                            // FIXME: unwrap
+                            self.to_reaper.send(translated_msg).unwrap();
+                        }
+                    }
                 }
                 curr_mode
             }
+        }
+    }
+}
+
+impl ChannelStripMode {
+    pub fn initiate_mode_transition(
+        &mut self,
+        from_mode: Mode,
+        upstream: Sender<TrackMsg>,
+        selected_track_guid: Uuid,
+    ) -> ModeState {
+        self.selected_track_guid = Some(selected_track_guid);
+        upstream
+            .send(TrackMsg::Query(TrackQuery {
+                guid: selected_track_guid,
+            }))
+            .unwrap();
+        let barrier = Barrier::new(from_mode, Mode::ReaperSends);
+        upstream.send(TrackMsg::Barrier(barrier)).unwrap();
+        ModeState {
+            mode: Mode::ReaperSends,
+            state: State::WaitingBarrierFromUpstream(barrier),
         }
     }
 }

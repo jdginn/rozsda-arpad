@@ -23,7 +23,9 @@ pub struct TrackSendsMode {
     hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     // Maps guid to info about the send it designates
     track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
-    selected_track_guid: Option<String>,
+    //FIXME: this should be UUID!!!
+    selected_track_guid: Option<String>, //FIXME: when selected track changes, we need to initiate
+    //a mode transition!
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
     to_xtouch: Sender<xtouch::DownstreamMsg>,

@@ -90,16 +90,17 @@ struct ChannelWidgetCore {
 impl ChannelWidgetCore {
     fn on_mode_change(&mut self) {}
 
-    fn mode_change_button_press(&mut self) {
+    fn mode_change_button_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.mode {
             ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Press,
             ChannelWidgetMode::Press => {}
             ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::ShiftPress,
             ChannelWidgetMode::ShiftPress => {}
         }
+        vec![]
     }
 
-    fn mode_change_button_release(&mut self) {
+    fn mode_change_button_release(&mut self) -> Vec<ChannelStripMsg> {
         // TODO: sometimes this sends a message upstream, sometimes it just changes mode.
         match self.mode {
             ChannelWidgetMode::Default => {}
@@ -107,24 +108,27 @@ impl ChannelWidgetCore {
             ChannelWidgetMode::Shift => {}
             ChannelWidgetMode::ShiftPress => self.mode = ChannelWidgetMode::Shift,
         }
+        vec![]
     }
 
-    fn mode_change_shift_press(&mut self) {
+    fn mode_change_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.mode {
             ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Shift,
             ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::ShiftPress,
             ChannelWidgetMode::Shift => {}
             ChannelWidgetMode::ShiftPress => {}
         }
+        vec![]
     }
 
-    fn mode_change_shift_release(&mut self) {
+    fn mode_change_shift_release(&mut self) -> Vec<ChannelStripMsg> {
         match self.mode {
             ChannelWidgetMode::Default => {}
             ChannelWidgetMode::Press => {}
             ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::Default,
             ChannelWidgetMode::ShiftPress => self.mode = ChannelWidgetMode::Press,
         }
+        vec![]
     }
 }
 
@@ -137,35 +141,35 @@ pub trait ChannelWidgetBehavior {
     fn new() -> Self
     where
         Self: Sized;
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_inc_shift_press(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_inc_shift_press(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_encoder_dec_shift_press(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_encoder_dec_shift_press(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
-    fn on_click_shift(&mut self) -> Option<ChannelStripMsg> {
-        None
+    fn on_click_shift(&mut self) -> Vec<ChannelStripMsg> {
+        vec![]
     }
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg);
 
@@ -232,47 +236,47 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         }
     }
 
-    fn mode_change_button_press(&mut self) {
-        self.core.mode_change_button_press();
+    fn mode_change_button_press(&mut self) -> Vec<ChannelStripMsg> {
+        self.core.mode_change_button_press()
     }
-    fn mode_change_button_release(&mut self) {
-        self.core.mode_change_button_release();
+    fn mode_change_button_release(&mut self) -> Vec<ChannelStripMsg> {
+        self.core.mode_change_button_release()
     }
-    fn mode_change_shift_press(&mut self) {
-        self.core.mode_change_shift_press();
+    fn mode_change_shift_press(&mut self) -> Vec<ChannelStripMsg> {
+        self.core.mode_change_shift_press()
     }
-    fn mode_change_shift_release(&mut self) {
-        self.core.mode_change_shift_release();
+    fn mode_change_shift_release(&mut self) -> Vec<ChannelStripMsg> {
+        self.core.mode_change_shift_release()
     }
-    fn on_encoder_inc_default(&mut self) {
-        self.behavior.on_encoder_inc_default();
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_inc_default()
     }
-    fn on_encoder_dec_default(&mut self) {
-        self.behavior.on_encoder_dec_default();
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_dec_default()
     }
-    fn on_encoder_inc_press(&mut self) {
-        self.behavior.on_encoder_inc_press();
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_inc_press()
     }
-    fn on_encoder_dec_press(&mut self) {
-        self.behavior.on_encoder_dec_press();
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_dec_press()
     }
-    fn on_encoder_inc_shift(&mut self) {
-        self.behavior.on_encoder_inc_shift();
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_inc_shift()
     }
-    fn on_encoder_dec_shift(&mut self) {
-        self.behavior.on_encoder_dec_shift();
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_dec_shift()
     }
-    fn on_encoder_inc_shift_press(&mut self) {
-        self.behavior.on_encoder_inc_shift_press();
+    fn on_encoder_inc_shift_press(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_inc_shift_press()
     }
-    fn on_encoder_dec_shift_press(&mut self) {
-        self.behavior.on_encoder_dec_shift_press();
+    fn on_encoder_dec_shift_press(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_encoder_dec_shift_press()
     }
-    fn on_click_default(&mut self) {
-        self.behavior.on_click_default();
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_click_default()
     }
-    fn on_click_shift(&mut self) {
-        self.behavior.on_click_shift();
+    fn on_click_shift(&mut self) -> Vec<ChannelStripMsg> {
+        self.behavior.on_click_shift()
     }
 
     pub fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -307,12 +311,17 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     }
 
     // TODO: this needs to return ChannelStripMsg (and possibly send upstream through a channel?)
-    pub fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) {
+    pub fn handle_message_from_downstream(
+        &mut self,
+        msg: xtouch::UpstreamMsg,
+    ) -> Vec<ChannelStripMsg> {
         let index = B::INDEX;
         match msg {
             xtouch::UpstreamMsg::EncoderPress(msg) => {
                 if msg.idx as usize == index {
-                    self.mode_change_button_press();
+                    self.mode_change_button_press()
+                } else {
+                    vec![]
                 }
             }
             xtouch::UpstreamMsg::EncoderRelease(msg) => {
@@ -321,8 +330,12 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
                     match self.core.mode {
                         ChannelWidgetMode::Default => self.on_click_default(),
                         ChannelWidgetMode::Shift => self.on_click_shift(),
-                        _ => {}
+                        _ => {
+                            vec![]
+                        }
                     }
+                } else {
+                    vec![]
                 }
             }
             xtouch::UpstreamMsg::EncoderTurnInc(msg) => {
@@ -332,7 +345,9 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
                         ChannelWidgetMode::Press => self.on_encoder_inc_press(),
                         ChannelWidgetMode::Shift => self.on_encoder_inc_shift(),
                         ChannelWidgetMode::ShiftPress => self.on_encoder_inc_shift_press(),
-                    };
+                    }
+                } else {
+                    vec![]
                 }
             }
             xtouch::UpstreamMsg::EncoderTurnDec(msg) => {
@@ -342,10 +357,13 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
                         ChannelWidgetMode::Press => self.on_encoder_dec_press(),
                         ChannelWidgetMode::Shift => self.on_encoder_dec_shift(),
                         ChannelWidgetMode::ShiftPress => self.on_encoder_dec_shift_press(),
-                    };
+                    }
+                } else {
+                    vec![]
                 }
             }
             _ => {
+                vec![]
                 // Ignore other messages
             }
         }
@@ -385,32 +403,32 @@ impl ChannelWidgetBehavior for HPWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hpf_freq += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HpfFreq(self.hpf_freq))
+        vec![ChannelStripMsg::HpfFreq(self.hpf_freq)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hpf_freq -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HpfFreq(self.hpf_freq))
+        vec![ChannelStripMsg::HpfFreq(self.hpf_freq)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.hpf_slope += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HpfSlope(self.hpf_slope))
+        vec![ChannelStripMsg::HpfSlope(self.hpf_slope)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.hpf_slope -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HpfSlope(self.hpf_slope))
+        vec![ChannelStripMsg::HpfSlope(self.hpf_slope)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through EQ types
         self.eq_type = match self.eq_type {
             EqType::Digital => EqType::Digital,
         };
-        Some(ChannelStripMsg::EqType(self.eq_type))
+        vec![ChannelStripMsg::EqType(self.eq_type)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -455,58 +473,58 @@ impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.low_freq += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LowFreq(self.low_freq))
+        vec![ChannelStripMsg::LowFreq(self.low_freq)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.low_freq -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LowFreq(self.low_freq))
+        vec![ChannelStripMsg::LowFreq(self.low_freq)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.low_band_mode {
             BandMode::Bell => {
                 self.low_q += 1.0; // TODO: scale appropriately and add limits
-                Some(ChannelStripMsg::LowQ(self.low_q))
+                vec![ChannelStripMsg::LowQ(self.low_q)]
             }
             BandMode::Shelf => {
                 self.low_slope += 1.0; // TODO: scale appropriately and add limits
-                Some(ChannelStripMsg::LowSlope(self.low_slope))
+                vec![ChannelStripMsg::LowSlope(self.low_slope)]
             }
         }
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.low_band_mode {
             BandMode::Bell => {
                 self.low_q -= 1.0; // TODO: scale appropriately and add limits
-                Some(ChannelStripMsg::LowQ(self.low_q))
+                vec![ChannelStripMsg::LowQ(self.low_q)]
             }
             BandMode::Shelf => {
                 self.low_slope -= 1.0; // TODO: scale appropriately and add limits
-                Some(ChannelStripMsg::LowSlope(self.low_slope))
+                vec![ChannelStripMsg::LowSlope(self.low_slope)]
             }
         }
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Bell/Shelf
         self.low_band_mode = match self.low_band_mode {
             BandMode::Bell => BandMode::Shelf,
             BandMode::Shelf => BandMode::Bell,
         };
-        Some(ChannelStripMsg::LowBandMode(self.low_band_mode))
+        vec![ChannelStripMsg::LowBandMode(self.low_band_mode)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Bell/Shelf
         self.low_band_mode = match self.low_band_mode {
             BandMode::Bell => BandMode::Shelf,
             BandMode::Shelf => BandMode::Bell,
         };
-        Some(ChannelStripMsg::LowBandMode(self.low_band_mode))
+        vec![ChannelStripMsg::LowBandMode(self.low_band_mode)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -562,19 +580,19 @@ impl ChannelWidgetBehavior for LowGainWidgetBehavior {
         Self { low_gain: 0.0 }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.low_gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LowGain(self.low_gain))
+        vec![ChannelStripMsg::LowGain(self.low_gain)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.low_gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LowGain(self.low_gain))
+        vec![ChannelStripMsg::LowGain(self.low_gain)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         self.low_gain = 0.0;
-        Some(ChannelStripMsg::LowGain(self.low_gain))
+        vec![ChannelStripMsg::LowGain(self.low_gain)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -611,24 +629,24 @@ impl ChannelWidgetBehavior for LmFreqWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_freq += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LmFreq(self.lm_freq))
+        vec![ChannelStripMsg::LmFreq(self.lm_freq)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_freq -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LmFreq(self.lm_freq))
+        vec![ChannelStripMsg::LmFreq(self.lm_freq)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_q += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LmQ(self.lm_q))
+        vec![ChannelStripMsg::LmQ(self.lm_q)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_q -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LmQ(self.lm_q))
+        vec![ChannelStripMsg::LmQ(self.lm_q)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -663,19 +681,19 @@ impl ChannelWidgetBehavior for LmGainWidgetBehavior {
         Self { lm_gain: 0.0 }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LmGain(self.lm_gain))
+        vec![ChannelStripMsg::LmGain(self.lm_gain)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::LmGain(self.lm_gain))
+        vec![ChannelStripMsg::LmGain(self.lm_gain)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         self.lm_gain = 0.0;
-        Some(ChannelStripMsg::LmGain(self.lm_gain))
+        vec![ChannelStripMsg::LmGain(self.lm_gain)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -712,24 +730,24 @@ impl ChannelWidgetBehavior for HmFreqWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_freq += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HmFreq(self.hm_freq))
+        vec![ChannelStripMsg::HmFreq(self.hm_freq)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_freq -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HmFreq(self.hm_freq))
+        vec![ChannelStripMsg::HmFreq(self.hm_freq)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_q += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HmQ(self.hm_q))
+        vec![ChannelStripMsg::HmQ(self.hm_q)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_q -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HmQ(self.hm_q))
+        vec![ChannelStripMsg::HmQ(self.hm_q)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -764,19 +782,19 @@ impl ChannelWidgetBehavior for HmGainWidgetBehavior {
         Self { hm_gain: 0.0 }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HmGain(self.hm_gain))
+        vec![ChannelStripMsg::HmGain(self.hm_gain)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HmGain(self.hm_gain))
+        vec![ChannelStripMsg::HmGain(self.hm_gain)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         self.hm_gain = 0.0;
-        Some(ChannelStripMsg::HmGain(self.hm_gain))
+        vec![ChannelStripMsg::HmGain(self.hm_gain)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -815,58 +833,58 @@ impl ChannelWidgetBehavior for HighFreqWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.high_freq += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HighFreq(self.high_freq))
+        vec![ChannelStripMsg::HighFreq(self.high_freq)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.high_freq -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HighFreq(self.high_freq))
+        vec![ChannelStripMsg::HighFreq(self.high_freq)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.high_band_mode {
             BandMode::Bell => {
                 self.high_q += 1.0; // TODO: scale appropriately and add limits
-                Some(ChannelStripMsg::HighQ(self.high_q))
+                vec![ChannelStripMsg::HighQ(self.high_q)]
             }
             BandMode::Shelf => {
                 // TODO
-                None
+                vec![]
             }
         }
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.high_band_mode {
             BandMode::Bell => {
                 self.high_q -= 1.0; // TODO: scale appropriately and add limits
-                Some(ChannelStripMsg::HighQ(self.high_q))
+                vec![ChannelStripMsg::HighQ(self.high_q)]
             }
             BandMode::Shelf => {
                 // TODO
-                None
+                vec![]
             }
         }
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Bell/Shelf
         self.high_band_mode = match self.high_band_mode {
             BandMode::Bell => BandMode::Shelf,
             BandMode::Shelf => BandMode::Bell,
         };
-        Some(ChannelStripMsg::HighBandMode(self.high_band_mode))
+        vec![ChannelStripMsg::HighBandMode(self.high_band_mode)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Bell/Shelf
         self.high_band_mode = match self.high_band_mode {
             BandMode::Bell => BandMode::Shelf,
             BandMode::Shelf => BandMode::Bell,
         };
-        Some(ChannelStripMsg::HighBandMode(self.high_band_mode))
+        vec![ChannelStripMsg::HighBandMode(self.high_band_mode)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -906,34 +924,34 @@ impl ChannelWidgetBehavior for HighGainWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.high_gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HighGain(self.high_gain))
+        vec![ChannelStripMsg::HighGain(self.high_gain)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.high_gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HighGain(self.high_gain))
+        vec![ChannelStripMsg::HighGain(self.high_gain)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.sides_gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HighSidesGain(self.sides_gain))
+        vec![ChannelStripMsg::HighSidesGain(self.sides_gain)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.sides_gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::HighSidesGain(self.sides_gain))
+        vec![ChannelStripMsg::HighSidesGain(self.sides_gain)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         self.high_gain = 0.0;
-        Some(ChannelStripMsg::HighGain(self.high_gain))
+        vec![ChannelStripMsg::HighGain(self.high_gain)]
     }
 
-    fn on_click_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.sides_gain = 0.0;
-        Some(ChannelStripMsg::HighSidesGain(self.sides_gain))
+        vec![ChannelStripMsg::HighSidesGain(self.sides_gain)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -974,51 +992,51 @@ impl ChannelWidgetBehavior for EqPosWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through EQ positions
         self.eq_pos = match self.eq_pos {
             EqPosition::First => EqPosition::Middle,
             EqPosition::Middle => EqPosition::Last,
             EqPosition::Last => EqPosition::First,
         };
-        Some(ChannelStripMsg::EqPos(self.eq_pos))
+        vec![ChannelStripMsg::EqPos(self.eq_pos)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through EQ positions
         self.eq_pos = match self.eq_pos {
             EqPosition::First => EqPosition::Last,
             EqPosition::Middle => EqPosition::First,
             EqPosition::Last => EqPosition::Middle,
         };
-        Some(ChannelStripMsg::EqPos(self.eq_pos))
+        vec![ChannelStripMsg::EqPos(self.eq_pos)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Comp order
         self.comp_order = match self.comp_order {
             CompOrder::FtoS => CompOrder::StoF,
             CompOrder::StoF => CompOrder::FtoS,
         };
-        Some(ChannelStripMsg::CompOrder(self.comp_order))
+        vec![ChannelStripMsg::CompOrder(self.comp_order)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Comp order
         self.comp_order = match self.comp_order {
             CompOrder::FtoS => CompOrder::StoF,
             CompOrder::StoF => CompOrder::FtoS,
         };
-        Some(ChannelStripMsg::CompOrder(self.comp_order))
+        vec![ChannelStripMsg::CompOrder(self.comp_order)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         // Toggle EQ bypass
         self.eq_bpyass = match self.eq_bpyass {
             BypassMode::Bypassed => BypassMode::Engaged,
             BypassMode::Engaged => BypassMode::Bypassed,
         };
-        Some(ChannelStripMsg::EqBypass(self.eq_bpyass))
+        vec![ChannelStripMsg::EqBypass(self.eq_bpyass)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -1062,44 +1080,44 @@ impl ChannelWidgetBehavior for CompThreshWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_thresh += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompThresh(self.comp_thresh))
+        vec![ChannelStripMsg::CompThresh(self.comp_thresh)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_thresh -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompThresh(self.comp_thresh))
+        vec![ChannelStripMsg::CompThresh(self.comp_thresh)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_sc_filter += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompScFilter(self.comp_sc_filter))
+        vec![ChannelStripMsg::CompScFilter(self.comp_sc_filter)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_sc_filter -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompScFilter(self.comp_sc_filter))
+        vec![ChannelStripMsg::CompScFilter(self.comp_sc_filter)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_thresh += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Thresh(self.comp2_thresh))
+        vec![ChannelStripMsg::Comp2Thresh(self.comp2_thresh)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_thresh -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Thresh(self.comp2_thresh))
+        vec![ChannelStripMsg::Comp2Thresh(self.comp2_thresh)]
     }
 
-    fn on_encoder_inc_shift_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_sc_filter += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2ScFilter(self.comp2_sc_filter))
+        vec![ChannelStripMsg::Comp2ScFilter(self.comp2_sc_filter)]
     }
 
-    fn on_encoder_dec_shift_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_sc_filter -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2ScFilter(self.comp2_sc_filter))
+        vec![ChannelStripMsg::Comp2ScFilter(self.comp2_sc_filter)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -1144,44 +1162,44 @@ impl ChannelWidgetBehavior for CompRatioWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_ratio += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompRatio(self.comp_ratio))
+        vec![ChannelStripMsg::CompRatio(self.comp_ratio)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_ratio -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompRatio(self.comp_ratio))
+        vec![ChannelStripMsg::CompRatio(self.comp_ratio)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_attack += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompAttack(self.comp_attack))
+        vec![ChannelStripMsg::CompAttack(self.comp_attack)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_attack -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompAttack(self.comp_attack))
+        vec![ChannelStripMsg::CompAttack(self.comp_attack)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_ratio += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Ratio(self.comp2_ratio))
+        vec![ChannelStripMsg::Comp2Ratio(self.comp2_ratio)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_ratio -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Ratio(self.comp2_ratio))
+        vec![ChannelStripMsg::Comp2Ratio(self.comp2_ratio)]
     }
 
-    fn on_encoder_inc_shift_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_attack += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Attack(self.comp2_attack))
+        vec![ChannelStripMsg::Comp2Attack(self.comp2_attack)]
     }
 
-    fn on_encoder_dec_shift_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_attack -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Attack(self.comp2_attack))
+        vec![ChannelStripMsg::Comp2Attack(self.comp2_attack)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -1226,44 +1244,44 @@ impl ChannelWidgetBehavior for CompMakeupWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_makeup += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompMakeup(self.comp_makeup))
+        vec![ChannelStripMsg::CompMakeup(self.comp_makeup)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_makeup -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompMakeup(self.comp_makeup))
+        vec![ChannelStripMsg::CompMakeup(self.comp_makeup)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_release += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompRelease(self.comp_release))
+        vec![ChannelStripMsg::CompRelease(self.comp_release)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp_release -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::CompRelease(self.comp_release))
+        vec![ChannelStripMsg::CompRelease(self.comp_release)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_makeup += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Makeup(self.comp2_makeup))
+        vec![ChannelStripMsg::Comp2Makeup(self.comp2_makeup)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_makeup -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Makeup(self.comp2_makeup))
+        vec![ChannelStripMsg::Comp2Makeup(self.comp2_makeup)]
     }
 
-    fn on_encoder_inc_shift_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_release += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Release(self.comp2_release))
+        vec![ChannelStripMsg::Comp2Release(self.comp2_release)]
     }
 
-    fn on_encoder_dec_shift_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         self.comp2_release -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Comp2Release(self.comp2_release))
+        vec![ChannelStripMsg::Comp2Release(self.comp2_release)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -1308,54 +1326,54 @@ impl ChannelWidgetBehavior for CompTypeWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Comp types
         self.comp_type = match self.comp_type {
             CompType::Digital => CompType::Digital,
         };
-        Some(ChannelStripMsg::CompType(self.comp_type))
+        vec![ChannelStripMsg::CompType(self.comp_type)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Comp types
         self.comp_type = match self.comp_type {
             CompType::Digital => CompType::Digital,
         };
-        Some(ChannelStripMsg::CompType(self.comp_type))
+        vec![ChannelStripMsg::CompType(self.comp_type)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         // Toggle Comp bypass
         self.comp_bypass = match self.comp_bypass {
             BypassMode::Bypassed => BypassMode::Engaged,
             BypassMode::Engaged => BypassMode::Bypassed,
         };
-        Some(ChannelStripMsg::CompBypass(self.comp_bypass))
+        vec![ChannelStripMsg::CompBypass(self.comp_bypass)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Comp2 types
         self.comp2_type = match self.comp2_type {
             CompType::Digital => CompType::Digital,
         };
-        Some(ChannelStripMsg::Comp2Type(self.comp2_type))
+        vec![ChannelStripMsg::Comp2Type(self.comp2_type)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Comp2 types
         self.comp2_type = match self.comp2_type {
             CompType::Digital => CompType::Digital,
         };
-        Some(ChannelStripMsg::Comp2Type(self.comp2_type))
+        vec![ChannelStripMsg::Comp2Type(self.comp2_type)]
     }
 
-    fn on_click_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Toggle Comp2 bypass
         self.comp2_bypass = match self.comp2_bypass {
             BypassMode::Bypassed => BypassMode::Engaged,
             BypassMode::Engaged => BypassMode::Bypassed,
         };
-        Some(ChannelStripMsg::Comp2Bypass(self.comp2_bypass))
+        vec![ChannelStripMsg::Comp2Bypass(self.comp2_bypass)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -1398,39 +1416,39 @@ impl ChannelWidgetBehavior for SaturationWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.saturation += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Saturation(self.saturation))
+        vec![ChannelStripMsg::Saturation(self.saturation)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.saturation -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Saturation(self.saturation))
+        vec![ChannelStripMsg::Saturation(self.saturation)]
     }
 
-    fn on_click_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_click_default(&mut self) -> Vec<ChannelStripMsg> {
         // Toggle Saturation bypass
         self.saturation_bypass = match self.saturation_bypass {
             BypassMode::Bypassed => BypassMode::Engaged,
             BypassMode::Engaged => BypassMode::Bypassed,
         };
-        Some(ChannelStripMsg::SaturationBypass(self.saturation_bypass))
+        vec![(ChannelStripMsg::SaturationBypass(self.saturation_bypass))]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Saturation types
         self.saturation_type = match self.saturation_type {
             SaturationType::Console => SaturationType::Console,
         };
-        Some(ChannelStripMsg::SaturationType(self.saturation_type))
+        vec![(ChannelStripMsg::SaturationType(self.saturation_type))]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         // Cycle through Saturation types
         self.saturation_type = match self.saturation_type {
             SaturationType::Console => SaturationType::Console,
         };
-        Some(ChannelStripMsg::SaturationType(self.saturation_type))
+        vec![(ChannelStripMsg::SaturationType(self.saturation_type))]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
@@ -1472,34 +1490,34 @@ impl ChannelWidgetBehavior for GainWidgetBehavior {
         }
     }
 
-    fn on_encoder_inc_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_default(&mut self) -> Vec<ChannelStripMsg> {
         self.gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Gain(self.gain))
+        vec![ChannelStripMsg::Gain(self.gain)]
     }
 
-    fn on_encoder_dec_default(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_default(&mut self) -> Vec<ChannelStripMsg> {
         self.gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Gain(self.gain))
+        vec![ChannelStripMsg::Gain(self.gain)]
     }
 
-    fn on_encoder_inc_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_press(&mut self) -> Vec<ChannelStripMsg> {
         self.interface_gain += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::InterfaceGain(self.interface_gain))
+        vec![ChannelStripMsg::InterfaceGain(self.interface_gain)]
     }
 
-    fn on_encoder_dec_press(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_press(&mut self) -> Vec<ChannelStripMsg> {
         self.interface_gain -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::InterfaceGain(self.interface_gain))
+        vec![ChannelStripMsg::InterfaceGain(self.interface_gain)]
     }
 
-    fn on_encoder_inc_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_inc_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.trim += 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Trim(self.trim))
+        vec![ChannelStripMsg::Trim(self.trim)]
     }
 
-    fn on_encoder_dec_shift(&mut self) -> Option<ChannelStripMsg> {
+    fn on_encoder_dec_shift(&mut self) -> Vec<ChannelStripMsg> {
         self.trim -= 1.0; // TODO: scale appropriately and add limits
-        Some(ChannelStripMsg::Trim(self.trim))
+        vec![ChannelStripMsg::Trim(self.trim)]
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {

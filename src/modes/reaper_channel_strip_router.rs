@@ -1,9 +1,9 @@
 use std::sync::Mutex;
 
+use uuid::Uuid;
+
 use crate::track::track;
 use crate::track::track::TrackMsg;
-
-use uuid::Uuid;
 
 /// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
 /// |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
@@ -111,6 +111,11 @@ pub enum ChannelStripMsg {
     Gain(f32),
     Trim(f32),
     InterfaceGain(f32),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TranslationErr {
+    Dummy,
 }
 
 // ----
@@ -253,20 +258,22 @@ impl ChannelStripRouter {
     pub fn translate_message_from_upstream(
         &self,
         msg: track::DataMsg,
-    ) -> Result<ChannelStripMsg, String> {
+    ) -> Result<Vec<ChannelStripMsg>, TranslationErr> {
         // FIXME: implement
-        Ok(ChannelStripMsg::HpfFreq(0.0))
+        Ok(vec![ChannelStripMsg::HpfFreq(0.0)])
     }
 
     pub fn translate_message_from_downstream(
         &self,
         msg: ChannelStripMsg,
-    ) -> Result<TrackMsg, String> {
+    ) -> Result<Vec<TrackMsg>, TranslationErr> {
         // FIXME: implement
-        Ok(track::Muted {
-            track_guid: Uuid::new_v4(),
-            muted: true,
-        }
-        .into())
+        Ok(vec![
+            track::Muted {
+                track_guid: Uuid::new_v4(),
+                muted: true,
+            }
+            .into(),
+        ])
     }
 }
