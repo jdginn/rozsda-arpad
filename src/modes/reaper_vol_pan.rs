@@ -68,6 +68,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                             ModeState {
                                 mode: curr_mode.mode,
                                 state: State::WaitingBarrierFromDownstream(barrier),
+                                new_selected_track_guid: None,
                             }
                         } else {
                             curr_mode
@@ -78,6 +79,11 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             }
             Ok(msg) => {
                 match msg {
+                    track::DataMsg::Selected(msg) => ModeState {
+                        mode: curr_mode.mode,
+                        state: curr_mode.state,
+                        new_selected_track_guid: Some(msg.track_guid),
+                    },
                     track::DataMsg::Pan(msg) => {
                         self.pan_states.insert(msg.track_guid, msg.pan);
                         if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
@@ -144,6 +150,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 ModeState {
                     mode: Mode::ReaperSends,
                     state: State::RequestingModeTransition,
+                    new_selected_track_guid: None,
                 }
             }
             xtouch::UpstreamMsg::InputsPress => {
@@ -151,6 +158,16 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 ModeState {
                     mode: Mode::ReaperChannelStrip,
                     state: State::RequestingModeTransition,
+                    new_selected_track_guid: None,
+                }
+            }
+            xtouch::UpstreamMsg::SelectPress(select_msg) => {
+                let new_selected_track_guid =
+                    self.core.get_guid_for_hw_channel(select_msg.idx as usize);
+                ModeState {
+                    mode: curr_mode.mode,
+                    state: curr_mode.state,
+                    new_selected_track_guid,
                 }
             }
             xtouch::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
@@ -249,6 +266,7 @@ impl VolumePanMode {
         ModeState {
             mode: Mode::ReaperVolPan,
             state: State::WaitingBarrierFromUpstream(barrier),
+            new_selected_track_guid: None,
         }
     }
 }
