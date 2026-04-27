@@ -59,6 +59,7 @@ use crate::modes::reaper_channel_strip_router::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ChannelWidgetMode {
+    Disabled,
     Default,
     Press,
     Shift,
@@ -67,6 +68,7 @@ enum ChannelWidgetMode {
 
 #[derive(Clone, Debug)]
 struct ChannelWidgetLabels {
+    disabled: &'static str,
     default: &'static str,
     press: &'static str,
     shift: &'static str,
@@ -75,7 +77,8 @@ struct ChannelWidgetLabels {
 
 #[derive(Clone, Copy, Debug)]
 struct ChannelWidgetColors {
-    default: u32, // Or some better datatype
+    disabled: u32, // Or some better datatype
+    default: u32,
     press: u32,
     shift: u32,
     shift_press: u32,
@@ -92,6 +95,7 @@ impl ChannelWidgetCore {
 
     fn mode_change_button_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.mode {
+            ChannelWidgetMode::Disabled => {}
             ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Press,
             ChannelWidgetMode::Press => {}
             ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::ShiftPress,
@@ -103,6 +107,7 @@ impl ChannelWidgetCore {
     fn mode_change_button_release(&mut self) -> Vec<ChannelStripMsg> {
         // TODO: sometimes this sends a message upstream, sometimes it just changes mode.
         match self.mode {
+            ChannelWidgetMode::Disabled => {}
             ChannelWidgetMode::Default => {}
             ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::Default,
             ChannelWidgetMode::Shift => {}
@@ -113,6 +118,7 @@ impl ChannelWidgetCore {
 
     fn mode_change_shift_press(&mut self) -> Vec<ChannelStripMsg> {
         match self.mode {
+            ChannelWidgetMode::Disabled => {}
             ChannelWidgetMode::Default => self.mode = ChannelWidgetMode::Shift,
             ChannelWidgetMode::Press => self.mode = ChannelWidgetMode::ShiftPress,
             ChannelWidgetMode::Shift => {}
@@ -123,6 +129,7 @@ impl ChannelWidgetCore {
 
     fn mode_change_shift_release(&mut self) -> Vec<ChannelStripMsg> {
         match self.mode {
+            ChannelWidgetMode::Disabled => {}
             ChannelWidgetMode::Default => {}
             ChannelWidgetMode::Press => {}
             ChannelWidgetMode::Shift => self.mode = ChannelWidgetMode::Default,
@@ -199,6 +206,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     fn color(&self) -> u32 {
         let colors = B::COLORS;
         match self.core.mode {
+            ChannelWidgetMode::Disabled => colors.disabled,
             ChannelWidgetMode::Default => colors.default,
             ChannelWidgetMode::Press => colors.press,
             ChannelWidgetMode::Shift => colors.shift,
@@ -209,6 +217,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     fn label1(&self) -> &'static str {
         let labels = B::LABELS;
         match self.core.mode {
+            ChannelWidgetMode::Disabled => labels.disabled,
             ChannelWidgetMode::Default => labels.default,
             ChannelWidgetMode::Press => labels.press,
             ChannelWidgetMode::Shift => labels.shift,
@@ -219,6 +228,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     fn label3(&self) -> &'static str {
         let labels = B::LABELS;
         match self.core.mode {
+            ChannelWidgetMode::Disabled => "",
             ChannelWidgetMode::Default => labels.press,
             ChannelWidgetMode::Press => "",
             ChannelWidgetMode::Shift => labels.shift_press,
@@ -229,6 +239,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     fn label4(&self) -> &'static str {
         let labels = B::LABELS;
         match self.core.mode {
+            ChannelWidgetMode::Disabled => "",
             ChannelWidgetMode::Default => labels.shift,
             ChannelWidgetMode::Press => labels.shift_press,
             ChannelWidgetMode::Shift => "",
@@ -342,6 +353,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
             xtouch::UpstreamMsg::EncoderTurnInc(msg) => {
                 if msg.idx as usize == index {
                     match self.core.mode {
+                        ChannelWidgetMode::Disabled => vec![],
                         ChannelWidgetMode::Default => self.on_encoder_inc_default(),
                         ChannelWidgetMode::Press => self.on_encoder_inc_press(),
                         ChannelWidgetMode::Shift => self.on_encoder_inc_shift(),
@@ -354,6 +366,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
             xtouch::UpstreamMsg::EncoderTurnDec(msg) => {
                 if msg.idx as usize == index {
                     match self.core.mode {
+                        ChannelWidgetMode::Disabled => vec![],
                         ChannelWidgetMode::Default => self.on_encoder_dec_default(),
                         ChannelWidgetMode::Press => self.on_encoder_dec_press(),
                         ChannelWidgetMode::Shift => self.on_encoder_dec_shift(),
@@ -384,12 +397,14 @@ pub struct HPWidgetBehavior {
 impl ChannelWidgetBehavior for HPWidgetBehavior {
     const INDEX: usize = 0;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "EQ",
         default: "HP Filt",
         press: "Slope",
         shift: "EQ Type",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -453,12 +468,14 @@ pub struct LowFreqWidgetBehavior {
 impl ChannelWidgetBehavior for LowFreqWidgetBehavior {
     const INDEX: usize = 1;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "Low Freq",
         press: "Low Q / Slope",
         shift: "Bell/Shelf",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -565,12 +582,14 @@ pub struct LowGainWidgetBehavior {
 impl ChannelWidgetBehavior for LowGainWidgetBehavior {
     const INDEX: usize = 2;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "Low Gain",
         press: "zero",
         shift: "",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -611,12 +630,14 @@ pub struct LmFreqWidgetBehavior {
 impl ChannelWidgetBehavior for LmFreqWidgetBehavior {
     const INDEX: usize = 3;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "LM Freq",
         press: "LM Q",
         shift: "",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -666,12 +687,14 @@ pub struct LmGainWidgetBehavior {
 impl ChannelWidgetBehavior for LmGainWidgetBehavior {
     const INDEX: usize = 4;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "LM Gain",
         press: "zero",
         shift: "",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -712,12 +735,14 @@ pub struct HmFreqWidgetBehavior {
 impl ChannelWidgetBehavior for HmFreqWidgetBehavior {
     const INDEX: usize = 5;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "HM Freq",
         press: "HM Q",
         shift: "",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -767,12 +792,14 @@ pub struct HmGainWidgetBehavior {
 impl ChannelWidgetBehavior for HmGainWidgetBehavior {
     const INDEX: usize = 6;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "HM Gain",
         press: "zero",
         shift: "",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -814,12 +841,14 @@ pub struct HighFreqWidgetBehavior {
 impl ChannelWidgetBehavior for HighFreqWidgetBehavior {
     const INDEX: usize = 7;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "High Freq",
         press: "High Q (bell) / slope (shelf)",
         shift: "Bell/Shelf",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -906,12 +935,14 @@ pub struct HighGainWidgetBehavior {
 impl ChannelWidgetBehavior for HighGainWidgetBehavior {
     const INDEX: usize = 8;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "High Gain",
         press: "zero",
         shift: "Sides Gain",
         shift_press: "zero Sides",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -973,12 +1004,14 @@ pub struct EqPosWidgetBehavior {
 impl ChannelWidgetBehavior for EqPosWidgetBehavior {
     const INDEX: usize = 9;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "EQ Pos",
         default: "EQ Pos",
         press: "EQ Bypass",
         shift: "Comp Order",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -1060,12 +1093,14 @@ pub struct CompThreshWidgetBehavior {
 impl ChannelWidgetBehavior for CompThreshWidgetBehavior {
     const INDEX: usize = 10;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "Compressor",
         default: "Comp Thresh",
         press: "Comp SC Filter",
         shift: "Comp2 Thresh",
         shift_press: "Comp2 SC Filter",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -1142,12 +1177,14 @@ pub struct CompRatioWidgetBehavior {
 impl ChannelWidgetBehavior for CompRatioWidgetBehavior {
     const INDEX: usize = 11;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "Comp Ratio",
         press: "Comp Attack",
         shift: "Comp2 Ratio",
         shift_press: "Comp2 Attack",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -1224,12 +1261,14 @@ pub struct CompMakeupWidgetBehavior {
 impl ChannelWidgetBehavior for CompMakeupWidgetBehavior {
     const INDEX: usize = 12;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "Comp Makeup",
         press: "Comp Release",
         shift: "Comp2 Makeup",
         shift_press: "Comp2 Release",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -1306,12 +1345,14 @@ pub struct CompTypeWidgetBehavior {
 impl ChannelWidgetBehavior for CompTypeWidgetBehavior {
     const INDEX: usize = 13;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "",
         default: "Comp Type",
         press: "Bypass Comp",
         shift: "Comp2 Type",
         shift_press: "Bypass Comp2",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -1397,12 +1438,14 @@ pub struct SaturationWidgetBehavior {
 impl ChannelWidgetBehavior for SaturationWidgetBehavior {
     const INDEX: usize = 14;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "Saturation",
         default: "Saturation",
         press: "Bypass Sat",
         shift: "Saturation Type",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
@@ -1471,12 +1514,14 @@ pub struct GainWidgetBehavior {
 impl ChannelWidgetBehavior for GainWidgetBehavior {
     const INDEX: usize = 15;
     const LABELS: ChannelWidgetLabels = ChannelWidgetLabels {
+        disabled: "Gain",
         default: "Gain",
         press: "Interface Gain (if armed)",
         shift: "Trim",
         shift_press: "",
     };
     const COLORS: ChannelWidgetColors = ChannelWidgetColors {
+        disabled: 0x000000,
         default: 0xFF0000,
         press: 0x00FF00,
         shift: 0x0000FF,
