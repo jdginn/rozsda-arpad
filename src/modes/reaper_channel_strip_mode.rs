@@ -205,6 +205,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                             ModeState {
                                 mode: curr_mode.mode,
                                 state: State::WaitingBarrierFromDownstream(barrier),
+                                new_selected_track_guid: None,
                             }
                         } else {
                             curr_mode
@@ -223,6 +224,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                             ModeState {
                                 mode: Mode::ReaperChannelStrip,
                                 state: State::RequestingModeTransition,
+                                new_selected_track_guid: Some(msg.track_guid),
                             }
                         } else {
                             curr_mode
@@ -272,6 +274,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                             ModeState {
                                 mode: curr_mode.mode,
                                 state: State::Active,
+                                new_selected_track_guid: None,
                             }
                         } else {
                             curr_mode
@@ -292,11 +295,13 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             xtouch::UpstreamMsg::GlobalPress => ModeState {
                 mode: Mode::ReaperVolPan,
                 state: State::RequestingModeTransition,
+                new_selected_track_guid: None,
             },
             // MIDITracksPress maps to ReaperSends mode
             xtouch::UpstreamMsg::MIDITracksPress => ModeState {
                 mode: Mode::ReaperSends,
                 state: State::RequestingModeTransition,
+                new_selected_track_guid: None,
             },
             xtouch::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
             // If a new track is selected, we need to initiate a mode transition so that the
@@ -305,10 +310,14 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             // TODO: do we need to handle this case separately or do we simply expect a reflected
             // message back from Reaper?
             xtouch::UpstreamMsg::SelectPress(msg) => {
-                self.selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
-                ModeState {
-                    mode: Mode::ReaperChannelStrip,
-                    state: State::RequestingModeTransition,
+                let selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
+                match selected_track_guid {
+                    Some(selected_track_guid) => ModeState {
+                        mode: Mode::ReaperChannelStrip,
+                        state: State::RequestingModeTransition,
+                        new_selected_track_guid: Some(selected_track_guid),
+                    },
+                    None => curr_mode,
                 }
             }
             _ => {
@@ -357,6 +366,7 @@ impl ChannelStripMode {
         ModeState {
             mode: Mode::ReaperSends,
             state: State::WaitingBarrierFromUpstream(barrier),
+            new_selected_track_guid: None,
         }
     }
 }
