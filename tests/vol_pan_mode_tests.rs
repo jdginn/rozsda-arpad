@@ -298,6 +298,7 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Send a ReaperTrackIndex message to assign the track to hardware channel 2
@@ -333,6 +334,7 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // First, assign the track to a hardware channel
@@ -393,6 +395,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -450,6 +453,7 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -481,6 +485,7 @@ fn test_02_volume_message_for_unmapped_track_is_ignored() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Send volume update WITHOUT assigning track to hardware channel
@@ -509,6 +514,7 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -538,6 +544,7 @@ fn test_04_upstream_fader_for_unmapped_channel_is_ignored() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Simulate fader movement WITHOUT assigning any track to this channel
@@ -571,6 +578,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to first hardware channel and send volume
@@ -648,6 +656,7 @@ fn test_06_multiple_button_state_updates_accumulate_correctly() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -705,6 +714,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // First assign track to hardware channel
@@ -753,6 +763,7 @@ fn test_pan_state_accumulates_before_mapping() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Send pan values BEFORE mapping - they should be accumulated but not sent downstream yet
@@ -804,6 +815,7 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -834,6 +846,7 @@ fn test_09_solo_button_sends_correct_messages() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -864,6 +877,7 @@ fn test_10_arm_button_sends_correct_messages() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel
@@ -896,6 +910,7 @@ fn test_11_pan_encoder_changes_forward_correctly() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to hardware channel and set initial pan
@@ -948,6 +963,7 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign tracks to hardware channels
@@ -991,6 +1007,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track
@@ -1060,6 +1077,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track
@@ -1117,6 +1135,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track and set initial volume
@@ -1168,6 +1187,7 @@ fn test_complex_multi_track_integration() {
     let curr_mode = ModeState {
         state: State::Active,
         mode: Mode::ReaperVolPan,
+        new_selected_track_guid: None,
     };
 
     let track1_guid = uuid::Uuid::new_v4();
@@ -1461,6 +1481,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     let curr_mode = ModeState {
         mode: Mode::ReaperVolPan,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign track to channel 1

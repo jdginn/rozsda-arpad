@@ -29,8 +29,7 @@ pub struct TrackSendsMode {
     hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     // Maps guid to info about the send it designates
     track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
-    //FIXME: this should be UUID!!!
-    selected_track_guid: Option<Uuid>, //FIXME: when selected track changes, we need to initiate
+    selected_track_guid: Option<Uuid>,
     //a mode transition!
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
@@ -91,6 +90,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                             return ModeState {
                                 mode: curr_mode.mode,
                                 state: State::WaitingBarrierFromDownstream(barrier),
+                                new_selected_track_guid: None,
                             };
                         } else {
                             return curr_mode;
@@ -109,6 +109,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                             return ModeState {
                                 mode: Mode::ReaperSends,
                                 state: State::RequestingModeTransition,
+                                new_selected_track_guid: Some(msg.track_guid),
                             };
                         }
                     }
@@ -229,6 +230,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 ModeState {
                     mode: Mode::ReaperVolPan,
                     state: State::RequestingModeTransition,
+                    new_selected_track_guid: None,
                 }
             }
             UpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
@@ -237,6 +239,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 ModeState {
                     mode: Mode::ReaperChannelStrip,
                     state: State::RequestingModeTransition,
+                    new_selected_track_guid: None,
                 }
             }
             // If a new track is selected, we need to initiate a mode transition so that the
@@ -249,6 +252,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 ModeState {
                     mode: Mode::ReaperSends,
                     state: State::RequestingModeTransition,
+                    new_selected_track_guid: self.selected_track_guid,
                 }
             }
             UpstreamMsg::FaderAbs(fader_msg) => {
@@ -289,6 +293,7 @@ impl TrackSendsMode {
         ModeState {
             mode: Mode::ReaperSends,
             state: State::WaitingBarrierFromUpstream(barrier),
+            new_selected_track_guid: None,
         }
     }
 }

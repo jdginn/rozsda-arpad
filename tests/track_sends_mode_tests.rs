@@ -161,6 +161,7 @@ fn test_track_sends_mode_assigns_sends_by_index() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     let selected_track_guid = Uuid::new_v4();
@@ -197,6 +198,7 @@ fn test_send_level_for_mapped_send_forwards_to_hardware() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     let selected_track_guid = Uuid::new_v4();
@@ -237,6 +239,7 @@ fn test_send_level_for_unmapped_send_is_ignored() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     let selected_track_guid = Uuid::new_v4();
@@ -269,6 +272,7 @@ fn test_upstream_fader_for_mapped_channel_forwards_to_reaper() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send to hardware channel
@@ -310,6 +314,7 @@ fn test_upstream_fader_for_unmapped_channel_is_ignored() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Simulate fader movement WITHOUT assigning any send to this channel
@@ -337,6 +342,7 @@ fn test_simultaneous_upstream_downstream_messages() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send to hardware channel
@@ -407,6 +413,7 @@ fn test_remapping_sends_across_hardware_channels() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     let selected_track_guid = Uuid::new_v4();
@@ -520,6 +527,7 @@ fn test_send_level_state_reflects_latest_value_when_remapped() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign first send to hardware channel and send level
@@ -598,6 +606,7 @@ fn test_multiple_sends_can_be_mapped_simultaneously() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign multiple sends
@@ -673,6 +682,7 @@ fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Send level updates BEFORE mapping - they should not be sent to hardware yet
@@ -737,6 +747,7 @@ fn test_fader_movement_sends_correct_upstream_message() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send to hardware channel
@@ -782,6 +793,7 @@ fn test_downstream_messages_sent_in_correct_order() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send
@@ -843,6 +855,7 @@ fn test_upstream_messages_processed_in_correct_order() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send
@@ -895,6 +908,7 @@ fn test_send_level_changes_below_epsilon_threshold_ignored() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send and set initial level
@@ -953,6 +967,7 @@ fn test_send_level_changes_above_epsilon_propagate() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Assign send and set initial level
@@ -1047,6 +1062,7 @@ fn test_complex_multi_send_integration() {
     let curr_mode = ModeState {
         state: State::Active,
         mode: Mode::ReaperSends,
+        new_selected_track_guid: None,
     };
 
     let selected_track_guid = Uuid::new_v4();
@@ -1160,6 +1176,7 @@ fn test_multiple_tracks_and_switching_selections() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // Set up sends for track 1
@@ -1231,6 +1248,7 @@ fn test_expanded_real_world_integration() {
     let curr_mode = ModeState {
         mode: Mode::ReaperSends,
         state: State::Active,
+        new_selected_track_guid: None,
     };
 
     // === SCENARIO 1: Set up multiple sends on Track A ===
