@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
@@ -156,7 +158,7 @@ impl Widgets {
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
 pub struct ChannelStripMode {
     core: VolumeFadersCore,
-    router: ChannelStripRouter,
+    routers: HashMap<Uuid, ChannelStripRouter>,
     widgets: Widgets,
     selected_track_guid: Option<Uuid>,
     to_reaper: Sender<TrackMsg>,
@@ -175,7 +177,7 @@ impl ChannelStripMode {
     ) -> Self {
         ChannelStripMode {
             core: VolumeFadersCore::new(num_channels),
-            router: ChannelStripRouter::new(),
+            routers: HashMap::new(),
             widgets: Widgets::new(to_xtouch.clone()),
             selected_track_guid: None,
             to_reaper,
@@ -220,7 +222,6 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                     // point to that new track.
                     TrackDataMsg::Selected(msg) => {
                         if msg.selected {
-                            self.selected_track_guid = Some(msg.track_guid);
                             ModeState {
                                 mode: Mode::ReaperChannelStrip,
                                 state: State::RequestingModeTransition,
@@ -238,12 +239,18 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                             self.to_xtouch.clone(),
                             |_| {},
                         );
-                        if let Ok(translated_msgs) =
-                            self.router.translate_message_from_upstream(msg)
-                        {
-                            for translated_msg in translated_msgs {
-                                self.widgets.handle_message_from_upstream(translated_msg);
-                            }
+                        if let Some(selected_guid) = self.selected_track_guid {
+                            let router = self
+                                .routers
+                                .entry(selected_guid)
+                                .or_insert(ChannelStripRouter::new());
+                            // Each message from upstream may cause one or more ChannelStripMsgs
+                            if let Ok(translated_msgs) = router.translate_message_from_upstream(msg)
+                            {
+                                for translated_msg in translated_msgs {
+                                    self.widgets.handle_message_from_upstream(translated_msg);
+                                }
+                            };
                         };
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
                         curr_mode
@@ -327,18 +334,23 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                     self.to_reaper.clone(),
                     self.to_xtouch.clone(),
                 );
-                // Handle messages to the widgets
-                let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
-                // Each upstream message may generate one or more ChannelStripMsgs
-                for channel_strip_msg in channel_strip_msgs {
-                    // Each channel_strip_msg may be translated into one or more reaper TrackMsgs
-                    if let Ok(translated_msgs) = self
-                        .router
-                        .translate_message_from_downstream(channel_strip_msg)
-                    {
-                        for translated_msg in translated_msgs {
-                            // FIXME: unwrap
-                            self.to_reaper.send(translated_msg).unwrap();
+                if let Some(selected_track_guid) = self.selected_track_guid {
+                    let router = self
+                        .routers
+                        .entry(selected_track_guid)
+                        .or_insert(ChannelStripRouter::new());
+                    // Handle messages to the widgets
+                    let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
+                    // Each upstream message may generate one or more ChannelStripMsgs
+                    for channel_strip_msg in channel_strip_msgs {
+                        // Each channel_strip_msg may be translated into one or more reaper TrackMsgs
+                        if let Ok(translated_msgs) =
+                            router.translate_message_from_downstream(channel_strip_msg)
+                        {
+                            for translated_msg in translated_msgs {
+                                // FIXME: unwrap
+                                self.to_reaper.send(translated_msg).unwrap();
+                            }
                         }
                     }
                 }
