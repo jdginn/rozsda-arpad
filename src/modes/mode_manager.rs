@@ -219,6 +219,10 @@ impl ModeManager {
                                 manager.reaper_currently_selected_track_guid = Some(selected_msg.track_guid);
                                 //FIXME: initiate mode transition here depending on which mode we
                                 //are in?
+                                //OR maybe better: just implement in each mode's
+                                //handle_messages_from_upstream
+                                //Make sure we short-circuit the core.handle_messages_from_upstream
+                                //in all relevant cases
                                 match manager.curr_mode.mode {
                                     Mode::ReaperVolPan => {},
                                     Mode::ReaperSends => {

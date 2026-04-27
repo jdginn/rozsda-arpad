@@ -214,15 +214,39 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 }
             }
             Ok(msg) => {
-                self.core
-                    .handle_message_from_upstream(msg.clone(), self.to_xtouch.clone(), |_| {});
-                if let Ok(translated_msgs) = self.router.translate_message_from_upstream(msg) {
-                    for translated_msg in translated_msgs {
-                        self.widgets.handle_message_from_upstream(translated_msg);
+                match msg {
+                    // If a new track is selected, initiate a mode transition to make widgets now
+                    // point to that new track.
+                    TrackDataMsg::Selected(msg) => {
+                        if msg.selected {
+                            self.selected_track_guid = Some(msg.track_guid);
+                            ModeState {
+                                mode: Mode::ReaperChannelStrip,
+                                state: State::RequestingModeTransition,
+                            }
+                        } else {
+                            curr_mode
+                        }
                     }
-                };
-                // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
-                curr_mode
+                    _ => {
+                        // First handle the functionality that is not unique to ChannelStripMode
+                        // (e.g. volume on faders, mute/arm/solo buttons)
+                        self.core.handle_message_from_upstream(
+                            msg.clone(),
+                            self.to_xtouch.clone(),
+                            |_| {},
+                        );
+                        if let Ok(translated_msgs) =
+                            self.router.translate_message_from_upstream(msg)
+                        {
+                            for translated_msg in translated_msgs {
+                                self.widgets.handle_message_from_upstream(translated_msg);
+                            }
+                        };
+                        // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
+                        curr_mode
+                    }
+                }
             }
             Err(_) => {
                 // Ignore messages that fail to parse as TrackDataMsg (e.g., ModeTransition, etc.)
@@ -275,6 +299,18 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 state: State::RequestingModeTransition,
             },
             xtouch::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
+            // If a new track is selected, we need to initiate a mode transition so that the
+            // widgets are controlling the new track
+            //
+            // TODO: do we need to handle this case separately or do we simply expect a reflected
+            // message back from Reaper?
+            xtouch::UpstreamMsg::SelectPress(msg) => {
+                self.selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
+                ModeState {
+                    mode: Mode::ReaperChannelStrip,
+                    state: State::RequestingModeTransition,
+                }
+            }
             _ => {
                 // Handle messages not specific to ChannelStripMode (e.g. faders, mute/arm/solo)
                 self.core.handle_message_from_downstream(

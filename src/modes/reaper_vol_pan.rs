@@ -146,6 +146,13 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                     state: State::RequestingModeTransition,
                 }
             }
+            xtouch::UpstreamMsg::InputsPress => {
+                // Request transition to ReaperChannelStrip mode
+                ModeState {
+                    mode: Mode::ReaperChannelStrip,
+                    state: State::RequestingModeTransition,
+                }
+            }
             xtouch::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and increment it
