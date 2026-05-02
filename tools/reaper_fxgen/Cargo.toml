@@ -1,0 +1,18 @@
+[package]
+name = "reaper_fxgen"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "reaper_fxgen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "reaper_fxgen"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+clap = { version = "4.0", features = ["derive"] }
+regex = "1"
