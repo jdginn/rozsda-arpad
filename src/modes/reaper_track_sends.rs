@@ -11,7 +11,7 @@ use crate::midi::xtouch::{
 };
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track;
-use crate::track::track::{SendLevel, TrackMsg, TrackQuery};
+use crate::track::track::{TrackMsg, TrackQuery};
 
 #[derive(Clone, Default)]
 pub struct TrackSendInfo {

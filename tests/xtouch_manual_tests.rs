@@ -6,13 +6,60 @@
 //
 // Run with: cargo test --test xtouch_manual_tests -- --nocapture --test-threads=1
 
-use arpad_rust::midi::xtouch::{
-    ArmLEDMsg, ArmPress, ArmRelease, FaderAbsMsg, LEDState, MuteLEDMsg, MutePress, MuteRelease,
-    SoloLEDMsg, SoloPress, SoloRelease, XTouchDownstreamMsg, XTouchUpstreamMsg,
-};
-use crossbeam_channel::{Receiver, Sender, bounded};
 use std::io::{self, Write};
 use std::time::Duration;
+
+use crossbeam_channel::{Receiver, Sender, bounded};
+use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
+
+use arpad_rust::midi::xtouch::{
+    ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, XTouchBuilder, XTouchDownstreamMsg,
+    XTouchUpstreamMsg,
+};
+
+// ============================================================================
+// Helper functions for connecting to the hardware
+// ===========================================================================
+
+fn find_xtouch_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std::error::Error>>
+{
+    let mut midi_in = MidiInput::new("midir input port sniff")?;
+    midi_in.ignore(Ignore::None);
+    let midi_out = MidiOutput::new("midir output port sniff")?;
+
+    let mut input_port = None;
+    let mut output_port = None;
+
+    for (i, p) in midi_in.ports().iter().enumerate() {
+        if input_port.is_none() && midi_in.port_name(p)? == "X-Touch INT" {
+            input_port = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_out.ports().iter().enumerate() {
+        if output_port.is_none() && midi_out.port_name(p)? == "X-Touch INT" {
+            output_port = Some(p.clone());
+            break;
+        }
+    }
+
+    if input_port.is_none() {
+        return Err("Could not find X-Touch MIDI input port".into());
+    }
+
+    println!("Found input port {}", input_port.clone().unwrap().id());
+
+    if let Some(output_port) = output_port {
+        println!(
+            "Connecting to output port '{}' ...",
+            midi_out.port_name(&output_port)?
+        );
+        let output_connection = midi_out.connect(&output_port, "midir-test")?;
+        Ok((input_port.unwrap(), output_connection))
+    } else {
+        Err("Could not find X-Touch MIDI output port".into())
+    }
+}
 
 // Test result tracking
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,23 +165,6 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
 
     // Test fader movement
     for channel in 0..8 {
-        let test_name = format!("fader_channel_{}_to_min", channel);
-        println!("\nTest: {}", test_name);
-
-        tx.send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
-            idx: channel,
-            value: 0.0,
-        }))
-        .unwrap();
-
-        let result = prompt_user(&format!(
-            "Did fader {} move to minimum position (-Inf)?",
-            channel
-        ));
-        results.push(TestSummary::new(&test_name, result));
-    }
-
-    for channel in 0..8 {
         let test_name = format!("fader_channel_{}_to_max", channel);
         println!("\nTest: {}", test_name);
 
@@ -146,6 +176,23 @@ fn run_output_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
 
         let result = prompt_user(&format!(
             "Did fader {} move to maximum position (+10dB)?",
+            channel
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    for channel in 0..8 {
+        let test_name = format!("fader_channel_{}_to_min", channel);
+        println!("\nTest: {}", test_name);
+
+        tx.send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+            idx: channel,
+            value: 0.0,
+        }))
+        .unwrap();
+
+        let result = prompt_user(&format!(
+            "Did fader {} move to minimum position (-Inf)?",
             channel
         ));
         results.push(TestSummary::new(&test_name, result));
@@ -450,6 +497,50 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
         results.push(TestSummary::new(&test_name, result));
     }
 
+    // Test select button press/release
+    for channel in 0..8 {
+        let test_name = format!("select_button_channel_{}", channel);
+        println!("\nTest: {}", test_name);
+
+        wait_for_user_action(&format!("Press the SELECT button for channel {}", channel));
+
+        let mut received_press = false;
+        let mut received_release = false;
+
+        let timeout = std::time::Instant::now();
+        while timeout.elapsed() < Duration::from_secs(2) {
+            if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
+                match msg {
+                    XTouchUpstreamMsg::SelectPress(press) if press.idx == channel => {
+                        received_press = true;
+                        println!("  ✓ Received SelectPress{{idx: {}}}", press.idx);
+                    }
+                    XTouchUpstreamMsg::SelectRelease(release) if release.idx == channel => {
+                        received_release = true;
+                        println!("  ✓ Received SelectRelease{{idx: {}}}", release.idx);
+                    }
+                    _ => {}
+                }
+            }
+
+            if received_press && received_release {
+                break;
+            }
+        }
+
+        let result = if received_press && received_release {
+            TestResult::Pass
+        } else {
+            println!(
+                "  ✗ Did not receive expected messages (press: {}, release: {})",
+                received_press, received_release
+            );
+            TestResult::Fail
+        };
+
+        results.push(TestSummary::new(&test_name, result));
+    }
+
     // Test fader movement
     for channel in 0..2 {
         // Just test first 2 channels to keep it reasonable
@@ -594,14 +685,25 @@ fn xtouch_manual_output_tests() {
         return;
     }
 
-    // Create channels for testing
-    // In a real implementation, these would be connected to actual XTouch hardware
-    let (tx, _rx) = bounded::<XTouchDownstreamMsg>(128);
+    let (input_port, output_connection) = match find_xtouch_ports() {
+        Ok(ports) => ports,
+        Err(err) => {
+            println!("Error finding XTouch MIDI ports: {}", err);
+            println!("Test aborted. Please ensure XTouch is connected and try again.");
+            return;
+        }
+    };
 
-    println!("\nWARNING: This is a mock test - channels are not connected to real hardware.");
-    println!("In production, these channels would be connected to XTouch MIDI device.\n");
+    let (upstream_tx, upstream_rx) = bounded::<XTouchUpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<XTouchDownstreamMsg>(128);
+    XTouchBuilder::new(
+        input_port,        // Use default MIDI input port
+        output_connection, // Use default MIDI output port
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
 
-    let results = run_output_tests(&tx);
+    let results = run_output_tests(&downstream_tx);
     print_summary(&results);
 }
 
@@ -615,25 +717,36 @@ fn xtouch_manual_input_tests() {
     println!("\nNOTE: This test requires XTouch hardware to be connected.");
     println!("You will be prompted to interact with the hardware.\n");
 
-    print!("Is XTouch hardware connected and ready? [Y/N]: ");
-    io::stdout().flush().unwrap();
+    // print!("Is XTouch hardware connected and ready? [Y/N]: ");
+    // io::stdout().flush().unwrap();
+    //
+    // let mut input = String::new();
+    // io::stdin().read_line(&mut input).unwrap();
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    // if !input.trim().eq_ignore_ascii_case("y") {
+    //     println!("Test aborted. Please connect XTouch hardware and try again.");
+    //     return;
+    // }
 
-    if !input.trim().eq_ignore_ascii_case("y") {
-        println!("Test aborted. Please connect XTouch hardware and try again.");
-        return;
-    }
+    let (input_port, output_connection) = match find_xtouch_ports() {
+        Ok(ports) => ports,
+        Err(err) => {
+            println!("Error finding XTouch MIDI ports: {}", err);
+            println!("Test aborted. Please ensure XTouch is connected and try again.");
+            return;
+        }
+    };
 
-    // Create channels for testing
-    // In a real implementation, these would be connected to actual XTouch hardware
-    let (_tx, rx) = bounded::<XTouchUpstreamMsg>(128);
+    let (upstream_tx, upstream_rx) = bounded::<XTouchUpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<XTouchDownstreamMsg>(128);
+    XTouchBuilder::new(
+        input_port,        // Use default MIDI input port
+        output_connection, // Use default MIDI output port
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
 
-    println!("\nWARNING: This is a mock test - channels are not connected to real hardware.");
-    println!("In production, these channels would be connected to XTouch MIDI device.\n");
-
-    let results = run_input_tests(&rx);
+    let results = run_input_tests(&upstream_rx);
     print_summary(&results);
 }
 
