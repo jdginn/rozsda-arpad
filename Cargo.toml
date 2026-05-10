@@ -21,4 +21,4 @@ uuid = { version = "1", features = ["v4"] }
 derive_enum_from = { path = "./derive_enum_from" }
 
 [workspace]
-members = ["tools/reaper_oscgen"]
+members = ["tools/reaper_oscgen", "tools/reaper_fxgen"]
