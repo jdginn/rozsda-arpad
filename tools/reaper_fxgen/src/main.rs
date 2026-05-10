@@ -1,7 +1,7 @@
 use clap::Parser;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
@@ -11,6 +11,9 @@ use std::process::{Command, Stdio};
 struct Cli {
     /// Path to the fx_dump yaml file
     spec: PathBuf,
+    /// Optional path to a text file containing an allow‑list of FX base names to include (one per line, supports comments with #). If not provided, all FX in the YAML will be processed.
+    #[clap(short, long)]
+    allow_list: Option<PathBuf>,
     /// Output Rust file
     #[clap(short, long, default_value = "generated_fx_param.rs")]
     out: PathBuf,
@@ -161,11 +164,19 @@ fn plugin_type_suffix(pt: &PluginType) -> &'static str {
     }
 }
 
-fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>) -> Vec<Fx> {
+fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<String>>) -> Vec<Fx> {
     let mut plugin_names: HashMap<String, HashMap<PluginType, Fx>> = HashMap::new();
 
     for raw_fx in &raw_yaml_fx_list {
         let (base_name, plugin_type, developer) = split_fx_name(&raw_fx.fx_name);
+
+        // If an allow‑list is supplied, skip FX not in the list
+        if let Some(allowed) = &allow_names {
+            if !allowed.contains(&base_name) {
+                continue;
+            }
+        }
+
         let base_repr = sanitize_enum(&base_name);
 
         let per_name = plugin_names
@@ -494,11 +505,44 @@ fn format_code(code: &str) -> String {
     String::from_utf8(output.stdout).expect("rustfmt output not valid UTF-8")
 }
 
+fn read_allow_list(path: &PathBuf) -> Option<HashSet<String>> {
+    if !path.exists() {
+        println!(
+            "Warning: allow‑list file {} does not exist – falling back to processing all FX.",
+            path.display()
+        );
+        return None;
+    }
+
+    let contents = fs::read_to_string(path).ok()?;
+    let mut allow_names = HashSet::new();
+
+    for line in contents.lines() {
+        // Trim whitespace and ignore empty / comment lines
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // The list contains just the base name (e.g. "AUAudioFilePlayer").
+        // We already strip prefixes/suffixes in `split_fx_name`, so we do the same here.
+        let (name, _, _) = split_fx_name(line);
+        allow_names.insert(name);
+    }
+
+    Some(allow_names)
+}
+
 fn main() {
     let cli = Cli::parse();
     let yaml = fs::read_to_string(&cli.spec).expect("Failed to read input YAML");
     let mut raw_fx_list: Vec<RawFx> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
-    let processed_fx_list = process_yaml_fx(raw_fx_list);
+    let allow_names = if let Some(path) = cli.allow_list {
+        read_allow_list(&path)
+    } else {
+        None
+    };
+    let mut raw_fx_list: Vec<RawFx> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
+    let processed_fx_list = process_yaml_fx(raw_fx_list, allow_names);
     let mut code = String::new();
     write_imports(&mut code);
     write_fx_enum(&mut code, processed_fx_list.clone());
