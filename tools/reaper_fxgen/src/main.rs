@@ -1,5 +1,4 @@
 use clap::Parser;
-use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -134,8 +133,6 @@ fn split_fx_name(input: &str) -> (String, PluginType, DeveloperName) {
     (name, plugin_type, developer)
 }
 
-type PluginMap = HashMap<String, HashMap<PluginType, Fx>>;
-
 fn params_equal(p1: Vec<FxParam>, p2: Vec<RawFxParam>) -> bool {
     if p1.len() != p2.len() {
         return false;
@@ -179,9 +176,7 @@ fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<Str
 
         let base_repr = sanitize_enum(&base_name);
 
-        let per_name = plugin_names
-            .entry(base_name.clone())
-            .or_insert_with(HashMap::new);
+        let per_name = plugin_names.entry(base_name.clone()).or_default();
 
         // Do we already have any entry under this base name whose params differ?
         let needs_disambiguation = per_name
@@ -190,7 +185,7 @@ fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<Str
 
         // Also: if this exact plugin_type already exists but with different params,
         // disambiguation is definitely needed (and you may want to treat as error).
-        if let Some(existing_same_type) = per_name.get(&plugin_type) {
+        if per_name.get(&plugin_type).is_some() {
             panic!("Duplicate plugin type for same base name: {} with plugin type {:?} already exists. Consider disambiguating the name or checking for duplicates in the input YAML.", base_name, plugin_type);
         }
 
@@ -228,7 +223,7 @@ fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<Str
                 v.insert(Fx {
                     fx_name: raw_fx.fx_name.clone(),
                     repr,
-                    params: params,
+                    params,
                     plugin_type,
                     developer,
                 });
@@ -283,12 +278,7 @@ fn sanitize_enum(input: &str) -> String {
                 out.extend(ch.to_uppercase());
                 new_word = false;
             } else {
-                // keep digits as-is; letters lowercased for stable casing
-                if ch.is_ascii_digit() {
-                    out.push(ch);
-                } else {
-                    out.push(ch);
-                }
+                out.push(ch);
             }
         } else {
             new_word = true;
@@ -309,33 +299,6 @@ fn sanitize_enum(input: &str) -> String {
     out
 }
 
-fn sanitize(name: &str) -> String {
-    if name == "-" {
-        return "minus".to_string();
-    }
-    if name == "+" {
-        return "plus".to_string();
-    }
-    let prepend_numeric = Regex::new(r"^(\d)")
-        .unwrap()
-        .replace_all(name, "_$1")
-        .to_string();
-    let remove_spaces = Regex::new(r" ")
-        .unwrap()
-        .replace_all(prepend_numeric.as_str(), "_")
-        .to_string();
-    let insert_underscores = Regex::new(r"[^a-zA-Z0-9]")
-        .unwrap()
-        .replace_all(remove_spaces.as_str(), "_")
-        .to_lowercase()
-        .to_string();
-    let remove_au_prefix = Regex::new(r"^au:")
-        .unwrap()
-        .replace_all(insert_underscores.as_str(), "")
-        .to_string();
-    remove_au_prefix
-}
-
 fn pascal_to_snake(s: String) -> String {
     let mut snake = String::new();
     for (i, ch) in s.chars().enumerate() {
@@ -347,22 +310,6 @@ fn pascal_to_snake(s: String) -> String {
         snake.extend(ch.to_lowercase());
     }
     snake
-}
-
-fn capitalize_first_letter(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
-}
-
-fn write_fx_struct(code: &mut String, yaml_fx: Fx) {
-    writeln!(code, "pub struct {} {{}}\n", yaml_fx.repr).unwrap();
-    writeln!(code, "impl {} {{\n", yaml_fx.repr).unwrap();
-    write_encode_trackmsg(code, yaml_fx.clone());
-    write_decode_trackmsg(code, yaml_fx.clone());
-    writeln!(code, "}}").unwrap();
 }
 
 fn write_fx_mod(code: &mut String, yaml_fx: Fx) {
@@ -441,40 +388,6 @@ fn write_fx_enum(code: &mut String, effects: Vec<Fx>) {
     writeln!(code, "}}").unwrap();
 }
 
-// fn write_fx_enum(code: &mut String, fx_list: &[YamlFx]) {
-//     writeln!(code, "pub enum FxType {{").unwrap();
-//     for fx in fx_list {
-//         writeln!(code, "    {},", fx.fx_name).unwrap();
-//     }
-//     writeln!(code, "}}").unwrap();
-//     writeln!(code, "impl FxType {{").unwrap();
-//     writeln!(code, "    fn_name(&self) -> &str {{").unwrap();
-//     writeln!(code, "        match self {{").unwrap();
-//     for fx in fx_list {
-//         writeln!(
-//             code,
-//             "            FxType::{} => \"{}\",",
-//             fx.fx_name, fx.fx_name
-//         )
-//         .unwrap();
-//     }
-//     writeln!(code, "        }}").unwrap();
-//     writeln!(code, "    }}").unwrap();
-//     writeln!(code, "}}").unwrap();
-// }
-//
-// fn write_fx_struct(code: &mut String, fx: &YamlFx) {
-//     writeln!(code, "pub struct {} {{", fx.fx_name).unwrap();
-//     writeln!(code, "    fx_name: i32,").unwrap();
-//     writeln!(code, "}}").unwrap();
-// }
-//
-// fn write_fx_param_struct(code: &mut String, param: &YamlFxParam) {
-//     writeln!(code, "pub struct {} {{", param.name).unwrap();
-//     writeln!(code, "    value: f32,").unwrap();
-//     writeln!(code, "}}").unwrap();
-// }
-//
 fn format_code(code: &str) -> String {
     let mut rustfmt = Command::new("rustfmt")
         .arg("--emit")
@@ -537,13 +450,12 @@ fn read_allow_list(path: &PathBuf) -> Option<HashSet<String>> {
 fn main() {
     let cli = Cli::parse();
     let yaml = fs::read_to_string(&cli.spec).expect("Failed to read input YAML");
-    let mut raw_fx_list: Vec<RawFx> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
     let allow_names = if let Some(path) = cli.allow_list {
         read_allow_list(&path)
     } else {
         None
     };
-    let mut raw_fx_list: Vec<RawFx> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
+    let raw_fx_list: Vec<RawFx> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
     let processed_fx_list = process_yaml_fx(raw_fx_list, allow_names);
     let mut code = String::new();
     write_imports(&mut code);
@@ -567,3 +479,4 @@ fn main() {
     };
     fs::write(&cli.out, formatted_code).expect("Failed to write output Rust file");
 }
+
