@@ -290,40 +290,26 @@ impl ChannelStripRouter {
                 if let Some(msg) = fx::rea_eq::decode_trackmsg(msg) {
                     match msg {
                         fx::rea_eq::Param::FreqLowShelf(val) => {
-                            Ok(vec![ChannelStripMsg::LowFreq(val).into()])
+                            Ok(vec![ChannelStripMsg::LowFreq(val)])
                         }
                         fx::rea_eq::Param::GainLowShelf(val) => {
-                            Ok(vec![ChannelStripMsg::LowGain(val).into()])
+                            Ok(vec![ChannelStripMsg::LowGain(val)])
                         }
-                        fx::rea_eq::Param::BWLowShelf(val) => {
-                            Ok(vec![ChannelStripMsg::LowQ(val).into()])
-                        }
-                        fx::rea_eq::Param::FreqBand2(val) => {
-                            Ok(vec![ChannelStripMsg::LmFreq(val).into()])
-                        }
-                        fx::rea_eq::Param::GainBand2(val) => {
-                            Ok(vec![ChannelStripMsg::LmGain(val).into()])
-                        }
-                        fx::rea_eq::Param::BWBand2(val) => {
-                            Ok(vec![ChannelStripMsg::LmQ(val).into()])
-                        }
-                        fx::rea_eq::Param::FreqBand3(val) => {
-                            Ok(vec![ChannelStripMsg::HmFreq(val).into()])
-                        }
-                        fx::rea_eq::Param::GainBand3(val) => {
-                            Ok(vec![ChannelStripMsg::HmGain(val).into()])
-                        }
-                        fx::rea_eq::Param::BWBand3(val) => {
-                            Ok(vec![ChannelStripMsg::HmQ(val).into()])
-                        }
+                        fx::rea_eq::Param::BWLowShelf(val) => Ok(vec![ChannelStripMsg::LowQ(val)]),
+                        fx::rea_eq::Param::FreqBand2(val) => Ok(vec![ChannelStripMsg::LmFreq(val)]),
+                        fx::rea_eq::Param::GainBand2(val) => Ok(vec![ChannelStripMsg::LmGain(val)]),
+                        fx::rea_eq::Param::BWBand2(val) => Ok(vec![ChannelStripMsg::LmQ(val)]),
+                        fx::rea_eq::Param::FreqBand3(val) => Ok(vec![ChannelStripMsg::HmFreq(val)]),
+                        fx::rea_eq::Param::GainBand3(val) => Ok(vec![ChannelStripMsg::HmGain(val)]),
+                        fx::rea_eq::Param::BWBand3(val) => Ok(vec![ChannelStripMsg::HmQ(val)]),
                         fx::rea_eq::Param::FreqHighShelf4(val) => {
-                            Ok(vec![ChannelStripMsg::HighFreq(val).into()])
+                            Ok(vec![ChannelStripMsg::HighFreq(val)])
                         }
                         fx::rea_eq::Param::GainHighShelf4(val) => {
-                            Ok(vec![ChannelStripMsg::HighGain(val).into()])
+                            Ok(vec![ChannelStripMsg::HighGain(val)])
                         }
                         fx::rea_eq::Param::BWHighShelf4(val) => {
-                            Ok(vec![ChannelStripMsg::HighQ(val).into()])
+                            Ok(vec![ChannelStripMsg::HighQ(val)])
                         }
                         _ => Ok(vec![]),
                     }
