@@ -4,6 +4,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender};
 use derive_more::From;
 use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
+use midir::{MidiInput, MidiInputPort, MidiOutputConnection};
 
 use crate::midi::base::{
     ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
@@ -270,6 +271,11 @@ impl Bind<u16> for Fader {
 impl Set<i32> for Fader {
     type Error = MidiError;
     fn set(&mut self, value: i32) -> Result<(), Self::Error> {
+        println!(
+            "Setting fader on channel {} to value {}\n",
+            self.channel.get(),
+            value
+        );
         PitchBendBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: PitchBend {
@@ -422,6 +428,21 @@ pub struct XTouchBuilder {
 }
 
 impl XTouchBuilder {
+    pub fn new(
+        midi_in_port: MidiInputPort,
+        midi_out: MidiOutputConnection,
+        num_channels: usize,
+    ) -> Self {
+        Self {
+            base: Arc::new(Mutex::new(MidiDevice::new(
+                "xtouch",
+                midi_in_port,
+                midi_out,
+            ))),
+            num_channels,
+        }
+    }
+
     pub fn build(self, input: Receiver<XTouchDownstreamMsg>, upstream: Sender<XTouchUpstreamMsg>) {
         let mut faders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
@@ -477,17 +498,18 @@ impl XTouchBuilder {
             // TODO: repeat this for the other button types
             let mut b = Button {
                 base: self.base.clone(),
-                channel: Channel::new(i as u8),
-                midi_note: 0x16 + i as u8,
+                channel: Channel::new(0),
+                midi_note: 16 + i as u8,
             };
             let upstream_press = upstream.clone();
-            b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(MutePress { idx: i as i32 }));
-            });
-            let upstream_release = upstream.clone();
-            b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(MuteRelease { idx: i as i32 }));
+            b.bind_press(move |velocity| match velocity {
+                0 => upstream_press
+                    .send(XTouchUpstreamMsg::from(MuteRelease { idx: i as i32 }))
+                    .unwrap(),
+                127 => upstream_press
+                    .send(XTouchUpstreamMsg::from(MutePress { idx: i as i32 }))
+                    .unwrap(),
+                _ => panic!("Unexpected mute button velocity: {}", velocity),
             });
             mutes.push(b);
         }
@@ -495,17 +517,18 @@ impl XTouchBuilder {
         for i in 0..self.num_channels {
             let mut b = Button {
                 base: self.base.clone(),
-                channel: Channel::new(i as u8),
-                midi_note: 0x08 + i as u8,
+                channel: Channel::new(0),
+                midi_note: 8 + i as u8,
             };
             let upstream_press = upstream.clone();
-            b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(SoloPress { idx: i as i32 }));
-            });
-            let upstream_release = upstream.clone();
-            b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(SoloRelease { idx: i as i32 }));
+            b.bind_press(move |velocity| match velocity {
+                0 => upstream_press
+                    .send(XTouchUpstreamMsg::from(SoloRelease { idx: i as i32 }))
+                    .unwrap(),
+                127 => upstream_press
+                    .send(XTouchUpstreamMsg::from(SoloPress { idx: i as i32 }))
+                    .unwrap(),
+                _ => panic!("Unexpected solo button velocity: {}", velocity),
             });
             solos.push(b);
         }
@@ -513,17 +536,18 @@ impl XTouchBuilder {
         for i in 0..self.num_channels {
             let mut b = Button {
                 base: self.base.clone(),
-                channel: Channel::new(i as u8),
+                channel: Channel::new(0),
                 midi_note: i as u8,
             };
             let upstream_press = upstream.clone();
-            b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }));
-            });
-            let upstream_release = upstream.clone();
-            b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }));
+            b.bind_press(move |velocity| match velocity {
+                0 => upstream_press
+                    .send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }))
+                    .unwrap(),
+                127 => upstream_press
+                    .send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }))
+                    .unwrap(),
+                _ => panic!("Unexpected arm button velocity: {}", velocity),
             });
             arms.push(b);
         }
@@ -531,20 +555,53 @@ impl XTouchBuilder {
         for i in 0..self.num_channels {
             let mut b = Button {
                 base: self.base.clone(),
-                channel: Channel::new(i as u8),
-                midi_note: 0x24 + i as u8,
+                channel: Channel::new(0),
+                midi_note: 24 + i as u8,
             };
             let upstream_press = upstream.clone();
-            b.bind_press(move |_velocity| {
-                let _ = upstream_press.send(XTouchUpstreamMsg::from(ArmPress { idx: i as i32 }));
-            });
-            let upstream_release = upstream.clone();
-            b.bind_release(move |_velocity| {
-                let _ =
-                    upstream_release.send(XTouchUpstreamMsg::from(ArmRelease { idx: i as i32 }));
+            b.bind_press(move |velocity| match velocity {
+                0 => upstream_press
+                    .send(XTouchUpstreamMsg::from(SelectRelease { idx: i as i32 }))
+                    .unwrap(),
+                127 => upstream_press
+                    .send(XTouchUpstreamMsg::from(SelectPress { idx: i as i32 }))
+                    .unwrap(),
+                _ => panic!("Unexpected select button velocity: {}", velocity),
             });
             selects.push(b);
         }
+        // Global view
+        let mut b = Button {
+            base: self.base.clone(),
+            channel: Channel::new(0),
+            midi_note: 51,
+        };
+        let upstream_press = upstream.clone();
+        b.bind_press(move |velocity| match velocity {
+            0 => upstream_press.send(XTouchUpstreamMsg::GlobalPress).unwrap(),
+            127 => upstream_press
+                .send(XTouchUpstreamMsg::GlobalRelease)
+                .unwrap(),
+            _ => panic!("Unexpected global button velocity: {}", velocity),
+        });
+        // MIDITracks view
+        let mut b = Button {
+            base: self.base.clone(),
+            channel: Channel::new(0),
+            midi_note: 62,
+        };
+        let upstream_press = upstream.clone();
+        b.bind_press(move |velocity| match velocity {
+            0 => upstream_press
+                .send(XTouchUpstreamMsg::MIDITracksPress)
+                .unwrap(),
+            127 => upstream_press
+                .send(XTouchUpstreamMsg::MIDITracksRelease)
+                .unwrap(),
+            _ => panic!("Unexpected MIDITracks button velocity: {}", velocity),
+        });
+
+        self.base.lock().unwrap().run();
 
         let mut xtouch = XTouch {
             input,
@@ -560,6 +617,7 @@ impl XTouchBuilder {
         thread::spawn(move || {
             loop {
                 if let Ok(msg) = xtouch.input.recv() {
+                    println!("Received downstream message: {:?}\n", msg);
                     match msg {
                         XTouchDownstreamMsg::Barrier(barrier_msg) => {
                             let _ = xtouch
@@ -567,6 +625,12 @@ impl XTouchBuilder {
                                 .send(XTouchUpstreamMsg::Barrier(barrier_msg));
                         }
                         XTouchDownstreamMsg::FaderAbs(fader_msg) => {
+                            println!(
+                                "Setting fader {} to value {} (raw value {})\n",
+                                fader_msg.idx,
+                                fader_msg.value,
+                                (fader_msg.value * 16383.0) as i32
+                            );
                             xtouch.faders[fader_msg.idx as usize]
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
                                 .unwrap();
