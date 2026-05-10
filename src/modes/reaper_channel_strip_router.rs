@@ -2,27 +2,28 @@ use std::sync::Mutex;
 
 use uuid::Uuid;
 
+use crate::modes::generated_fx_param as fx;
 use crate::track::track;
 use crate::track::track::TrackMsg;
 
-/// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
-/// |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
-/// | 1  | HP filter   | slope                            | EQ type          |                |                |                 |
-/// | 2  | Low freq    | Low Q (bell) / slope (shelf)     | bell/shelf       |                |                |                 |
-/// | 3  | Low gain    |                                  |                  |                | zero Low gain  |                 |
-/// | 4  | LM freq     | LM Q                             |                  |                |                |                 |
-/// | 5  | LM gain     |                                  |                  |                | zero LM gain   |                 |
-/// | 6  | HM freq     | HM Q                             |                  |                |                |                 |
-/// | 7  | HM gain     |                                  |                  |                | zero HM gain   |                 |
-/// | 8  | High freq   | High Q (bell) / slope (slope)    | bell/shelf       |                |                |                 |
-/// | 9  | High gain   |                                  | sides gain       |                | zero High gain | zero sides gain |
-/// | 10 | EQ pos      |                                  | Comp order       |                | bypass EQ      |                 |
-/// | 11 | Comp thresh | Comp SC filter                   | Comp2  thresh    | Comp2 SC filt  |                |                 |
-/// | 12 | Comp ratio  | Comp attack                      | Comp2  ratio     | Comp2 attack   |                |                 |
-/// | 13 | Comp makeup | Comp release                     | Comp2  makeup    | Comp2 release  |                |                 |
-/// | 14 | Comp type   |                                  | Comp2  type      |                | bypass Comp    | bypass Comp2    |
-/// | 15 | Saturation  |                                  | Saturation type  |                | bypass Sat     |                 |
-/// | 16 | Gain        | Interface gain (only if armed)   | Trim             |                |                |                 |
+// | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
+// |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
+// | 1  | HP filter   | slope                            | EQ type          |                |                |                 |
+// | 2  | Low freq    | Low Q (bell) / slope (shelf)     | bell/shelf       |                |                |                 |
+// | 3  | Low gain    |                                  |                  |                | zero Low gain  |                 |
+// | 4  | LM freq     | LM Q                             |                  |                |                |                 |
+// | 5  | LM gain     |                                  |                  |                | zero LM gain   |                 |
+// | 6  | HM freq     | HM Q                             |                  |                |                |                 |
+// | 7  | HM gain     |                                  |                  |                | zero HM gain   |                 |
+// | 8  | High freq   | High Q (bell) / slope (slope)    | bell/shelf       |                |                |                 |
+// | 9  | High gain   |                                  | sides gain       |                | zero High gain | zero sides gain |
+// | 10 | EQ pos      |                                  | Comp order       |                | bypass EQ      |                 |
+// | 11 | Comp thresh | Comp SC filter                   | Comp2  thresh    | Comp2 SC filt  |                |                 |
+// | 12 | Comp ratio  | Comp attack                      | Comp2  ratio     | Comp2 attack   |                |                 |
+// | 13 | Comp makeup | Comp release                     | Comp2  makeup    | Comp2 release  |                |                 |
+// | 14 | Comp type   |                                  | Comp2  type      |                | bypass Comp    | bypass Comp2    |
+// | 15 | Saturation  |                                  | Saturation type  |                | bypass Sat     |                 |
+// | 16 | Gain        | Interface gain (only if armed)   | Trim             |                |                |                 |
 
 #[derive(Debug, Clone, Copy)]
 pub enum BandMode {
@@ -66,6 +67,27 @@ pub enum SaturationType {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ChannelStripMsg {
+    EnableEq,
+    DisableEq,
+    EnableComp1,
+    DisableComp1,
+    EnableComp2,
+    DisableComp2,
+    EnableSaturation,
+    DisableSaturation,
+    EnableGain,
+    DisableGain,
+    EnableTrim,
+    DisableTrim,
+    EnableInterfaceGain,
+    DisableInterfaceGain,
+    // InstantiateEq(EqFx)
+    // InstantiateComp1(CompFx)
+    // InstantiateComp2(CompFx)
+    // InstantiateSaturation(SaturationFx)
+    // InstantiateGain(GainFx)
+    // InstantiateTrim(TrimRx)
+    // InstantiateInterface(Interface)
     HpfFreq(f32),
     HpfSlope(f32),
     EqType(EqType),
@@ -134,7 +156,9 @@ struct FXParamIdent {
 /// TODO: the hard part will be getting this to update dynamically based on the actual FX chain on the track
 pub struct ChannelStripRouter {
     mux: Mutex<()>,
+    track_guid: Uuid,
     plugin_names_by_index: Vec<String>,
+    plugins_by_index: Vec<fx::FX>,
     hp_filter: Option<FXParamIdent>,
     hp_slope: Option<FXParamIdent>,
     low_freq: Option<FXParamIdent>,
@@ -194,9 +218,11 @@ pub struct ChannelStripRouter {
 }
 
 impl ChannelStripRouter {
-    pub fn new() -> Self {
+    pub fn new(track_guid: Uuid) -> Self {
         ChannelStripRouter {
             mux: Mutex::new(()),
+            track_guid,
+            plugins_by_index: Vec::new(),
             plugin_names_by_index: Vec::new(),
             hp_filter: None,
             hp_slope: None,
@@ -259,21 +285,109 @@ impl ChannelStripRouter {
         &self,
         msg: track::DataMsg,
     ) -> Result<Vec<ChannelStripMsg>, TranslationErr> {
-        // FIXME: implement
-        Ok(vec![ChannelStripMsg::HpfFreq(0.0)])
+        match msg {
+            track::DataMsg::FXParamValue(msg) => {
+                if let Some(msg) = fx::rea_eq::decode_trackmsg(msg) {
+                    match msg {
+                        fx::rea_eq::Param::FreqLowShelf(val) => {
+                            Ok(vec![ChannelStripMsg::LowFreq(val).into()])
+                        }
+                        fx::rea_eq::Param::GainLowShelf(val) => {
+                            Ok(vec![ChannelStripMsg::LowGain(val).into()])
+                        }
+                        fx::rea_eq::Param::BWLowShelf(val) => {
+                            Ok(vec![ChannelStripMsg::LowQ(val).into()])
+                        }
+                        fx::rea_eq::Param::FreqBand2(val) => {
+                            Ok(vec![ChannelStripMsg::LmFreq(val).into()])
+                        }
+                        fx::rea_eq::Param::GainBand2(val) => {
+                            Ok(vec![ChannelStripMsg::LmGain(val).into()])
+                        }
+                        fx::rea_eq::Param::BWBand2(val) => {
+                            Ok(vec![ChannelStripMsg::LmQ(val).into()])
+                        }
+                        fx::rea_eq::Param::FreqBand3(val) => {
+                            Ok(vec![ChannelStripMsg::HmFreq(val).into()])
+                        }
+                        fx::rea_eq::Param::GainBand3(val) => {
+                            Ok(vec![ChannelStripMsg::HmGain(val).into()])
+                        }
+                        fx::rea_eq::Param::BWBand3(val) => {
+                            Ok(vec![ChannelStripMsg::HmQ(val).into()])
+                        }
+                        fx::rea_eq::Param::FreqHighShelf4(val) => {
+                            Ok(vec![ChannelStripMsg::HighFreq(val).into()])
+                        }
+                        fx::rea_eq::Param::GainHighShelf4(val) => {
+                            Ok(vec![ChannelStripMsg::HighGain(val).into()])
+                        }
+                        fx::rea_eq::Param::BWHighShelf4(val) => {
+                            Ok(vec![ChannelStripMsg::HighQ(val).into()])
+                        }
+                        _ => Ok(vec![]),
+                    }
+                } else {
+                    Ok(vec![])
+                }
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
+    fn get_first_fx_index(&self, needle: fx::FX) -> Option<i32> {
+        self.plugins_by_index
+            .iter()
+            .position(|haystack| *haystack == needle)
+            .map(|index| index as i32)
     }
 
     pub fn translate_message_from_downstream(
         &self,
         msg: ChannelStripMsg,
     ) -> Result<Vec<TrackMsg>, TranslationErr> {
-        // FIXME: implement
-        Ok(vec![
-            track::Muted {
-                track_guid: Uuid::new_v4(),
-                muted: true,
-            }
-            .into(),
-        ])
+        match msg {
+            ChannelStripMsg::LowFreq(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::FreqLowShelf(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::LowGain(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::GainLowShelf(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::LowQ(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::BWLowShelf(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::LmFreq(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::FreqBand2(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::LmGain(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::GainBand2(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            _ => Ok(vec![]),
+        }
     }
 }

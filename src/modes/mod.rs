@@ -1,4 +1,5 @@
 pub mod button;
+pub mod generated_fx_param;
 pub mod mode_manager;
 pub mod reaper_channel_strip_mode;
 pub mod reaper_channel_strip_router;

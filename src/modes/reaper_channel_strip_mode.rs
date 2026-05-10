@@ -243,7 +243,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                             let router = self
                                 .routers
                                 .entry(selected_guid)
-                                .or_insert(ChannelStripRouter::new());
+                                .or_insert(ChannelStripRouter::new(selected_guid));
                             // Each message from upstream may cause one or more ChannelStripMsgs
                             if let Ok(translated_msgs) = router.translate_message_from_upstream(msg)
                             {
@@ -338,7 +338,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                     let router = self
                         .routers
                         .entry(selected_track_guid)
-                        .or_insert(ChannelStripRouter::new());
+                        .or_insert(ChannelStripRouter::new(selected_track_guid));
                     // Handle messages to the widgets
                     let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
                     // Each upstream message may generate one or more ChannelStripMsgs
