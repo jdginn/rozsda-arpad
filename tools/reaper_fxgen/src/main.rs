@@ -250,35 +250,6 @@ fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<Str
         .collect()
 }
 
-// fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>) -> Vec<Fx> {
-//     let mut plugin_names = HashMap::new();
-//
-//     for raw_fx in &raw_yaml_fx_list {
-//         let (name, plugin_type, developer) = split_fx_name(&raw_fx.fx_name);
-//         let per_name = plugin_names
-//             .entry(name.clone())
-//             .or_insert_with(HashMap::new);
-//
-//         // If we have a hit on plugin name, check whether we have differences in params across plugin types. If so, we need to disambiguate by plugin type in the enum variant name (e.g. "ReaEQ_AU" vs "ReaEQ_VST"). If not, we can just use the plugin name as the enum variant name.
-//         per_name.entry(plugin_type.clone()).or_insert_with(|| Fx {
-//             fx_name: raw_fx.fx_name.clone(),
-//             repr: sanitize(&name),
-//             params: raw_fx.params.clone(),
-//             plugin_type,
-//             developer,
-//         });
-//     }
-//     return plugin_names
-//         .into_iter()
-//         .flat_map(|(_, type_map)| type_map.into_values())
-//         .collect();
-// }
-
-fn snake_case(s: &str) -> String {
-    let re = Regex::new(r"([a-z0-9])([A-Z])").unwrap();
-    re.replace_all(s, "$1_$2").to_lowercase()
-}
-
 fn sanitize_enum(input: &str) -> String {
     let s = input.trim();
 
@@ -316,7 +287,7 @@ fn sanitize_enum(input: &str) -> String {
                 if ch.is_ascii_digit() {
                     out.push(ch);
                 } else {
-                    out.extend(ch.to_lowercase());
+                    out.push(ch);
                 }
             }
         } else {
@@ -365,20 +336,25 @@ fn sanitize(name: &str) -> String {
     remove_au_prefix
 }
 
+fn pascal_to_snake(s: String) -> String {
+    let mut snake = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        // Insert underscore only when the character is uppercase and it is not the first character,
+        // and the previous character is **not** also uppercase (i.e., end of a capital run).
+        if ch.is_uppercase() && i > 0 && !s.chars().nth(i - 1).unwrap().is_uppercase() {
+            snake.push('_');
+        }
+        snake.extend(ch.to_lowercase());
+    }
+    snake
+}
+
 fn capitalize_first_letter(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         None => String::new(),
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
     }
-}
-
-fn write_fx_enum(code: &mut String, effects: Vec<Fx>) {
-    writeln!(code, "pub enum FX {{").unwrap();
-    for fx in &effects {
-        writeln!(code, "    {0}({0}),", fx.repr).unwrap();
-    }
-    writeln!(code, "}}").unwrap();
 }
 
 fn write_fx_struct(code: &mut String, yaml_fx: Fx) {
@@ -389,13 +365,30 @@ fn write_fx_struct(code: &mut String, yaml_fx: Fx) {
     writeln!(code, "}}").unwrap();
 }
 
+fn write_fx_mod(code: &mut String, yaml_fx: Fx) {
+    writeln!(code, "pub mod {} {{", pascal_to_snake(yaml_fx.repr.clone())).unwrap();
+    writeln!(code, "    use super::*;\n").unwrap();
+    write_param_enum(code, yaml_fx.clone());
+    write_encode_trackmsg(code, yaml_fx.clone());
+    write_decode_trackmsg(code, yaml_fx.clone());
+    writeln!(code, "}}").unwrap();
+}
+
+fn write_param_enum(code: &mut String, yaml_fx: Fx) {
+    writeln!(code, "pub enum Param {{").unwrap();
+    for param in &yaml_fx.params {
+        writeln!(code, "    {}(f32),", param.repr).unwrap();
+    }
+    writeln!(code, "}}").unwrap();
+}
+
 fn write_encode_trackmsg(code: &mut String, yaml_fx: Fx) {
     writeln!(
         code,
-        "    pub fn encode_trackmsg(track_guid: Uuid, fx_index: i32, param: i32) -> track::TrackMsg {{"
+        "    pub fn encode_trackmsg(track_guid: Uuid, fx_index: i32, param: Param) -> track::TrackMsg {{"
     )
     .unwrap();
-    writeln!(code, "        match param(value) {{").unwrap();
+    writeln!(code, "        match param {{").unwrap();
     for param in &yaml_fx.params {
         writeln!(
             code,
@@ -437,6 +430,15 @@ fn write_decode_trackmsg(code: &mut String, yaml_fx: Fx) {
 fn write_imports(code: &mut String) {
     writeln!(code, "use crate::track::track;").unwrap();
     writeln!(code, "use uuid::Uuid;").unwrap();
+}
+
+fn write_fx_enum(code: &mut String, effects: Vec<Fx>) {
+    writeln!(code, "#[derive(Debug, Clone, Copy, PartialEq)]").unwrap();
+    writeln!(code, "pub enum FX {{").unwrap();
+    for fx in &effects {
+        writeln!(code, "    {},", fx.repr).unwrap();
+    }
+    writeln!(code, "}}").unwrap();
 }
 
 // fn write_fx_enum(code: &mut String, fx_list: &[YamlFx]) {
@@ -545,12 +547,12 @@ fn main() {
     let processed_fx_list = process_yaml_fx(raw_fx_list, allow_names);
     let mut code = String::new();
     write_imports(&mut code);
-    write_fx_enum(&mut code, processed_fx_list.clone());
     writeln!(code, "\n").unwrap();
     for fx in &processed_fx_list {
-        write_fx_struct(&mut code, fx.clone());
+        write_fx_mod(&mut code, fx.clone());
         writeln!(code, "\n").unwrap();
     }
+    write_fx_enum(&mut code, processed_fx_list.clone());
 
     let formatted_code = match std::panic::catch_unwind(|| format_code(&code)) {
         Ok(formatted) => {
