@@ -1,7 +1,7 @@
 use clap::Parser;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::{Display, Write};
 use std::fs;
 use std::path::PathBuf;
