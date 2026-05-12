@@ -13,8 +13,9 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::xtouch::{
-    ArmLEDMsg, FaderAbsMsg, LEDState, MuteLEDMsg, SoloLEDMsg, XTouchBuilder, XTouchDownstreamMsg,
-    XTouchUpstreamMsg,
+    ArmLEDMsg, Color, FaderAbsMsg, LEDState, MuteLEDMsg, ScribbleStripBackgroundColorMsg,
+    ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, SoloLEDMsg, XTouchBuilder,
+    XTouchDownstreamMsg, XTouchUpstreamMsg,
 };
 
 // ============================================================================
@@ -658,6 +659,131 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
     results.push(TestSummary::new(test_name, result));
 
     results
+}
+
+// ============================================================================
+// Scribble strip tests
+// ============================================================================
+//
+fn run_scribble_strip_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
+    println!("\n========================================");
+    println!("XTouch Scribble Strip Tests");
+    println!("========================================");
+    println!("These tests send messages to XTouch hardware.");
+    println!("Please verify the scribble strip displays the expected text.\n");
+
+    let mut results = Vec::new();
+
+    // Case 1: Line 1 text "FaderN"
+    for channel in 0..8 {
+        let test_name = format!("scribble_channel_{}_line1", channel);
+        println!("\nTest: {}", test_name);
+        tx.send(XTouchDownstreamMsg::ScribbleStripLine1Text(
+            ScribbleStripLine1TextMsg {
+                idx: channel,
+                text: format!("Fader{}", channel),
+            },
+        ))
+        .unwrap();
+
+        let result = prompt_user(&format!(
+            "Did channel {} scribble strip line 1 display \"Fader{}\"?",
+            channel, channel
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    // Case 2: Line 2 text "Displ1"
+    for channel in 0..8 {
+        let test_name = format!("scribble_channel_{}_line2", channel);
+        println!("\nTest: {}", test_name);
+        tx.send(XTouchDownstreamMsg::ScribbleStripLine2Text(
+            ScribbleStripLine2TextMsg {
+                idx: channel,
+                text: format!("Displ{}", channel),
+            },
+        ))
+        .unwrap();
+
+        let result = prompt_user(&format!(
+            "Did channel {} scribble strip line 2 display \"Displ{}\"?",
+            channel, channel
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    // Case 3: Light/Light mode with distinct background colors (wrapping)
+    let colors = [
+        Color::Red,
+        Color::Green,
+        Color::Yellow,
+        Color::Blue,
+        Color::Magenta,
+        Color::Cyan,
+        Color::Grey,
+    ];
+    for channel in 0..8 {
+        let test_name = format!("scribble_channel_{}_light_light_color", channel);
+        println!("\nTest: {}", test_name);
+
+        tx.send(XTouchDownstreamMsg::ScribbleStripBackgroundColor(
+            ScribbleStripBackgroundColorMsg {
+                idx: channel,
+                color: colors[channel as usize % colors.len()],
+            },
+        ))
+        .unwrap();
+
+        let expected_color = colors[channel as usize % colors.len()];
+        let result = prompt_user(&format!(
+            "Did channel {} display in Light/Light mode with background color {:?}?",
+            channel, expected_color
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    results
+}
+
+#[test]
+#[ignore] // Must be run manually with --ignored flag
+fn xtouch_scribble_strip_tests() {
+    println!("\n");
+    println!("╔════════════════════════════════════════════════════════════════╗");
+    println!("║          XTouch Scribble Strip Test Suite                      ║");
+    println!("╚════════════════════════════════════════════════════════════════╝");
+    println!("\nNOTE: This test requires XTouch hardware to be connected.");
+    println!("Messages will be sent to the hardware for manual verification.\n");
+
+    print!("Is XTouch hardware connected and ready? [Y/N]: ");
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    if !input.trim().eq_ignore_ascii_case("y") {
+        println!("Test aborted. Please connect XTouch hardware and try again.");
+        return;
+    }
+
+    let (input_port, output_connection) = match find_xtouch_ports() {
+        Ok(ports) => ports,
+        Err(err) => {
+            println!("Error finding XTouch MIDI ports: {}", err);
+            println!("Test aborted. Please ensure XTouch is connected and try again.");
+            return;
+        }
+    };
+    let (upstream_tx, upstream_rx) = bounded::<XTouchUpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<XTouchDownstreamMsg>(128);
+    XTouchBuilder::new(
+        input_port,        // Use default MIDI input port
+        output_connection, // Use default MIDI output port
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
+
+    let results = run_scribble_strip_tests(&downstream_tx);
 }
 
 // ============================================================================
