@@ -3,8 +3,8 @@ use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
 use derive_more::From;
-use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
-use midir::{MidiInput, MidiInputPort, MidiOutputConnection};
+use helgoboss_midi::Channel;
+use midir::{MidiInputPort, MidiOutputConnection};
 
 use crate::midi::base::{
     ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
@@ -157,6 +157,36 @@ pub struct SelectLEDMsg {
     pub state: LEDState,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Color {
+    Off,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    Grey,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScribbleStripLine1TextMsg {
+    pub idx: i32,
+    pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScribbleStripLine2TextMsg {
+    pub idx: i32,
+    pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScribbleStripBackgroundColorMsg {
+    pub idx: i32,
+    pub color: Color,
+}
+
 #[derive(From, Debug)]
 pub enum XTouchUpstreamMsg {
     Barrier(Barrier),
@@ -223,6 +253,11 @@ pub enum XTouchDownstreamMsg {
     ArmLED(ArmLEDMsg),
     SelectLED(SelectLEDMsg),
 
+    // Scribble strip messages
+    ScribbleStripLine1Text(ScribbleStripLine1TextMsg),
+    ScribbleStripLine2Text(ScribbleStripLine2TextMsg),
+    ScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
+
     // Encoder assign messages
     Track(LEDState),
     Pan(LEDState),
@@ -241,11 +276,6 @@ pub enum XTouchDownstreamMsg {
     Buses(LEDState),
     Outputs(LEDState),
     User(LEDState),
-}
-
-fn byte_slice(msg: RawShortMessage) -> [u8; 3] {
-    let bytes = msg.to_bytes();
-    [bytes.0, bytes.1.get(), bytes.2.get()]
 }
 
 pub struct Fader {
@@ -422,6 +452,228 @@ impl Set<LEDState> for Button {
     }
 }
 
+pub struct ScribbleStrips {
+    base: Arc<Mutex<MidiDevice>>,
+    line_1: Vec<String>,
+    line_2: Vec<String>,
+    background_color: Vec<Color>,
+}
+
+/// Compacts a `&str` into exactly 7 ASCII bytes using camelCase conventions,
+/// vowel stripping, double-consonant compression, and null-padding.
+pub fn compact_to_7_bytes(input: &str) -> Vec<u8> {
+    const VOWELS: &[u8] = b"aeiouAEIOU";
+    const SEPARATORS: &[u8] = b" _.,-";
+
+    // 1. Filter to ASCII alphanumerics + recognized separators
+    let cleaned: Vec<u8> = input
+        .bytes()
+        .filter(|b| b.is_ascii_alphanumeric() || SEPARATORS.contains(b))
+        .collect();
+
+    if cleaned.is_empty() {
+        return vec![0; 7];
+    }
+
+    // 2. Split into words by separators
+    let words: Vec<&[u8]> = cleaned
+        .split(|b| SEPARATORS.contains(b))
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    if words.is_empty() {
+        return vec![0; 7];
+    }
+
+    // 3. Process each word
+    let mut processed: Vec<Vec<u8>> = Vec::with_capacity(words.len());
+    for (i, word) in words.iter().enumerate() {
+        let mut w = word.to_vec();
+
+        // --- Casing Rules ---
+        if i == 0 {
+            // First word: preserve original first char case, lowercase the rest
+            if !w.is_empty() {
+                for j in 1..w.len() {
+                    w[j] = w[j].to_ascii_lowercase();
+                }
+            }
+        } else {
+            // Subsequent words: camelCase
+            // Lowercase all-caps words before casing (Rule 5)
+            if w.iter()
+                .all(|b| b.is_ascii_alphabetic() && b.is_ascii_uppercase())
+            {
+                for b in w.iter_mut() {
+                    *b = b.to_ascii_lowercase();
+                }
+            }
+
+            if !w.is_empty() {
+                w[0] = w[0].to_ascii_uppercase();
+                for j in 1..w.len() {
+                    w[j] = w[j].to_ascii_lowercase();
+                }
+            }
+        }
+
+        // --- Vowel Removal: End-first (preserve >=1 char) ---
+        let mut end = w.len();
+        while end > 1 && VOWELS.contains(&w[end - 1]) {
+            end -= 1;
+        }
+        w.truncate(end);
+
+        // --- Double Consonant Compression ---
+        let mut compressed = Vec::with_capacity(w.len());
+        let mut prev_consonant: Option<u8> = None;
+        for &b in &w {
+            let is_consonant = b.is_ascii_alphabetic() && !VOWELS.contains(&b);
+            if is_consonant && prev_consonant == Some(b.to_ascii_lowercase()) {
+                continue; // Skip duplicate consonant
+            }
+            prev_consonant = Some(b.to_ascii_lowercase());
+            compressed.push(b);
+        }
+        processed.push(compressed);
+    }
+
+    // 4. Join words
+    let mut result = processed.concat();
+
+    // 5. Further compression if still > 7 bytes
+    while result.len() > 7 {
+        let mut end = result.len();
+        let mut found_vowel = false;
+
+        // Try removing vowels from the end first
+        while end > 0 {
+            if VOWELS.contains(&result[end - 1]) {
+                end -= 1;
+                found_vowel = true;
+            } else {
+                break;
+            }
+        }
+
+        if found_vowel {
+            result.truncate(end);
+        } else {
+            // No vowels at end, truncate last char (consonant)
+            result.pop();
+        }
+    }
+
+    // Safety truncate & null-padding to exactly 7 bytes
+    result.truncate(7);
+    result.resize(7, 0);
+
+    result
+}
+
+type ScribbleStripError = String;
+
+impl ScribbleStrips {
+    fn new(base: Arc<Mutex<MidiDevice>>, num_channels: usize) -> Self {
+        Self {
+            base,
+            line_1: vec![String::new(); num_channels],
+            line_2: vec![String::new(); num_channels],
+            background_color: vec![Color::Blue; num_channels],
+        }
+    }
+
+    fn write(&self) -> Result<(), ScribbleStripError> {
+        // First, we send the text
+        // Sysex message is made of a header + text formatted as ascii
+        // Each scribble stip consumes 7 ascii bytes
+        // Since we are updating everything, we can just send the full text for both lines of all 8
+        // strips in one message.
+
+        let mut msg_bytes = vec![0xf0, 0x00, 0x00, 0x66, 0x14, 0x12, 0x00];
+        for i in 0..self.line_1.len() {
+            let line1_bytes = compact_to_7_bytes(&self.line_1[i]);
+            // Append line1 and line2 bytes to the message
+            msg_bytes.extend_from_slice(&line1_bytes);
+        }
+        for i in 0..self.line_2.len() {
+            let line2_bytes = compact_to_7_bytes(&self.line_2[i]);
+            // Append line1 and line2 bytes to the message
+            msg_bytes.extend_from_slice(&line2_bytes);
+        }
+        // Finally, append the sysex end byte
+        msg_bytes.push(0xf7);
+
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&msg_bytes)
+            .map_err(|e| format!("Failed to send SysEx message: {}", e))?;
+
+        fn color_to_byte(background: Color) -> u8 {
+            let background_byte = match background {
+                Color::Off => 0x00,
+                Color::Red => 0x01,
+                Color::Green => 0x02,
+                Color::Yellow => 0x03,
+                Color::Blue => 0x04,
+                Color::Magenta => 0x05,
+                Color::Cyan => 0x06,
+                Color::Grey => 0x07,
+            };
+            // background_byte | (line1_mode_byte << 4) | (line2_mode_byte << 5)
+            // background_byte | 0x50
+            0x4b
+        }
+
+        // Now we do the same for the background color and line modes, which are sent in a separate message
+        let mut msg_bytes = vec![0xf0, 0x00, 0x00, 0x66, 0x14, 0x72];
+        // let mut msg_bytes = vec![0xf0, 0x00, 0x20, 0x32, 0x14, 0x72];
+        for i in 0..self.line_1.len() {
+            let color_byte = color_to_byte(self.background_color[i]);
+            msg_bytes.push(color_byte);
+        }
+        msg_bytes.push(0xf7);
+
+        println!(
+            "\nSending SysEx message for scribble strip colors and modes: {:02x?}\n",
+            msg_bytes
+        );
+
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&msg_bytes)
+            .map_err(|e| format!("Failed to send SysEx message: {}", e))
+    }
+}
+
+impl Set<ScribbleStripLine1TextMsg> for ScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: ScribbleStripLine1TextMsg) -> Result<(), Self::Error> {
+        self.line_1[value.idx as usize] = value.text;
+        self.write()
+    }
+}
+
+impl Set<ScribbleStripLine2TextMsg> for ScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: ScribbleStripLine2TextMsg) -> Result<(), Self::Error> {
+        self.line_2[value.idx as usize] = value.text;
+        self.write()
+    }
+}
+
+impl Set<ScribbleStripBackgroundColorMsg> for ScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: ScribbleStripBackgroundColorMsg) -> Result<(), Self::Error> {
+        self.background_color[value.idx as usize] = value.color;
+        self.write()
+    }
+}
+
 pub struct XTouchBuilder {
     pub base: Arc<Mutex<MidiDevice>>,
     pub num_channels: usize,
@@ -570,6 +822,7 @@ impl XTouchBuilder {
             });
             selects.push(b);
         }
+        let scribbles = ScribbleStrips::new(self.base.clone(), self.num_channels);
         // Global view
         let mut b = Button {
             base: self.base.clone(),
@@ -612,12 +865,12 @@ impl XTouchBuilder {
             solos,
             arms,
             selects,
+            scribbles,
         };
 
         thread::spawn(move || {
             loop {
                 if let Ok(msg) = xtouch.input.recv() {
-                    println!("Received downstream message: {:?}\n", msg);
                     match msg {
                         XTouchDownstreamMsg::Barrier(barrier_msg) => {
                             let _ = xtouch
@@ -682,6 +935,15 @@ impl XTouchBuilder {
                                 .set(select_msg.state)
                                 .unwrap();
                         }
+                        XTouchDownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
+                            xtouch.scribbles.set(scribble_msg).unwrap();
+                        }
+                        XTouchDownstreamMsg::ScribbleStripLine2Text(scribble_msg) => {
+                            xtouch.scribbles.set(scribble_msg).unwrap();
+                        }
+                        XTouchDownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
+                            xtouch.scribbles.set(scribble_msg).unwrap();
+                        }
                         _ => panic!("Message {:?} implemented yet!", msg),
                     }
                 }
@@ -697,6 +959,163 @@ pub struct XTouch {
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,
     pub selects: Vec<Button>,
+    pub scribbles: ScribbleStrips,
     input: Receiver<XTouchDownstreamMsg>,
     upstream: Sender<XTouchUpstreamMsg>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exact_7_byte_length() {
+        // Rule: Output must always be exactly 7 bytes
+        for input in &["hi", "hello", "longphrasethatshouldbeshort", "___"] {
+            let res = compact_to_7_bytes(input);
+            assert_eq!(
+                res.len(),
+                7,
+                "Output must be exactly 7 bytes for: {}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_null_padding_for_short_strings() {
+        let res = compact_to_7_bytes("hi");
+        assert_eq!(&res[..2], b"hi");
+        assert_eq!(&res[2..7], [0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_first_char_case_preservation() {
+        // Rule: First character should match original capitalization
+        assert_eq!(compact_to_7_bytes("hello world")[0], b'h');
+        assert_eq!(compact_to_7_bytes("Hello world")[0], b'H');
+        assert_eq!(compact_to_7_bytes("HELLO world")[0], b'H');
+    }
+
+    #[test]
+    fn test_separators_trigger_camelcase() {
+        // Rule: Spaces, underscores, periods, commas, hyphens replace with forcedCamelCase
+        let res = compact_to_7_bytes("hello_world.test,word");
+        let s = String::from_utf8_lossy(&res);
+        assert!(
+            s.starts_with("hel"),
+            "First word should be lowercased (except first char preserved)"
+        );
+        // CamelCase boundaries should be uppercase
+        assert!(
+            !s.contains("_") && !s.contains(".") && !s.contains(",") && !s.contains("-"),
+            "Separators should be removed and replaced by camelCase boundaries"
+        );
+    }
+
+    #[test]
+    fn test_all_caps_word_lowercasing_rule5() {
+        // Rule 5: All-caps words next to a space get lowercased (unless first word needs uppercase)
+        let res = compact_to_7_bytes("hello XML world");
+        let s = String::from_utf8_lossy(&res);
+        assert!(
+            !s.contains("XML"),
+            "All-caps word 'XML' should be lowercased to 'xml' -> 'Xml'"
+        );
+        // Verify camelCase transition happens
+        assert!(
+            s.contains("X"),
+            "First letter of non-first words should be uppercase for camelCase"
+        );
+    }
+
+    #[test]
+    fn test_double_consonant_compression() {
+        // Heuristic: `battle` -> `battl` -> `batl`
+        let res = compact_to_7_bytes("battle field");
+        let s = String::from_utf8_lossy(&res);
+        assert!(
+            s.contains("batl"),
+            "Double 't' in 'battle' should be compressed to single 't'"
+        );
+    }
+
+    #[test]
+    fn test_vowel_removal_priority() {
+        // Rule 3 & 4: Remove vowels first (end-first), then truncate consonants if still >7
+        let res = compact_to_7_bytes("beautiful reason");
+        let s = String::from_utf8_lossy(&res);
+        // Should be <= 7 chars (excluding nulls)
+        let non_null_len = res.iter().take_while(|b| **b != 0).count();
+        assert_eq!(
+            non_null_len, 7,
+            "After vowel removal, string should fit in 7 chars"
+        );
+        // Vowels should be stripped from the end first
+        assert!(
+            !s.ends_with(|c: char| "aeiouAEIOU".contains(c)),
+            "End vowels should be removed first"
+        );
+    }
+
+    #[test]
+    fn test_numbers_preserved() {
+        // Heuristic: Keep numbers
+        let res = compact_to_7_bytes("user123 login");
+        let s = String::from_utf8_lossy(&res);
+        assert!(
+            s.contains("123"),
+            "Numbers should be preserved during compression"
+        );
+    }
+
+    #[test]
+    fn test_non_ascii_stripping() {
+        // Heuristic: Skip non-ASCII
+        let res = compact_to_7_bytes("naïve résumé");
+        let s = String::from_utf8_lossy(&res);
+        assert!(
+            !s.contains("ï") && !s.contains("é"),
+            "Non-ASCII characters should be stripped"
+        );
+    }
+
+    #[test]
+    fn test_all_separator_and_empty_inputs() {
+        // Rule 11: All-separator input leaves it exactly as-is (padded with zeros)
+        let res_sep = compact_to_7_bytes("  _ . ,  ");
+        assert_eq!(&res_sep, &[0; 7]);
+
+        let res_empty = compact_to_7_bytes("");
+        assert_eq!(&res_empty, &[0; 7]);
+    }
+
+    #[test]
+    fn test_short_word_protection() {
+        // Heuristic: Preserve at least one vowel in short words
+        let res = compact_to_7_bytes("cat dog");
+        let s = String::from_utf8_lossy(&res);
+        // "cat" should remain "cat" (vowel removal stops at end > 1)
+        assert!(
+            s.contains("cat"),
+            "Short words should retain at least one vowel"
+        );
+    }
+
+    #[test]
+    fn test_deterministic_output() {
+        // Rule 13: Same input always produces same output
+        let input = "fetchXML_data_v2";
+        let r1 = compact_to_7_bytes(input);
+        let r2 = compact_to_7_bytes(input);
+        assert_eq!(r1, r2, "Output must be fully deterministic");
+    }
+
+    #[test]
+    fn test_exact_byte_array_for_known_case() {
+        // Regression test for predictable output
+        let res = compact_to_7_bytes("hello world");
+        assert_eq!(&res[..7], b"HellWrl"); // First char preserved, vowel removal, null padding
+        // assert_eq!(&res[7..7], []); // Bounds check
+    }
 }
