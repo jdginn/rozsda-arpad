@@ -6,12 +6,16 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::xtouch::{
-    EncoderRingLEDMsg, EncoderRingLEDRangePointMsg, FaderAbsMsg, XTouchDownstreamMsg,
-    XTouchUpstreamMsg,
+    EncoderRingMode, EncoderRingMsg, FaderAbsMsg, XTouchDownstreamMsg, XTouchUpstreamMsg,
 };
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track;
 use crate::track::track::{TrackMsg, TrackQuery};
+
+pub fn map_to_0xb(x: f32) -> u8 {
+    let clamped = x.clamp(-1.0, 1.0) as f64;
+    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
 
 #[derive(Clone, Default)]
 pub struct TrackSendInfo {
@@ -133,10 +137,15 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             .unwrap();
                         self.to_xtouch
                             .send(XTouchDownstreamMsg::EncoderRingLED(
-                                EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                //     idx: msg.send_index,
+                                //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
+                                // }),
+                                EncoderRingMsg {
                                     idx: msg.send_index,
-                                    pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
-                                }),
+                                    mode: EncoderRingMode::Point,
+                                    val: map_to_0xb(state.pan),
+                                },
                             ))
                             .unwrap();
                     }
@@ -171,14 +180,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 .or_default()
                                 .pan = msg.pan;
 
-                            let encoder_pos = (msg.pan + 1.0) / 2.0; // Scale -1.0 to 1.0 into 0.0 to 1.0
                             self.to_xtouch
-                                .send(XTouchDownstreamMsg::EncoderRingLED(
-                                    EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                        idx: msg.send_index,
-                                        pos: encoder_pos,
-                                    }),
-                                ))
+                                .send(XTouchDownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                                    idx: msg.send_index,
+                                    mode: EncoderRingMode::Point,
+                                    val: map_to_0xb(msg.pan),
+                                }))
                                 .unwrap();
                         }
                     }

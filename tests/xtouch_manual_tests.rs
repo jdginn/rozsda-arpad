@@ -13,9 +13,9 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::xtouch::{
-    ArmLEDMsg, Color, FaderAbsMsg, LEDState, MuteLEDMsg, ScribbleStripBackgroundColorMsg,
-    ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, SoloLEDMsg, XTouchBuilder,
-    XTouchDownstreamMsg, XTouchUpstreamMsg,
+    ArmLEDMsg, Color, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MuteLEDMsg,
+    ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg,
+    SoloLEDMsg, XTouchBuilder, XTouchDownstreamMsg, XTouchUpstreamMsg,
 };
 
 // ============================================================================
@@ -364,6 +364,104 @@ fn run_input_tests(rx: &Receiver<XTouchUpstreamMsg>) -> Vec<TestSummary> {
     println!("Please follow the prompts and perform the requested actions.\n");
 
     let mut results = Vec::new();
+
+    // for channel in 0..8 {
+    //     let test_name = format!("encoder_click_channel_{}", channel);
+    //     println!("\nTest: {}", test_name);
+    //
+    //     wait_for_user_action(&format!("Click the encoder for channel {}", channel));
+    //
+    //     let mut received_press = false;
+    //     let mut received_release = false;
+    //
+    //     let timeout = std::time::Instant::now();
+    //     while timeout.elapsed() < Duration::from_secs(2) {
+    //         if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
+    //             match msg {
+    //                 XTouchUpstreamMsg::EncoderPress(click) if click.idx == channel => {
+    //                     received_press = true;
+    //                     println!("  ✓ Received EncoderPress{{idx: {}}}", click.idx);
+    //                 }
+    //                 XTouchUpstreamMsg::EncoderRelease(click) if click.idx == channel => {
+    //                     received_release = true;
+    //                     println!("  ✓ Received EncoderRelease{{idx: {}}}", click.idx);
+    //                 }
+    //                 _ => {}
+    //             }
+    //         }
+    //
+    //         if received_press && received_release {
+    //             break;
+    //         }
+    //     }
+    //
+    //     let result = if received_press && received_release {
+    //         TestResult::Pass
+    //     } else {
+    //         println!(
+    //             "  ✗ Did not receive expected messages (press: {}, release: {})",
+    //             received_press, received_release
+    //         );
+    //         TestResult::Fail
+    //     };
+    //     results.push(TestSummary::new(&test_name, result));
+    // }
+
+    for channel in 0..8 {
+        let test_name = format!("encoder_turn_cw_channel_{}", channel);
+        println!("\nTest: {}", test_name);
+
+        wait_for_user_action(&format!(
+            "Turn the encoder for channel {} clockwise",
+            channel
+        ));
+
+        let timeout = std::time::Instant::now();
+        while timeout.elapsed() < Duration::from_secs(2) {
+            if let Ok(XTouchUpstreamMsg::EncoderTurnInc(msg)) =
+                rx.recv_timeout(Duration::from_millis(100))
+            {
+                if msg.idx == channel {
+                    println!("  ✓ Received EncoderTurn{{idx: {}}}", msg.idx);
+                    results.push(TestSummary::new(&test_name, TestResult::Pass));
+                    break;
+                }
+            }
+        }
+        println!(
+            "  ✗ Did not receive EncoderTurn{{idx: {}}} message",
+            channel
+        );
+        results.push(TestSummary::new(&test_name, TestResult::Fail));
+    }
+
+    for channel in 0..8 {
+        let test_name = format!("encoder_turn_ccw_channel_{}", channel);
+        println!("\nTest: {}", test_name);
+
+        wait_for_user_action(&format!(
+            "Turn the encoder for channel {} counter-clockwise",
+            channel
+        ));
+
+        let timeout = std::time::Instant::now();
+        while timeout.elapsed() < Duration::from_secs(2) {
+            if let Ok(XTouchUpstreamMsg::EncoderTurnDec(msg)) =
+                rx.recv_timeout(Duration::from_millis(100))
+            {
+                if msg.idx == channel {
+                    println!("  ✓ Received EncoderTurn{{idx: {}}}", msg.idx);
+                    results.push(TestSummary::new(&test_name, TestResult::Pass));
+                    break;
+                }
+            }
+        }
+        println!(
+            "  ✗ Did not receive EncoderTurn{{idx: {}}} message",
+            channel
+        );
+        results.push(TestSummary::new(&test_name, TestResult::Fail));
+    }
 
     // Test mute button press/release
     for channel in 0..8 {
@@ -784,6 +882,81 @@ fn xtouch_scribble_strip_tests() {
     .build(downstream_rx, upstream_tx);
 
     let results = run_scribble_strip_tests(&downstream_tx);
+}
+
+// ============================================================================
+// Encoder tests
+// ============================================================================
+//
+fn run_encoder_tests(tx: &Sender<XTouchDownstreamMsg>) -> Vec<TestSummary> {
+    println!("\n========================================");
+    println!("XTouch Encoder Output Tests");
+    println!("========================================");
+    println!("These tests send messages to XTouch hardware.");
+    println!("Please verify the scribble strip displays the expected text.\n");
+
+    let mut results = Vec::new();
+
+    // Case 1: illuminate all segments
+    for channel in 0..8 {
+        let test_name = format!("encoder_channel_{}_all_segments", channel);
+        println!("\nTest: {}", test_name);
+        tx.send(XTouchDownstreamMsg::EncoderRingLED(EncoderRingMsg {
+            idx: channel,
+            mode: EncoderRingMode::FromLeft,
+            val: 0xb,
+        }))
+        .unwrap();
+
+        let result = prompt_user(&format!(
+            "Did channel {} enoder display all segments illuminated?",
+            channel
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    results
+}
+
+#[test]
+#[ignore] // Must be run manually with --ignored flag
+fn xtouch_encoder_tests() {
+    println!("\n");
+    println!("╔════════════════════════════════════════════════════════════════╗");
+    println!("║          XTouch Encoder Output Test Suite                      ║");
+    println!("╚════════════════════════════════════════════════════════════════╝");
+    println!("\nNOTE: This test requires XTouch hardware to be connected.");
+    println!("Messages will be sent to the hardware for manual verification.\n");
+
+    print!("Is XTouch hardware connected and ready? [Y/N]: ");
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    if !input.trim().eq_ignore_ascii_case("y") {
+        println!("Test aborted. Please connect XTouch hardware and try again.");
+        return;
+    }
+
+    let (input_port, output_connection) = match find_xtouch_ports() {
+        Ok(ports) => ports,
+        Err(err) => {
+            println!("Error finding XTouch MIDI ports: {}", err);
+            println!("Test aborted. Please ensure XTouch is connected and try again.");
+            return;
+        }
+    };
+    let (upstream_tx, upstream_rx) = bounded::<XTouchUpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<XTouchDownstreamMsg>(128);
+    XTouchBuilder::new(
+        input_port,        // Use default MIDI input port
+        output_connection, // Use default MIDI output port
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
+
+    let results = run_encoder_tests(&downstream_tx);
 }
 
 // ============================================================================

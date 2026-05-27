@@ -42,38 +42,22 @@ pub struct EncoderReleaseMsg {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum EncoderRingLEDMsg {
-    Blank(EncoderRingLEDBlankMsg),
-    AllSegments(EncoderRingLEDAllSegmentsMsg),
-    RangePoint(EncoderRingLEDRangePointMsg),
-    RangeFill(EncoderRingLEDRangeFillMsg),
-    Edges(EncoderRingLEDEdges),
+pub struct EncoderRingMsg {
+    pub idx: i32,
+    pub mode: EncoderRingMode,
+    pub val: u8,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum EncoderRingMode {
+    Point,
+    FromCenter,
+    FromLeft,
+    Width,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderRingLEDBlankMsg {
-    pub idx: i32,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct EncoderRingLEDAllSegmentsMsg {
-    pub idx: i32,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct EncoderRingLEDRangePointMsg {
-    pub idx: i32,
-    pub pos: f32, // 0.0 to 1.0
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct EncoderRingLEDRangeFillMsg {
-    pub idx: i32,
-    pub pos: f32, // 0.0 to 1.0
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct EncoderRingLEDEdges {
     pub idx: i32,
 }
 
@@ -247,7 +231,7 @@ pub enum XTouchDownstreamMsg {
 
     // Channel strip messages
     FaderAbs(FaderAbsMsg),
-    EncoderRingLED(EncoderRingLEDMsg),
+    EncoderRingLED(EncoderRingMsg),
     MuteLED(MuteLEDMsg),
     SoloLED(SoloLEDMsg),
     ArmLED(ArmLEDMsg),
@@ -318,11 +302,9 @@ impl Set<i32> for Fader {
 
 pub struct Encoder {
     base: Arc<Mutex<MidiDevice>>,
-    channel: Channel,
     knob_cc: u8,
-    button_note: u8,
-    led_cc_1: u8,
-    led_cc_2: u8,
+    click_note: u8,
+    led_cc: u8,
 }
 
 impl Encoder {
@@ -333,7 +315,7 @@ impl Encoder {
         ControlChangeBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: ControlChange {
-                channel: self.channel.get(),
+                channel: 0,
                 controller_number: self.knob_cc,
             },
         }
@@ -349,8 +331,8 @@ impl Encoder {
         NoteOnBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: NoteOn {
-                channel: self.channel.get(),
-                key_number: self.button_note,
+                channel: 0,
+                key_number: self.click_note,
             },
         }
         .bind(move |value| {
@@ -365,8 +347,8 @@ impl Encoder {
         NoteOffBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: NoteOff {
-                channel: self.channel.get(),
-                key_number: self.button_note,
+                channel: 0,
+                key_number: self.click_note,
             },
         }
         .bind(move |value| {
@@ -374,23 +356,27 @@ impl Encoder {
         })
     }
 
-    fn set(&mut self, val1: u8, val2: u8) -> Result<(), MidiError> {
+    fn set(&mut self, mode: EncoderRingMode, val: u8) -> Result<(), MidiError> {
+        let new_val = match mode {
+            EncoderRingMode::Point => val & 0xf,
+            EncoderRingMode::FromCenter => 0x01 << 4 | (val & 0xf),
+            EncoderRingMode::FromLeft => 0x02 << 4 | (val & 0xf),
+            EncoderRingMode::Width => 0x03 << 4 | (val & 0xf),
+        };
+
+        println!(
+            "Setting encoder LED ring for CC {} to mode {:?} with value {:b} (raw value {})\n",
+            self.led_cc, mode, new_val, val
+        );
+
         ControlChangeBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: ControlChange {
-                channel: self.channel.get(),
-                controller_number: self.led_cc_1,
+                channel: 0,
+                controller_number: self.led_cc,
             },
         }
-        .set(val1)?;
-        ControlChangeBuilder {
-            device: &mut self.base.lock().unwrap(),
-            spec: ControlChange {
-                channel: self.channel.get(),
-                controller_number: self.led_cc_2,
-            },
-        }
-        .set(val2)
+        .set(new_val)
     }
 }
 
@@ -839,11 +825,9 @@ impl XTouchBuilder {
         for i in 0..self.num_channels {
             let mut e = Encoder {
                 base: self.base.clone(),
-                channel: Channel::new(i as u8),
-                knob_cc: 0x16 + i as u8,
-                button_note: 0x32 + i as u8,
-                led_cc_1: 0x48 + i as u8,
-                led_cc_2: 0x56 + i as u8,
+                knob_cc: 0x10 + i as u8,
+                click_note: 0x20 + i as u8,
+                led_cc: 0x30 + i as u8,
             };
             let upstream_turn = upstream.clone();
             e.bind_turn(move |value| match value {
@@ -1013,31 +997,9 @@ impl XTouchBuilder {
                                 .unwrap();
                         }
                         XTouchDownstreamMsg::EncoderRingLED(encoder_led_msg) => {
-                            match encoder_led_msg {
-                                EncoderRingLEDMsg::Blank(blank_msg) => {
-                                    xtouch.encoders[blank_msg.idx as usize].set(0, 0).unwrap();
-                                }
-                                EncoderRingLEDMsg::AllSegments(all_msg) => {
-                                    xtouch.encoders[all_msg.idx as usize].set(127, 127).unwrap();
-                                }
-                                EncoderRingLEDMsg::RangePoint(range_msg) => {
-                                    let (val1, val2) =
-                                        encoder_led_mappings::range_point(range_msg.pos);
-                                    xtouch.encoders[range_msg.idx as usize]
-                                        .set(val1, val2)
-                                        .unwrap();
-                                }
-                                EncoderRingLEDMsg::RangeFill(fill_msg) => {
-                                    let (val1, val2) =
-                                        encoder_led_mappings::range_fill(fill_msg.pos);
-                                    xtouch.encoders[fill_msg.idx as usize]
-                                        .set(val1, val2)
-                                        .unwrap();
-                                }
-                                EncoderRingLEDMsg::Edges(edges_msg) => {
-                                    xtouch.encoders[edges_msg.idx as usize].set(1, 32).unwrap();
-                                }
-                            }
+                            xtouch.encoders[encoder_led_msg.idx as usize]
+                                .set(encoder_led_msg.mode, encoder_led_msg.val)
+                                .unwrap();
                         }
                         XTouchDownstreamMsg::MuteLED(mute_msg) => {
                             xtouch.mutes[mute_msg.idx as usize]
