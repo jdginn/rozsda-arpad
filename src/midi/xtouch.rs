@@ -10,7 +10,6 @@ use crate::midi::base::{
     ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
     PitchBendBuilder,
 };
-use crate::midi::encoder_led_mappings;
 use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
