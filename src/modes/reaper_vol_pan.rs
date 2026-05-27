@@ -342,17 +342,17 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 ));
                             }
                         }
-                        return curr_mode;
+                        curr_mode
                     }
                     _ => {
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
-                        return curr_mode;
+                        curr_mode
                     }
                 }
             }
             Err(_) => {
                 // Ignore messages that aren't TrackDataMsg or Barrier
-                return curr_mode;
+                curr_mode
             }
         }
     }
@@ -379,7 +379,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // Send volume update to Reaper for the corresponding track
                     let _ = self.to_reaper.send(
                         track::Volume {
-                            track_guid: guid.clone(),
+                            track_guid: *guid,
                             volume: fader_msg.value as f32, // TODO: Need to scale appropriately
                         }
                         .into(),
@@ -389,12 +389,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             }
             XTouchUpstreamMsg::MutePress(mute_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid.clone()).buttons.mute.toggle();
+                    let new_state = self.get_track_state(guid).buttons.mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(
                             track::Muted {
-                                track_guid: guid.clone(),
+                                track_guid: guid,
                                 muted: new_state,
                             }
                             .into(),
@@ -412,12 +412,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             }
             XTouchUpstreamMsg::SoloPress(solo_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid.clone()).buttons.solo.toggle();
+                    let new_state = self.get_track_state(guid).buttons.solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(
                             track::Soloed {
-                                track_guid: guid.clone(),
+                                track_guid: guid,
                                 soloed: new_state,
                             }
                             .into(),
@@ -434,12 +434,12 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             }
             XTouchUpstreamMsg::ArmPress(arm_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
-                    let new_state = self.get_track_state(guid.clone()).buttons.arm.toggle();
+                    let new_state = self.get_track_state(guid).buttons.arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
                     self.to_reaper
                         .send(
                             track::Armed {
-                                track_guid: guid.clone(),
+                                track_guid: guid,
                                 armed: new_state,
                             }
                             .into(),

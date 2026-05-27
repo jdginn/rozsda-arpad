@@ -57,7 +57,7 @@ impl TrackSendsMode {
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.hw_assignments.lock().unwrap();
-        assignments[hw_channel].clone()
+        assignments[hw_channel]
     }
 
     fn find_hw_channel_for_guid(guid: Uuid, assignments: Vec<Option<Uuid>>) -> Option<usize> {
@@ -156,7 +156,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             self.track_send_states
                                 .lock()
                                 .unwrap()
-                                .entry(guid.clone())
+                                .entry(*guid)
                                 .or_default()
                                 .level = msg.level;
 
@@ -176,7 +176,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             self.track_send_states
                                 .lock()
                                 .unwrap()
-                                .entry(guid.clone())
+                                .entry(*guid)
                                 .or_default()
                                 .pan = msg.pan;
 
