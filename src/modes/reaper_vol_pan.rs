@@ -5,8 +5,10 @@ use std::vec::Vec;
 use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
-use crate::midi::xtouch::{self, EncoderRingLEDRangePointMsg};
-use crate::midi::xtouch::{FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg};
+use crate::midi::xtouch::{self};
+use crate::midi::xtouch::{
+    EncoderRingMsg, FaderAbsMsg, LEDState, XTouchDownstreamMsg, XTouchUpstreamMsg,
+};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track;
 use crate::track::track::{TrackMsg, TrackQuery};
@@ -15,6 +17,11 @@ use crate::track::track::{TrackMsg, TrackQuery};
 const EPSILON: f32 = 0.01;
 
 pub const FADER_0DB: f32 = 0.72; // Placeholder value for 0dB on fader scale
+
+pub fn map_to_0xb(x: f32) -> u8 {
+    let clamped = x.clamp(-1.0, 1.0) as f64;
+    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
 
 #[derive(Clone)]
 struct Button {
@@ -221,12 +228,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             ));
                             // Send pan
                             let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
-                                xtouch::EncoderRingLEDMsg::RangePoint(
-                                    EncoderRingLEDRangePointMsg {
-                                        idx: hw_channel as i32,
-                                        pos: track_state.pan,
-                                    },
-                                ),
+                                EncoderRingMsg {
+                                    idx: hw_channel as i32,
+                                    mode: xtouch::EncoderRingMode::Point,
+                                    val: map_to_0xb(track_state.pan),
+                                },
                             ));
                             // Update EPSILON tracking for pan since we just sent it
                             self.last_sent_pan.insert(msg.track_guid, track_state.pan);
@@ -328,12 +334,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 // Send pan update to XTouch for the corresponding encoder
                                 let pan_value = msg.pan; // TODO: scale appropriately
                                 let _ = self.to_xtouch.send(XTouchDownstreamMsg::EncoderRingLED(
-                                    xtouch::EncoderRingLEDMsg::RangePoint(
-                                        EncoderRingLEDRangePointMsg {
-                                            idx: hw_channel as i32,
-                                            pos: pan_value,
-                                        },
-                                    ),
+                                    EncoderRingMsg {
+                                        idx: hw_channel as i32,
+                                        mode: xtouch::EncoderRingMode::Point,
+                                        val: map_to_0xb(pan_value),
+                                    },
                                 ));
                             }
                         }
@@ -471,12 +476,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                     // Send encoder LED update downstream to hardware
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::EncoderRingLED(
-                            xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                idx: encoder_msg.idx,
-                                pos: new_pan,
-                            }),
-                        ))
+                        .send(XTouchDownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                            idx: encoder_msg.idx,
+                            mode: xtouch::EncoderRingMode::Point,
+                            val: map_to_0xb(new_pan),
+                        }))
                         .unwrap();
                 }
                 curr_mode
@@ -503,12 +507,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
 
                     // Send encoder LED update downstream to hardware
                     self.to_xtouch
-                        .send(XTouchDownstreamMsg::EncoderRingLED(
-                            xtouch::EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                idx: encoder_msg.idx,
-                                pos: new_pan,
-                            }),
-                        ))
+                        .send(XTouchDownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                            idx: encoder_msg.idx,
+                            mode: xtouch::EncoderRingMode::Point,
+                            val: map_to_0xb(new_pan),
+                        }))
                         .unwrap();
                 }
                 curr_mode
