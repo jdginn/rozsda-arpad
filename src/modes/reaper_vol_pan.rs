@@ -124,7 +124,7 @@ impl VolumePanMode {
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.track_hw_assignments.lock().unwrap();
-        assignments[hw_channel]
+        assignments[hw_channel + 1]
     }
 
     // For a given track GUID, find which hardware channel it's assigned to (if any)
@@ -134,7 +134,7 @@ impl VolumePanMode {
             .iter()
             .enumerate()
             .find(|(_, assigned_guid)| **assigned_guid == Some(guid))
-            .map(|(hw_channel, _)| hw_channel)
+            .map(|(hw_channel, _)| hw_channel - 1)
     }
 }
 
@@ -366,6 +366,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             XTouchUpstreamMsg::GlobalPress => curr_mode,
             // MIDITracksPress maps to ReaperSends mode
             XTouchUpstreamMsg::MIDITracksPress => {
+                println!("Requesting transition to ReaperSends mode");
                 // Request transition to ReaperSends mode
                 ModeState {
                     mode: Mode::ReaperSends,
