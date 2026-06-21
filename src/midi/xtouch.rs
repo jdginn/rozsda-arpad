@@ -839,13 +839,15 @@ impl XTouchBuilder {
             };
             let upstream_turn = upstream.clone();
             e.bind_turn(move |value| match value {
+                // TODO: 1 means CW slow all the way up to at least 5 is CW fast(er)
                 1 => upstream_turn
                     .send(UpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
                     .unwrap(),
+                // Similarly, 65 seems to mean slow but we can go all the way up to at least 68
                 65 => upstream_turn
                     .send(UpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
                     .unwrap(),
-                _ => panic!("Unexpected encoder turn value: {}", value),
+                _ => println!("HERE: Unexpected encoder turn value: {}\n", value),
             });
             let upstream_press = upstream.clone();
             e.bind_press(move |_value| {

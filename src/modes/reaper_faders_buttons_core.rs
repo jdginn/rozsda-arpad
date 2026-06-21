@@ -8,6 +8,21 @@ use crate::midi::xtouch;
 use crate::modes::button::Button;
 use crate::track::track;
 
+// FIXME:
+// KNOWN BUGS:
+// FIXME:
+//
+// When 8 or more channels are configured, all faders stop working
+//
+// Encoders don't pick up the faster speeds. Also, they appear to always increase Reaper rather than
+// either increasing OR decreasing it based on their direction of rotation.
+//
+// Reaper's Select doesn't seem to be respected
+//
+// Scribbles aren't working
+//
+// FIXME:
+
 // This functionality is common enough to warrant making it reusable.
 //
 // This is the core functionality for VolumePanMode but it shows up in other modes as well e.g.
@@ -161,7 +176,6 @@ impl VolumeFadersCore {
                         idx: hw_channel as i32,
                         state: xtouch::LEDState::from(track_state.buttons.arm.is_on()),
                     }));
-                    println!("Calling epilogue");
                     track_index_epilogue(TrackIndexUpdateEpilogue {
                         track_guid: msg.track_guid,
                         hw_channel,
@@ -172,8 +186,8 @@ impl VolumeFadersCore {
                 self.get_track_state(msg.track_guid).volume = msg.volume;
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Check if the change is significant enough to send
-                    let should_send =
-                        (self.last_sent_volume[hw_channel] - msg.volume).abs() >= FADER_EPSILON;
+                    let should_send = true;
+                    // (self.last_sent_volume[hw_channel] - msg.volume).abs() >= FADER_EPSILON;
 
                     if should_send {
                         // Send volume update to XTouch for the corresponding fader
@@ -255,6 +269,12 @@ impl VolumeFadersCore {
                         }
                         .into(),
                     );
+                    // Convince the xtouch to leave its faders where we put them
+                    let _ =
+                        to_downstream.send(xtouch::DownstreamMsg::FaderAbs(xtouch::FaderAbsMsg {
+                            idx: fader_msg.idx,
+                            value: fader_msg.value,
+                        }));
                 }
             }
             xtouch::UpstreamMsg::MutePress(mute_msg) => {
