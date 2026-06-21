@@ -105,6 +105,19 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                         }
                         curr_mode
                     }
+                    track::DataMsg::Name(msg) => {
+                        self.to_xtouch
+                            .send(
+                                xtouch::ScribbleStripLine1TextMsg {
+                                    idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0)
+                                        as i32,
+                                    text: msg.name,
+                                }
+                                .into(),
+                            )
+                            .unwrap();
+                        curr_mode
+                    }
                     _ => {
                         // Handle common functionality across modes that put volume on the faders
                         // and mute/solo/arm on the buttons
