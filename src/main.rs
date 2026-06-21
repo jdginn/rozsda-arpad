@@ -27,6 +27,8 @@ use crate::traits::{Bind, Set};
 struct Cli {
     #[clap(short, long, default_value = "0.0.0.0:9091")]
     osc_address: String,
+    #[clap(short, long, default_value = "0.0.0.0:9090")]
+    dev_osc_address: String,
 }
 
 fn find_xtouch_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std::error::Error>>
@@ -73,8 +75,16 @@ fn main() {
     let cli = Cli::parse();
     let socket_addr = SocketAddrV4::from_str(&cli.osc_address)
         .unwrap_or_else(|_| panic!("couldn't parse address {:?}", cli.osc_address));
+    let dev_addr = SocketAddrV4::from_str(&cli.dev_osc_address)
+        .unwrap_or_else(|_| panic!("couldn't deviceaddress {:?}", cli.dev_osc_address));
     let socket = UdpSocket::bind(socket_addr)
         .unwrap_or_else(|_| panic!("couldn't bind to address {:?}", cli.osc_address));
+    socket.connect(dev_addr).unwrap_or_else(|_| {
+        panic!(
+            "couldn't connect to device address {:?}",
+            cli.dev_osc_address
+        )
+    });
 
     let reaper = Shared::new(Reaper::new(Arc::new(socket.try_clone().unwrap())));
 
@@ -100,7 +110,7 @@ fn main() {
         Ok(ports) => ports,
         Err(err) => {
             println!("Error finding XTouch MIDI ports: {}", err);
-            println!("Test aborted. Please ensure XTouch is connected and try again.");
+            println!("Please ensure XTouch is connected and try again.");
             return;
         }
     };
@@ -626,7 +636,10 @@ fn main() {
                 match msg {
                    Ok(track::TrackMsg::Muted(msg))  => {
                         reaper.with_mut(|reaper|{
-                            reaper.track_mute(msg.track_guid).set(TrackMuteArgs{mute: msg.muted});
+                            match reaper.track_mute(msg.track_guid).set(TrackMuteArgs{mute: msg.muted}) {
+                                Ok(_) => println!("Successfully set mute for track {} to {}", msg.track_guid, msg.muted),
+                                Err(e) => println!("Error setting mute for track {}", msg.track_guid),
+                            };
                         })
                     }
                     Err(e) => {
