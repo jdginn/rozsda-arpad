@@ -60,6 +60,11 @@ fn setup_vol_pan_mode() -> (
 
 const FLOAT_EPSILON: f64 = 0.0001;
 
+pub fn map_to_0xb(x: f32) -> u8 {
+    let clamped = x.clamp(-1.0, 1.0) as f64;
+    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
+
 /// Helper to assert a FaderAbs message is received with the expected values
 #[macro_export]
 macro_rules! assert_downstream_fader_abs_msg {
@@ -263,7 +268,7 @@ fn assign_track_to_channel(
     mode.handle_downstream_messages(
         track::ReaperTrackIndex {
             track_guid: guid,
-            track_index: Some(hw_channel),
+            track_index: Some(hw_channel + 1), // because reaper's counting starts at 1
         }
         .into(),
         curr_mode,
@@ -280,7 +285,7 @@ fn assert_downstream_default_track_mapping(
     assert_downstream_mute_led_msg!(to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(to_xtouch_rx, hw_channel, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(to_xtouch_rx, hw_channel, 0);
+    assert_downstream_encoder_ring_led_msg!(to_xtouch_rx, hw_channel, 8);
 }
 
 #[test]
@@ -299,7 +304,7 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     // Send a ReaperTrackIndex message to assign the track to hardware channel 2
     let msg = track::ReaperTrackIndex {
         track_guid: track_guid,
-        track_index: Some(reaper_index),
+        track_index: Some(reaper_index + 1), // because reaper's counting starts at 1
     }
     .into();
 
@@ -335,7 +340,7 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
     mode.handle_downstream_messages(
         track::ReaperTrackIndex {
             track_guid: track_guid.clone(),
-            track_index: Some(hw_channel),
+            track_index: Some(hw_channel + 1),
         }
         .into(),
         curr_mode,
@@ -395,7 +400,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
     mode.handle_downstream_messages(
         track::ReaperTrackIndex {
             track_guid: track_guid,
-            track_index: Some(hw_channel),
+            track_index: Some(hw_channel + 1), // because reaper's counting starts at 1
         }
         .into(),
         curr_mode,
@@ -575,7 +580,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel_1, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_1, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_1, 8);
     mode.handle_downstream_messages(
         track::Volume {
             track_guid: track_guid.clone(),
@@ -603,7 +608,7 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel_2, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_2, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel_2, 8);
 
     // Verify the track can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(track_guid);
@@ -718,7 +723,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     );
 
     // First value should be sent
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_1);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, map_to_0xb(pan_value_1));
 
     mode.handle_downstream_messages(
         track::Pan {
@@ -730,7 +735,7 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     );
 
     // Updated value should be sent
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, map_to_0xb(pan_value_2));
 }
 
 #[test]
@@ -782,7 +787,7 @@ fn test_pan_state_accumulates_before_mapping() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, pan_value_2);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, map_to_0xb(pan_value_2));
 }
 
 // ----------------------------------------------------------------------------
@@ -995,7 +1000,7 @@ fn test_15_downstream_messages_sent_in_correct_order() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 8);
 
     // Send multiple messages in order
     mode.handle_downstream_messages(
@@ -1121,7 +1126,7 @@ fn test_17_volume_changes_below_epsilon_threshold_ignored() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 8);
 
     mode.handle_downstream_messages(
         track::Volume {
@@ -1169,7 +1174,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, hw_channel, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 8);
 
     // Send pan change to different value (0.7) - should send because it's > EPSILON from 0.5
     mode.handle_downstream_messages(
@@ -1180,7 +1185,7 @@ fn test_18_pan_changes_below_epsilon_threshold_ignored() {
         .into(),
         curr_mode,
     );
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, 0.7);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, hw_channel, map_to_0xb(0.7));
 
     // Send pan change smaller than EPSILON (0.7 + EPSILON/2)
     let small_change = 0.7 + (EPSILON / 2.0);
@@ -1291,21 +1296,21 @@ fn test_complex_multi_track_integration() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 1, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 1, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 1, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 1, 0.5); // Default pan
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 1, 8); // Default pan
 
     // Verify track 2 all accumulated state sent to channel 2
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 2, 0.9);
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 2, LEDState::On); // Muted
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 2, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 2, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 2, 0.3); // Pan set
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 2, map_to_0xb(0.3)); // Pan set
 
     // Verify track 3 accumulated state sent to channel 3
     assert_downstream_fader_abs_msg!(&to_xtouch_rx, 3, FADER_0DB as f64); // Default volume
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 3, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 3, LEDState::On); // Solo accumulated!
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 3, LEDState::On); // Armed accumulated!
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, 0.5); // Default pan
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, 8); // Default pan
 
     // === PHASE 3: Send updates to mapped tracks ===
     // Update track 1 volume (should send to hardware)
@@ -1337,7 +1342,7 @@ fn test_complex_multi_track_integration() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 4, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 4, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 4, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 4, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 4, 8);
 
     // Verify old channel (1) no longer responds to track 1 updates
     mode.handle_downstream_messages(
@@ -1404,7 +1409,7 @@ fn test_complex_multi_track_integration() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 5, LEDState::On); // Latest mute
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 5, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 5, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 5, 0.8); // Latest pan (not 0.2)
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 5, map_to_0xb(0.8)); // Latest pan (not 0.2)
 
     // === PHASE 6: Test EPSILON filtering on mapped tracks ===
     // NOTE: EPSILON filtering behavior can be complex due to floating point precision
@@ -1457,7 +1462,7 @@ fn test_complex_multi_track_integration() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, 3, LEDState::Off); // Track 2's mute (was toggled off)
     assert_downstream_solo_led_msg!(&to_xtouch_rx, 3, LEDState::Off); // Track 2's solo
     assert_downstream_arm_led_msg!(&to_xtouch_rx, 3, LEDState::Off); // Track 2's arm
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, 0.3); // Track 2's pan
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, map_to_0xb(0.3)); // Track 2's pan
 
     // Verify track 3 no longer responds on channel 3
     mode.handle_downstream_messages(
@@ -1479,7 +1484,7 @@ fn test_complex_multi_track_integration() {
         .into(),
         curr_mode,
     );
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, 0.65); // New channel
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, 3, map_to_0xb(0.65)); // New channel
     check_no_message!(&to_xtouch_rx, 100); // No message on old channel 2
 
     // === Verification: All channels working correctly ===
@@ -1556,7 +1561,7 @@ fn test_epsilon_tracking_reset_on_remapping() {
     assert_downstream_mute_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_xtouch_rx, channel_2, LEDState::Off);
-    // assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, channel_2, 0.5);
+    assert_downstream_encoder_ring_led_msg!(&to_xtouch_rx, channel_2, map_to_0xb(0.5));
 
     // Send another small volume update (0.81) - should be filtered again
     mode.handle_downstream_messages(
