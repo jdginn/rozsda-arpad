@@ -124,7 +124,7 @@ impl VolumePanMode {
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.track_hw_assignments.lock().unwrap();
-        assignments[hw_channel + 1]
+        assignments[hw_channel]
     }
 
     // For a given track GUID, find which hardware channel it's assigned to (if any)
@@ -134,7 +134,7 @@ impl VolumePanMode {
             .iter()
             .enumerate()
             .find(|(_, assigned_guid)| **assigned_guid == Some(guid))
-            .map(|(hw_channel, _)| hw_channel - 1)
+            .map(|(hw_channel, _)| hw_channel)
     }
 }
 
@@ -168,6 +168,11 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                     // We use track index according to reaper to assign tracks to hardware channels
                     track::DataMsg::ReaperTrackIndex(msg) => {
                         if let Some(index) = msg.track_index {
+                            if index < 1 {
+                                // Invalid index, ignore
+                                // Reaper starts indexing from 1
+                                return curr_mode;
+                            }
                             // First, check if the assignment is changing. If not changing, do nothing.
                             if let Some(current_guid) =
                                 &self.track_hw_assignments.lock().unwrap()[index as usize]
@@ -189,7 +194,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                                 }
                             }
                             // Now set the new assignment
-                            assignments[index as usize] = Some(msg.track_guid);
+                            assignments[index as usize - 1] = Some(msg.track_guid);
                         }
                         // Now, send the current state of the track to the hardware for this channel
                         if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {

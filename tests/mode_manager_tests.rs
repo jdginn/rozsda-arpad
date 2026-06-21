@@ -216,23 +216,6 @@ fn setup_mode_manager_channels() -> (
     (reaper_tx, to_reaper_rx, xtouch_tx, to_xtouch_rx)
 }
 
-/// Helper function to assign a track to a hardware channel
-fn assign_track_to_channel(
-    mode: &mut VolumePanMode,
-    guid: Uuid,
-    hw_channel: i32,
-    curr_mode: ModeState,
-) -> ModeState {
-    mode.handle_downstream_messages(
-        track::ReaperTrackIndex {
-            track_guid: guid,
-            track_index: Some(hw_channel),
-        }
-        .into(),
-        curr_mode,
-    )
-}
-
 #[test]
 fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
     let (reaper_tx, to_reaper_rx, xtouch_tx, to_xtouch_rx) = setup_mode_manager_channels();
@@ -255,7 +238,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
         .send(
             track::ReaperTrackIndex {
                 track_guid: track1_guid,
-                track_index: Some(0),
+                track_index: Some(1),
             }
             .into(),
         )
@@ -264,7 +247,7 @@ fn test_mode_transition_vol_pan_to_sends_initiated_by_hardware() {
         .send(
             track::ReaperTrackIndex {
                 track_guid: track2_guid,
-                track_index: Some(1),
+                track_index: Some(2),
             }
             .into(),
         )
@@ -394,7 +377,7 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
         .send(
             track::ReaperTrackIndex {
                 track_guid: track1_guid,
-                track_index: Some(0),
+                track_index: Some(1),
             }
             .into(),
         )
@@ -403,7 +386,7 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
         .send(
             track::ReaperTrackIndex {
                 track_guid: track2_guid,
-                track_index: Some(1),
+                track_index: Some(2),
             }
             .into(),
         )
