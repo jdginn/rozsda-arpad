@@ -6,12 +6,16 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::xtouch::{
-    EncoderRingLEDMsg, EncoderRingLEDRangePointMsg, FaderAbsMsg, XTouchDownstreamMsg,
-    XTouchUpstreamMsg,
+    DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, UpstreamMsg,
 };
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::track::track;
-use crate::track::track::{SendLevel, TrackMsg, TrackQuery};
+use crate::track::track::{TrackMsg, TrackQuery};
+
+pub fn map_to_0xb(x: f32) -> u8 {
+    let clamped = x.clamp(-1.0, 1.0) as f64;
+    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
 
 #[derive(Clone, Default)]
 pub struct TrackSendInfo {
@@ -25,11 +29,12 @@ pub struct TrackSendsMode {
     hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
     // Maps guid to info about the send it designates
     track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
-    selected_track_guid: Option<String>,
+    selected_track_guid: Option<Uuid>,
+    //a mode transition!
     to_reaper: Sender<TrackMsg>,
-    from_reaper: Receiver<TrackMsg>,
-    to_xtouch: Sender<XTouchDownstreamMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
+    _from_reaper: Receiver<TrackMsg>,
+    to_xtouch: Sender<DownstreamMsg>,
+    _from_xtouch: Receiver<UpstreamMsg>,
 }
 
 impl TrackSendsMode {
@@ -37,23 +42,23 @@ impl TrackSendsMode {
         num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<XTouchUpstreamMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        from_xtouch: Receiver<UpstreamMsg>,
+        to_xtouch: Sender<DownstreamMsg>,
     ) -> Self {
         TrackSendsMode {
             hw_assignments: Arc::new(Mutex::new(vec![None; num_channels])),
             track_send_states: Arc::new(Mutex::new(BTreeMap::new())),
             selected_track_guid: None,
             to_reaper,
-            from_reaper,
+            _from_reaper: from_reaper,
             to_xtouch,
-            from_xtouch,
+            _from_xtouch: from_xtouch,
         }
     }
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.hw_assignments.lock().unwrap();
-        assignments[hw_channel].clone()
+        assignments[hw_channel]
     }
 
     fn find_hw_channel_for_guid(guid: Uuid, assignments: Vec<Option<Uuid>>) -> Option<usize> {
@@ -68,14 +73,14 @@ impl TrackSendsMode {
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for TrackSendsMode {
-    fn handle_downstream_messages(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsMode {
+    fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
         match track::DataMsg::try_from(msg) {
             Err(TrackMsg::Barrier(barrier)) => {
                 // Forward barriers downstream (they need to reflect back upstream for the mode to
                 // transition)
                 self.to_xtouch
-                    .send(XTouchDownstreamMsg::Barrier(barrier))
+                    .send(DownstreamMsg::Barrier(barrier))
                     .unwrap();
                 match curr_mode.state {
                     // If we were already waiting on a barrier from upstream, check if this is the one
@@ -85,6 +90,7 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             return ModeState {
                                 mode: curr_mode.mode,
                                 state: State::WaitingBarrierFromDownstream(barrier),
+                                new_selected_track_guid: None,
                             };
                         } else {
                             return curr_mode;
@@ -95,6 +101,18 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
             }
             Ok(msg) => {
                 match msg {
+                    // If a new track is selected, we need to initiate a mode transition so that we
+                    // are controlling sends for that new track
+                    track::DataMsg::Selected(msg) => {
+                        if msg.selected {
+                            self.selected_track_guid = Some(msg.track_guid);
+                            return ModeState {
+                                mode: Mode::ReaperSends,
+                                state: State::RequestingModeTransition,
+                                new_selected_track_guid: Some(msg.track_guid),
+                            };
+                        }
+                    }
                     track::DataMsg::SendIndex(msg) => {
                         let mut assignments = self.hw_assignments.lock().unwrap();
 
@@ -126,17 +144,22 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             .clone();
                         // Send current state to hardware for this send index
                         self.to_xtouch
-                            .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                            .send(DownstreamMsg::FaderAbs(FaderAbsMsg {
                                 idx: msg.send_index,
                                 value: state.level as f64, // TODO: scale appropriately
                             }))
                             .unwrap();
                         self.to_xtouch
-                            .send(XTouchDownstreamMsg::EncoderRingLED(
-                                EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                            .send(DownstreamMsg::EncoderRingLED(
+                                // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                                //     idx: msg.send_index,
+                                //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
+                                // }),
+                                EncoderRingMsg {
                                     idx: msg.send_index,
-                                    pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
-                                }),
+                                    mode: EncoderRingMode::Point,
+                                    val: map_to_0xb(state.pan),
+                                },
                             ))
                             .unwrap();
                     }
@@ -147,13 +170,13 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             self.track_send_states
                                 .lock()
                                 .unwrap()
-                                .entry(guid.clone())
+                                .entry(*guid)
                                 .or_default()
                                 .level = msg.level;
 
                             let fader_value = msg.level; // TODO: scale appropriately
                             self.to_xtouch
-                                .send(XTouchDownstreamMsg::FaderAbs(FaderAbsMsg {
+                                .send(DownstreamMsg::FaderAbs(FaderAbsMsg {
                                     idx: msg.send_index,
                                     value: fader_value as f64,
                                 }))
@@ -167,18 +190,16 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
                             self.track_send_states
                                 .lock()
                                 .unwrap()
-                                .entry(guid.clone())
+                                .entry(*guid)
                                 .or_default()
                                 .pan = msg.pan;
 
-                            let encoder_pos = (msg.pan + 1.0) / 2.0; // Scale -1.0 to 1.0 into 0.0 to 1.0
                             self.to_xtouch
-                                .send(XTouchDownstreamMsg::EncoderRingLED(
-                                    EncoderRingLEDMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                        idx: msg.send_index,
-                                        pos: encoder_pos,
-                                    }),
-                                ))
+                                .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                                    idx: msg.send_index,
+                                    mode: EncoderRingMode::Point,
+                                    val: map_to_0xb(msg.pan),
+                                }))
                                 .unwrap();
                         }
                     }
@@ -198,21 +219,43 @@ impl ModeHandler<TrackMsg, TrackMsg, XTouchDownstreamMsg, XTouchUpstreamMsg> for
         curr_mode
     }
 
-    fn handle_upstream_messages(
+    fn handle_messages_from_downstream(
         &mut self,
-        msg: XTouchUpstreamMsg,
+        msg: UpstreamMsg,
         curr_mode: ModeState,
     ) -> ModeState {
         match msg {
-            XTouchUpstreamMsg::GlobalPress => {
+            UpstreamMsg::GlobalPress => {
                 // Request transition to ReaperVolPan mode
                 ModeState {
                     mode: Mode::ReaperVolPan,
                     state: State::RequestingModeTransition,
+                    new_selected_track_guid: None,
                 }
             }
-            XTouchUpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
-            XTouchUpstreamMsg::FaderAbs(fader_msg) => {
+            UpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
+            UpstreamMsg::InputsPress => {
+                // Request transition to ReaperChannelStrip mode
+                ModeState {
+                    mode: Mode::ReaperChannelStrip,
+                    state: State::RequestingModeTransition,
+                    new_selected_track_guid: None,
+                }
+            }
+            // If a new track is selected, we need to initiate a mode transition so that the
+            // widgets are controlling the new track
+            //
+            // TODO: do we need to handle this case separately or do we simply expect a reflected
+            // message back from Reaper?
+            UpstreamMsg::SelectPress(msg) => {
+                self.selected_track_guid = self.get_guid_for_hw_channel(msg.idx as usize);
+                ModeState {
+                    mode: Mode::ReaperSends,
+                    state: State::RequestingModeTransition,
+                    new_selected_track_guid: self.selected_track_guid,
+                }
+            }
+            UpstreamMsg::FaderAbs(fader_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
                     self.to_reaper
                         .send(
@@ -239,7 +282,7 @@ impl TrackSendsMode {
         upstream: Sender<TrackMsg>,
         selected_track_guid: Uuid,
     ) -> ModeState {
-        self.selected_track_guid = Some(selected_track_guid.to_string());
+        self.selected_track_guid = Some(selected_track_guid);
         upstream
             .send(TrackMsg::Query(TrackQuery {
                 guid: selected_track_guid,
@@ -250,6 +293,7 @@ impl TrackSendsMode {
         ModeState {
             mode: Mode::ReaperSends,
             state: State::WaitingBarrierFromUpstream(barrier),
+            new_selected_track_guid: None,
         }
     }
 }

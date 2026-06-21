@@ -6,7 +6,8 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
-use crate::midi::xtouch::{XTouchDownstreamMsg, XTouchUpstreamMsg};
+use crate::midi::xtouch;
+use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends::TrackSendsMode;
 use crate::modes::reaper_vol_pan::VolumePanMode;
 use crate::track::track::TrackMsg;
@@ -52,6 +53,7 @@ pub enum State {
 pub enum Mode {
     ReaperVolPan,
     ReaperSends,
+    ReaperChannelStrip,
     MotuVolPan,
 }
 
@@ -60,6 +62,7 @@ pub enum Mode {
 pub struct ModeState {
     pub mode: Mode,
     pub state: State,
+    pub new_selected_track_guid: Option<Uuid>,
 }
 
 /// Each mode implementation struct needs to implement this trait to handle messages
@@ -67,8 +70,16 @@ pub struct ModeState {
 /// Each mode implementation should also implement initiate_mode_transition(self, ...) -> ModeState. This implementation
 /// will vary from mode to mode but usually will require sending a barrier to the upstream channel.
 pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
-    fn handle_upstream_messages(&mut self, msg: FromDownstream, curr_mode: ModeState) -> ModeState;
-    fn handle_downstream_messages(&mut self, msg: FromUpstream, curr_mode: ModeState) -> ModeState;
+    fn handle_messages_from_downstream(
+        &mut self,
+        msg: FromDownstream,
+        curr_mode: ModeState,
+    ) -> ModeState;
+    fn handle_messages_from_upstream(
+        &mut self,
+        msg: FromUpstream,
+        curr_mode: ModeState,
+    ) -> ModeState;
 }
 
 /// Presents all modes with a uniform interface, (mostly) seamlessly handling switching between modes.
@@ -83,8 +94,8 @@ pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
 pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
     to_reaper: Sender<TrackMsg>,
-    from_xtouch: Receiver<XTouchUpstreamMsg>,
-    to_xtouch: Sender<XTouchDownstreamMsg>,
+    from_xtouch: Receiver<xtouch::UpstreamMsg>,
+    _to_xtouch: Sender<xtouch::DownstreamMsg>,
     pub curr_mode: ModeState,
 
     reaper_currently_selected_track_guid: Option<Uuid>,
@@ -96,17 +107,18 @@ impl ModeManager {
     pub fn start(
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<XTouchUpstreamMsg>,
-        to_xtouch: Sender<XTouchDownstreamMsg>,
+        from_xtouch: Receiver<xtouch::UpstreamMsg>,
+        to_xtouch: Sender<xtouch::DownstreamMsg>,
     ) {
         let mut manager = ModeManager {
             from_reaper: from_reaper.clone(),
             to_reaper: to_reaper.clone(),
             from_xtouch: from_xtouch.clone(),
-            to_xtouch: to_xtouch.clone(),
+            _to_xtouch: to_xtouch.clone(),
             curr_mode: ModeState {
                 mode: Mode::ReaperVolPan,
                 state: State::Active,
+                new_selected_track_guid: None,
             },
             reaper_currently_selected_track_guid: None,
         };
@@ -128,11 +140,24 @@ impl ModeManager {
             to_xtouch.clone(),
         )));
 
+        let reaper_channel_strip = Arc::new(Mutex::new(ChannelStripMode::new(
+            8,
+            from_reaper.clone(),
+            to_reaper.clone(),
+            from_xtouch.clone(),
+            to_xtouch.clone(),
+        )));
+
         let reaper_pan_vol_clone = reaper_pan_vol.clone();
         let reaper_track_sends_clone = reaper_track_sends.clone();
+        let reaper_channel_strip_clone = reaper_channel_strip.clone();
 
         thread::spawn(move || {
             let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
+                // If the mode has indicated a new track selection, update it with the mode manager
+                if let Some(selected_track_guid) = mode.new_selected_track_guid {
+                    manager.reaper_currently_selected_track_guid = Some(selected_track_guid)
+                }
                 if mode.state == State::RequestingModeTransition {
                     match mode.mode {
                         Mode::ReaperVolPan => {
@@ -145,8 +170,9 @@ impl ModeManager {
                                 );
                         }
                         Mode::ReaperSends => {
-                            if let Some(currently_selected_track_guid) =
-                                manager.reaper_currently_selected_track_guid.clone()
+                            // We can only enter this mode if we have a track selected
+                            if let Some(selected_track_guid) =
+                                manager.reaper_currently_selected_track_guid
                             {
                                 manager.curr_mode = reaper_track_sends_clone
                                     .lock()
@@ -154,10 +180,23 @@ impl ModeManager {
                                     .initiate_mode_transition(
                                         manager.curr_mode.mode,
                                         manager.to_reaper.clone(),
-                                        currently_selected_track_guid,
+                                        selected_track_guid,
                                     );
-                            } else {
-                                // If we can't transition, stay in current mode
+                            }
+                        }
+                        Mode::ReaperChannelStrip => {
+                            // We can only enter this mode if we have a track selected
+                            if let Some(selected_track_guid) =
+                                manager.reaper_currently_selected_track_guid
+                            {
+                                manager.curr_mode = reaper_channel_strip_clone
+                                    .lock()
+                                    .unwrap()
+                                    .initiate_mode_transition(
+                                        manager.curr_mode.mode,
+                                        manager.to_reaper.clone(),
+                                        selected_track_guid,
+                                    );
                             }
                         }
                         Mode::MotuVolPan => {
@@ -174,14 +213,6 @@ impl ModeManager {
                 select! {
                     recv(manager.from_reaper) -> msg => {
                         if let Ok(track_msg) = msg {
-                        // Keep track of currently selected track for mode transitions
-                        if let TrackMsg::Selected(selected_msg) = track_msg {
-                            // If the message is a track selection message, update the currently selected track guid
-                            if selected_msg.selected {
-                                manager.reaper_currently_selected_track_guid = Some(selected_msg.track_guid);
-                            }
-                        }
-
                         let curr_mode = manager.curr_mode;
                         match curr_mode.mode {
                         Mode::ReaperVolPan => {
@@ -194,12 +225,17 @@ impl ModeManager {
                                 // of jitter on the hw. But even then, we are not propagating
                                 // hardware settings upstream, so upstream should still always be
                                 // correct.
-                            handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
+                            handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
                         },
                         Mode::ReaperSends => {
-                            handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_downstream_messages(track_msg, curr_mode))
+                            handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
                         },
-                        _ => {panic!("Inside unknown mode in ModeManager")},
+                        Mode::ReaperChannelStrip => {
+                            handle_transitions(&mut manager, reaper_channel_strip.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
+                        },
+                        Mode::MotuVolPan => {
+                            panic!("MotuVolPan currently unsupported")
+                        }
                         }
                     }
                 }
@@ -210,18 +246,19 @@ impl ModeManager {
                                 Mode::ReaperVolPan => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_upstream_messages(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
                                             match xtouch_msg {
-                                                XTouchUpstreamMsg::Barrier(barrier) => {
+                                                xtouch::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
                                                             state: State::Active,
+                                                            new_selected_track_guid: None,
                                                         };
                                                     } else {
                                                         // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
@@ -242,18 +279,19 @@ impl ModeManager {
                                 Mode::ReaperSends => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_track_sends.lock().unwrap().handle_upstream_messages(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
                                             match xtouch_msg {
-                                                XTouchUpstreamMsg::Barrier(barrier) => {
+                                                xtouch::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
                                                             state: State::Active,
+                                                            new_selected_track_guid: None,
                                                         };
                                                     } else {
                                                         // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
@@ -271,7 +309,42 @@ impl ModeManager {
                                         State::RequestingModeTransition => panic!("We should never be handling upstream messages while requesting a mode transition!")
                                     }
                                 },
-                                _ => {panic!("Inside unknown mode in ModeManager")},
+                                Mode::ReaperChannelStrip => {
+                                    match curr_mode.state {
+                                        State::Active => {
+                                            let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
+                                            handle_transitions(&mut manager, new_mode);
+                                        },
+                                        // We don't send any messages up from the hw until the hw
+                                        // is confirmed to reflect the upsream state
+                                        State::WaitingBarrierFromDownstream(expected_barrier) => {
+                                            match xtouch_msg {
+                                                xtouch::UpstreamMsg::Barrier(barrier) => {
+                                                    if barrier == expected_barrier {
+                                                        manager.curr_mode = ModeState {
+                                                            mode: curr_mode.mode,
+                                                            state: State::Active,
+                                                            new_selected_track_guid: None,
+                                                        };
+                                                    } else {
+                                                        // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
+                                                        // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
+                                                    }
+                                                },
+                                                _ => {
+                                                    // Block all non-barrier messages until the barrier comes through
+                                                }
+                                            }
+                                        },
+                                        State::WaitingBarrierFromUpstream(_) => {
+                                            // Block
+                                        },
+                                        State::RequestingModeTransition => panic!("We should never be handling upstream messages while requesting a mode transition!")
+                                    }
+                                },
+                                Mode::MotuVolPan => {
+                                    panic!("MotuVolPan currently unsupported")
+                                }
                             }
                         }
                     }

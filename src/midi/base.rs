@@ -172,6 +172,10 @@ impl Set<u16> for PitchBendBuilder<'_> {
             Channel::new(self.spec.channel),
             helgoboss_midi::U14::new(value),
         );
+        println!(
+            "Sending pitch bend change: channel={}, value={}",
+            self.spec.channel, value
+        );
         self.device
             .midi_out
             .send(&byte_slice(message))
@@ -209,81 +213,87 @@ impl MidiDevice {
         let note_on_callbacks_clone = self.note_on_callbacks.clone();
         let note_off_callbacks_clone = self.note_off_callbacks.clone();
         let pitch_bend_callbacks_clone = self.pitch_bend_callbacks.clone();
-        midi_in
-            .connect(
-                &self.midi_in_port,
-                "MidiDevice",
-                move |_, message, _| {
-                    let structured = RawShortMessage::from_bytes((
-                        message[0],
-                        U7::new(message[1]),
-                        U7::new(message[2]),
-                    ))
-                    .unwrap()
-                    .to_structured();
-                    match structured {
-                        StructuredShortMessage::NoteOn {
-                            channel,
-                            key_number,
-                            velocity,
-                        } => {
-                            let mut callbacks = note_on_callbacks_clone.lock().unwrap();
-                            for (spec, callback) in callbacks.iter_mut() {
-                                if Channel::new(spec.channel) == channel
-                                    && u8::from(key_number) == spec.key_number
-                                {
-                                    callback(u8::from(velocity));
+        let midi_in_port = self.midi_in_port.clone();
+        std::thread::spawn(move || {
+            let _conn = midi_in
+                .connect(
+                    &midi_in_port.clone(),
+                    "MidiDevice",
+                    move |_, message, _| {
+                        let structured = RawShortMessage::from_bytes((
+                            message[0],
+                            U7::new(message[1]),
+                            U7::new(message[2]),
+                        ))
+                        .unwrap()
+                        .to_structured();
+                        match structured {
+                            StructuredShortMessage::NoteOn {
+                                channel,
+                                key_number,
+                                velocity,
+                            } => {
+                                let mut callbacks = note_on_callbacks_clone.lock().unwrap();
+                                for (spec, callback) in callbacks.iter_mut() {
+                                    if Channel::new(spec.channel) == channel
+                                        && u8::from(key_number) == spec.key_number
+                                    {
+                                        callback(u8::from(velocity));
+                                    }
                                 }
                             }
-                        }
-                        StructuredShortMessage::NoteOff {
-                            channel,
-                            key_number,
-                            velocity,
-                        } => {
-                            let mut callbacks = note_off_callbacks_clone.lock().unwrap();
-                            for (spec, callback) in callbacks.iter_mut() {
-                                if Channel::new(spec.channel) == channel
-                                    && u8::from(key_number) == spec.key_number
-                                {
-                                    callback(u8::from(velocity));
+                            StructuredShortMessage::NoteOff {
+                                channel,
+                                key_number,
+                                velocity,
+                            } => {
+                                let mut callbacks = note_off_callbacks_clone.lock().unwrap();
+                                for (spec, callback) in callbacks.iter_mut() {
+                                    if Channel::new(spec.channel) == channel
+                                        && u8::from(key_number) == spec.key_number
+                                    {
+                                        callback(u8::from(velocity));
+                                    }
                                 }
                             }
-                        }
-                        StructuredShortMessage::ControlChange {
-                            channel,
-                            controller_number,
-                            control_value,
-                        } => {
-                            let mut callbacks = cc_callbacks_clone.lock().unwrap();
-                            for (spec, callback) in callbacks.iter_mut() {
-                                if Channel::new(spec.channel) == channel
-                                    && ControllerNumber::new(spec.controller_number)
-                                        == controller_number
-                                {
-                                    callback(u8::from(control_value));
+                            StructuredShortMessage::ControlChange {
+                                channel,
+                                controller_number,
+                                control_value,
+                            } => {
+                                let mut callbacks = cc_callbacks_clone.lock().unwrap();
+                                for (spec, callback) in callbacks.iter_mut() {
+                                    if Channel::new(spec.channel) == channel
+                                        && ControllerNumber::new(spec.controller_number)
+                                            == controller_number
+                                    {
+                                        callback(u8::from(control_value));
+                                    }
                                 }
                             }
-                        }
-                        StructuredShortMessage::PitchBendChange {
-                            channel,
-                            pitch_bend_value,
-                        } => {
-                            let mut callbacks = pitch_bend_callbacks_clone.lock().unwrap();
-                            for (spec, callback) in callbacks.iter_mut() {
-                                if Channel::new(spec.channel) == channel {
-                                    callback(u16::from(pitch_bend_value));
+                            StructuredShortMessage::PitchBendChange {
+                                channel,
+                                pitch_bend_value,
+                            } => {
+                                let mut callbacks = pitch_bend_callbacks_clone.lock().unwrap();
+                                for (spec, callback) in callbacks.iter_mut() {
+                                    if Channel::new(spec.channel) == channel {
+                                        callback(u16::from(pitch_bend_value));
+                                    }
                                 }
                             }
+                            _ => {
+                                println!("Received unexpected message: {:?}", structured);
+                            }
                         }
-                        _ => {
-                            println!("Received unexpected message: {:?}", structured);
-                        }
-                    }
-                },
-                (),
-            )
-            .map_err(MidiError::Connect)?;
+                    },
+                    (),
+                )
+                .map_err(MidiError::Connect);
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        });
         Ok(())
     }
 }

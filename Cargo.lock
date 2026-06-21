@@ -97,6 +97,7 @@ dependencies = [
  "bimap",
  "clap",
  "crossbeam-channel",
+ "derive_enum_from",
  "derive_more 2.1.0",
  "float-cmp",
  "helgoboss-midi",
@@ -319,6 +320,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
+]
+
+[[package]]
+name = "derive_enum_from"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -1172,6 +1182,16 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "reaper_fxgen"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "regex",
+ "serde",
+ "serde_yaml",
+]
 
 [[package]]
 name = "reaper_oscgen"

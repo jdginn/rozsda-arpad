@@ -7,21 +7,66 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use clap::Parser;
-use crossbeam_channel::bounded;
+use crossbeam_channel::{bounded, select};
+use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 use rosc::OscMessage;
 
+use osc::generated_osc;
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
+use arpad_rust::midi::xtouch;
+use arpad_rust::modes::mode_manager;
 use arpad_rust::track::track;
 
+use crate::osc::generated_osc::TrackMuteArgs;
 use crate::shared::Shared;
-use crate::traits::Bind;
+use crate::traits::{Bind, Set};
 
 #[derive(Parser)]
 struct Cli {
-    #[clap(short, long, default_value = "0.0.0.0:9000")]
+    #[clap(short, long, default_value = "0.0.0.0:9091")]
     osc_address: String,
+}
+
+fn find_xtouch_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std::error::Error>>
+{
+    let mut midi_in = MidiInput::new("midir input port sniff")?;
+    midi_in.ignore(Ignore::None);
+    let midi_out = MidiOutput::new("midir output port sniff")?;
+
+    let mut input_port = None;
+    let mut output_port = None;
+
+    for (i, p) in midi_in.ports().iter().enumerate() {
+        if input_port.is_none() && midi_in.port_name(p)? == "X-Touch INT" {
+            input_port = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_out.ports().iter().enumerate() {
+        if output_port.is_none() && midi_out.port_name(p)? == "X-Touch INT" {
+            output_port = Some(p.clone());
+            break;
+        }
+    }
+
+    if input_port.is_none() {
+        return Err("Could not find X-Touch MIDI input port".into());
+    }
+
+    println!("Found input port {}", input_port.clone().unwrap().id());
+
+    if let Some(output_port) = output_port {
+        println!(
+            "Connecting to output port '{}' ...",
+            midi_out.port_name(&output_port)?
+        );
+        let output_connection = midi_out.connect(&output_port, "midir-test")?;
+        Ok((input_port.unwrap(), output_connection))
+    } else {
+        Err("Could not find X-Touch MIDI output port".into())
+    }
 }
 
 fn main() {
@@ -33,15 +78,39 @@ fn main() {
 
     let reaper = Shared::new(Reaper::new(Arc::new(socket.try_clone().unwrap())));
 
-    // FIXME: why do we have a, b, and c?
-    let (a_send, a_rec) = bounded(128); // buffer size as needed
-    let (b, _) = bounded(128); // buffer size as needed
-    let (c_send, c_rec) = bounded(128); // buffer size as needed
-    track::TrackManager::start(a_rec.clone(), b.clone(), c_rec.clone(), c_send.clone());
+    let (from_reaper_tx, from_reaper_rx) = bounded(128); // buffer size as needed
+    let (to_reaper_tx, to_reaper_rx) = bounded(128); // buffer size as needed
+    let (from_track_manager_tx, from_track_manager_rx) = bounded(128); // buffer size as needed
+    let (to_track_manager_tx, to_track_manager_rx) = bounded(128); // buffer size as needed
+    let (from_mode_manager_tx, from_mode_manager_rx) = bounded(128); // buffer size as needed
+    let (to_mode_manager_tx, to_mode_manager_rx) = bounded(128); // buffer size as needed
+    track::TrackManager::start(
+        from_reaper_rx.clone(),
+        to_reaper_tx.clone(),
+        to_track_manager_rx.clone(),
+        from_track_manager_tx.clone(),
+    );
+    mode_manager::ModeManager::start(
+        from_track_manager_rx.clone(),
+        to_track_manager_tx.clone(),
+        to_mode_manager_rx.clone(),
+        from_mode_manager_tx.clone(),
+    );
+    let (input_port, output_connection) = match find_xtouch_ports() {
+        Ok(ports) => ports,
+        Err(err) => {
+            println!("Error finding XTouch MIDI ports: {}", err);
+            println!("Test aborted. Please ensure XTouch is connected and try again.");
+            return;
+        }
+    };
+    xtouch::XTouchBuilder::new(input_port, output_connection, 8)
+        .build(from_mode_manager_rx.clone(), to_mode_manager_tx.clone());
 
     let dispatcher = {
         let reaper = reaper.clone();
         move |msg: OscMessage| {
+            println!("Received OSC message: {:?}", msg);
             reaper.with_mut(|reaper| {
                 let msg_clone = msg.clone();
                 dispatch_osc(
@@ -57,7 +126,7 @@ fn main() {
     let mut router = OscGatedRouterBuilder::new(dispatcher)
         .add_layer({
             let reaper = reaper.clone();
-            let a_send = a_send.clone();
+            let a_send = from_reaper_tx.clone();
             Box::new(
                 ContextGateBuilder::<context_kind::Track>::new()
                     .add_key_route("/track/{guid}/index")
@@ -236,7 +305,7 @@ fn main() {
         })
         .add_layer({
             let reaper = reaper.clone();
-            let a_send = a_send.clone();
+            let a_send = from_reaper_tx.clone();
             Box::new(
                 ContextGateBuilder::<context_kind::TrackSend>::new()
                     .add_key_route("/track/{guid}/send/{send_index}/guid")
@@ -320,7 +389,7 @@ fn main() {
         })
         .add_layer({
             let reaper = reaper.clone();
-            let a_send = a_send.clone();
+            let a_send = from_reaper_tx.clone();
             Box::new(
                 ContextGateBuilder::<context_kind::TrackFx>::new()
                     .add_key_route("/track/{guid}/fx/{fx_idx}/guid")
@@ -398,7 +467,7 @@ fn main() {
         })
         .add_layer({
             let reaper = reaper.clone();
-            let a_send = a_send.clone();
+            let a_send = from_reaper_tx.clone();
             Box::new(
                 ContextGateBuilder::<context_kind::TrackFxParam>::new()
                     .add_key_route("/track/{guid}/fx/{fx_idx}/param/{param_idx}/name")
@@ -521,18 +590,49 @@ fn main() {
         .build()
         .unwrap();
 
-    println!("Listening on {}", cli.osc_address);
-    let mut buf = [0u8; rosc::decoder::MTU];
-    loop {
-        match socket.recv_from(&mut buf) {
-            Ok((size, _addr)) => {
-                let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
-                router.dispatch_osc(packet);
-                // handle_packet(packet);
+    let (from_socket_tx, from_socket_rx) = bounded(128); // buffer size as needed
+
+    std::thread::spawn(move || {
+        loop {
+            println!("Listening on {}", cli.osc_address);
+            let mut buf = [0u8; rosc::decoder::MTU];
+            match socket.recv_from(&mut buf) {
+                Ok((size, _addr)) => {
+                    let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
+                    from_socket_tx.send(packet);
+                    // handle_packet(packet);
+                }
+                Err(e) => {
+                    println!("Error receiving from socket: {}", e);
+                    break;
+                }
             }
-            Err(e) => {
-                println!("Error receiving from socket: {}", e);
-                break;
+        }
+    });
+
+    loop {
+        select! {
+            recv(from_socket_rx) -> msg => {
+            match msg {
+                Ok(msg) => {
+                    router.dispatch_osc(msg);
+                }
+                Err(e) => {
+                    println!("Error...")
+                }
+            }
+        }
+            recv(to_reaper_rx) -> msg => {
+                match msg {
+                   Ok(track::TrackMsg::Muted(msg))  => {
+                        reaper.with_mut(|reaper|{
+                            reaper.track_mute(msg.track_guid).set(TrackMuteArgs{mute: msg.muted});
+                        })
+                    }
+                    Err(e) => {
+                        println!("Error...")}
+                    _ => {}
+                }
             }
         }
     }
