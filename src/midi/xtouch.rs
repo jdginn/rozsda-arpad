@@ -246,8 +246,11 @@ pub enum DownstreamMsg {
     SelectLED(SelectLEDMsg),
 
     // Scribble strip messages
+    #[enum_from]
     ScribbleStripLine1Text(ScribbleStripLine1TextMsg),
+    #[enum_from]
     ScribbleStripLine2Text(ScribbleStripLine2TextMsg),
+    #[enum_from]
     ScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
 
     // Encoder assign messages
