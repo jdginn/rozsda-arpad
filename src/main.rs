@@ -642,6 +642,46 @@ fn main() {
                             };
                         })
                     }
+                    Ok(track::TrackMsg::Soloed(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_solo(msg.track_guid).set(generated_osc::TrackSoloArgs{solo: msg.soloed}) {
+                                Ok(_) => println!("Successfully set solo for track {} to {}", msg.track_guid, msg.soloed),
+                                Err(e) => println!("Error setting solo for track {}", msg.track_guid),
+                            };
+                        })
+                    }
+                    Ok(track::TrackMsg::Armed(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_rec_arm(msg.track_guid).set(generated_osc::TrackRecArmArgs{rec_arm: msg.armed}) {
+                                Ok(_) => println!("Successfully set armed for track {} to {}", msg.track_guid, msg.armed),
+                                Err(e) => println!("Error setting armed for track {}", msg.track_guid),
+                            };
+                        })
+                    }
+                    Ok(track::TrackMsg::Selected(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_selected(msg.track_guid).set(generated_osc::TrackSelectedArgs{selected: msg.selected}) {
+                                Ok(_) => println!("Successfully set selected for track {} to {}", msg.track_guid, msg.selected),
+                                Err(e) => println!("Error setting selected for track {}", msg.track_guid),
+                            };
+                        })
+                    }
+                    Ok(track::TrackMsg::Pan(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_pan(msg.track_guid).set(generated_osc::TrackPanArgs{pan: msg.pan}) {
+                                Ok(_) => println!("Successfully set pan for track {} to {}", msg.track_guid, msg.pan),
+                                Err(e) => println!("Error setting pan for track {}", msg.track_guid),
+                            };
+                        })
+                    }
+                    Ok(track::TrackMsg::Volume(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_volume(msg.track_guid).set(generated_osc::TrackVolumeArgs{volume: msg.volume}) {
+                                Ok(_) => println!("Successfully set volume for track {} to {}", msg.track_guid, msg.volume),
+                                Err(e) => println!("Error setting volume for track {}", msg.track_guid),
+                            };
+                        })
+                    }
                     Err(e) => {
                         println!("Error...")}
                     _ => {}
