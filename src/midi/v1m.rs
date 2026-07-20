@@ -143,15 +143,10 @@ pub struct SelectLEDMsg {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Color {
-    Off,
-    Red,
-    Green,
-    Yellow,
-    Blue,
-    Magenta,
-    Cyan,
-    Grey,
+pub struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -162,6 +157,18 @@ pub struct ScribbleStripLine1TextMsg {
 
 #[derive(Clone, Debug)]
 pub struct ScribbleStripLine2TextMsg {
+    pub idx: i32,
+    pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct BottomScribbleStripLine1TextMsg {
+    pub idx: i32,
+    pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct BottomScribbleStripLine2TextMsg {
     pub idx: i32,
     pub text: String,
 }
@@ -250,6 +257,10 @@ pub enum DownstreamMsg {
     ScribbleStripLine1Text(ScribbleStripLine1TextMsg),
     #[enum_from]
     ScribbleStripLine2Text(ScribbleStripLine2TextMsg),
+    #[enum_from]
+    BottomScribbleStripLine1Text(BottomScribbleStripLine1TextMsg),
+    #[enum_from]
+    BottomScribbleStripLine2Text(BottomScribbleStripLine2TextMsg),
     #[enum_from]
     ScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
 
@@ -449,7 +460,7 @@ impl Set<LEDState> for Button {
     }
 }
 
-pub struct ScribbleStrips {
+pub struct TopScribbleStrips {
     base: Arc<Mutex<MidiDevice>>,
     line_1: Vec<String>,
     line_2: Vec<String>,
@@ -470,7 +481,7 @@ pub fn compact_to_7_bytes(input: &str) -> Vec<u8> {
         .collect();
 
     if cleaned.is_empty() {
-        return vec![0; 7];
+        return vec![32; 7];
     }
 
     // 2. Split into words by separators
@@ -694,16 +705,17 @@ pub fn compact_to_7_bytes(input: &str) -> Vec<u8> {
 
 type ScribbleStripError = String;
 
-impl ScribbleStrips {
+impl TopScribbleStrips {
     fn new(base: Arc<Mutex<MidiDevice>>, num_channels: usize) -> Self {
         Self {
             base,
             line_1: vec![String::new(); num_channels],
             line_2: vec![String::new(); num_channels],
-            background_color: vec![Color::Blue; num_channels],
+            background_color: vec![Color { r: 0, g: 0, b: 0 }; num_channels],
         }
     }
 
+    // TODO: need to stop writing the whole thing: only write the parts that have changed
     fn write(&self) -> Result<(), ScribbleStripError> {
         // First, we send the text
         // Sysex message is made of a header + text formatted as ascii
@@ -732,28 +744,12 @@ impl ScribbleStrips {
             .send(&msg_bytes)
             .map_err(|e| format!("Failed to send SysEx message: {}", e))?;
 
-        fn color_to_byte(background: Color) -> u8 {
-            let background_byte = match background {
-                Color::Off => 0x00,
-                Color::Red => 0x01,
-                Color::Green => 0x02,
-                Color::Yellow => 0x03,
-                Color::Blue => 0x04,
-                Color::Magenta => 0x05,
-                Color::Cyan => 0x06,
-                Color::Grey => 0x07,
-            };
-            // background_byte | (line1_mode_byte << 4) | (line2_mode_byte << 5)
-            // background_byte | 0x50
-            0x4b
-        }
-
         // Now we do the same for the background color and line modes, which are sent in a separate message
-        let mut msg_bytes = vec![0xf0, 0x00, 0x00, 0x66, 0x14, 0x72];
-        // let mut msg_bytes = vec![0xf0, 0x00, 0x20, 0x32, 0x14, 0x72];
+        let mut msg_bytes = vec![0xf0, 0x00, 0x02, 0x4e, 0x16, 0x14];
         for i in 0..self.line_1.len() {
-            let color_byte = color_to_byte(self.background_color[i]);
-            msg_bytes.push(color_byte);
+            msg_bytes.push(self.background_color[i].r.clamp(0, 0x7f));
+            msg_bytes.push(self.background_color[i].g.clamp(0, 0x7f));
+            msg_bytes.push(self.background_color[i].b.clamp(0, 0x7f));
         }
         msg_bytes.push(0xf7);
 
@@ -771,7 +767,7 @@ impl ScribbleStrips {
     }
 }
 
-impl Set<ScribbleStripLine1TextMsg> for ScribbleStrips {
+impl Set<ScribbleStripLine1TextMsg> for TopScribbleStrips {
     type Error = ScribbleStripError;
     fn set(&mut self, value: ScribbleStripLine1TextMsg) -> Result<(), Self::Error> {
         self.line_1[value.idx as usize] = value.text;
@@ -779,7 +775,7 @@ impl Set<ScribbleStripLine1TextMsg> for ScribbleStrips {
     }
 }
 
-impl Set<ScribbleStripLine2TextMsg> for ScribbleStrips {
+impl Set<ScribbleStripLine2TextMsg> for TopScribbleStrips {
     type Error = ScribbleStripError;
     fn set(&mut self, value: ScribbleStripLine2TextMsg) -> Result<(), Self::Error> {
         self.line_2[value.idx as usize] = value.text;
@@ -787,10 +783,72 @@ impl Set<ScribbleStripLine2TextMsg> for ScribbleStrips {
     }
 }
 
-impl Set<ScribbleStripBackgroundColorMsg> for ScribbleStrips {
+impl Set<ScribbleStripBackgroundColorMsg> for TopScribbleStrips {
     type Error = ScribbleStripError;
     fn set(&mut self, value: ScribbleStripBackgroundColorMsg) -> Result<(), Self::Error> {
         self.background_color[value.idx as usize] = value.color;
+        self.write()
+    }
+}
+
+pub struct BottomScribbleStrips {
+    base: Arc<Mutex<MidiDevice>>,
+    line_1: Vec<String>,
+    line_2: Vec<String>,
+}
+
+impl BottomScribbleStrips {
+    fn new(base: Arc<Mutex<MidiDevice>>, num_channels: usize) -> Self {
+        Self {
+            base,
+            line_1: vec![String::new(); num_channels],
+            line_2: vec![String::new(); num_channels],
+        }
+    }
+
+    // TODO: need to stop writing the whole thing: only write the parts that have changed
+    fn write(&self) -> Result<(), ScribbleStripError> {
+        // First, we send the text
+        // Sysex message is made of a header + text formatted as ascii
+        // Each scribble stip consumes 7 ascii bytes
+        // Since we are updating everything, we can just send the full text for both lines of all 8
+        // strips in one message.
+
+        let mut msg_bytes = vec![0xf0, 0x00, 0x02, 0x4e, 0x15, 0x13, 0x00];
+        for i in 0..self.line_1.len() {
+            let line1_bytes = compact_to_7_bytes(&self.line_1[i]);
+            // Append line1 and line2 bytes to the message
+            msg_bytes.extend_from_slice(&line1_bytes);
+        }
+        for i in 0..self.line_2.len() {
+            let line2_bytes = compact_to_7_bytes(&self.line_2[i]);
+            // Append line1 and line2 bytes to the message
+            msg_bytes.extend_from_slice(&line2_bytes);
+        }
+        // Finally, append the sysex end byte
+        msg_bytes.push(0xf7);
+
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&msg_bytes)
+            .map_err(|e| format!("Failed to send SysEx message: {}", e))
+    }
+}
+
+impl Set<BottomScribbleStripLine1TextMsg> for BottomScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: BottomScribbleStripLine1TextMsg) -> Result<(), Self::Error> {
+        self.line_1[value.idx as usize] = value.text;
+        self.write()
+    }
+}
+
+impl Set<BottomScribbleStripLine2TextMsg> for BottomScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: BottomScribbleStripLine2TextMsg) -> Result<(), Self::Error> {
+        self.line_2[value.idx as usize] = value.text;
         self.write()
     }
 }
@@ -939,7 +997,8 @@ impl V1mBuilder {
             });
             selects.push(b);
         }
-        let scribbles = ScribbleStrips::new(self.base.clone(), self.num_channels);
+        let top_scribbles = TopScribbleStrips::new(self.base.clone(), self.num_channels);
+        let bottom_scribbles = BottomScribbleStrips::new(self.base.clone(), self.num_channels);
         // Global view
         let mut b = Button {
             base: self.base.clone(),
@@ -976,7 +1035,8 @@ impl V1mBuilder {
             solos,
             arms,
             selects,
-            scribbles,
+            top_scribbles,
+            bottom_scribbles,
         };
 
         thread::spawn(move || {
@@ -1021,13 +1081,19 @@ impl V1mBuilder {
                                 .unwrap();
                         }
                         DownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
-                            v1m.scribbles.set(scribble_msg).unwrap();
+                            v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
                         DownstreamMsg::ScribbleStripLine2Text(scribble_msg) => {
-                            v1m.scribbles.set(scribble_msg).unwrap();
+                            v1m.top_scribbles.set(scribble_msg).unwrap();
+                        }
+                        DownstreamMsg::BottomScribbleStripLine1Text(scribble_msg) => {
+                            v1m.bottom_scribbles.set(scribble_msg).unwrap();
+                        }
+                        DownstreamMsg::BottomScribbleStripLine2Text(scribble_msg) => {
+                            v1m.bottom_scribbles.set(scribble_msg).unwrap();
                         }
                         DownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
-                            v1m.scribbles.set(scribble_msg).unwrap();
+                            v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
                         _ => panic!("Message {:?} implemented yet!", msg),
                     }
@@ -1044,7 +1110,8 @@ pub struct V1m {
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,
     pub selects: Vec<Button>,
-    pub scribbles: ScribbleStrips,
+    pub top_scribbles: TopScribbleStrips,
+    pub bottom_scribbles: BottomScribbleStrips,
     input: Receiver<DownstreamMsg>,
     upstream: Sender<UpstreamMsg>,
 }
