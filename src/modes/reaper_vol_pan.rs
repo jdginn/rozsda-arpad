@@ -4,7 +4,9 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::xtouch::{self};
-use crate::midi::xtouch::{DownstreamMsg, EncoderRingMsg, FaderAbsMsg, LEDState, UpstreamMsg};
+use crate::midi::xtouch::{
+    DownstreamMsg, EncoderRingMsg, FaderAbsMsg, LEDState, SelectLEDMsg, UpstreamMsg,
+};
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
@@ -87,7 +89,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 match msg {
                     track::DataMsg::Selected(msg) => ModeState {
                         mode: curr_mode.mode,
-                        state: curr_mode.state,
+                        state: State::RequestingModeTransition,
                         new_selected_track_guid: Some(msg.track_guid),
                     },
                     track::DataMsg::Pan(msg) => {
@@ -260,9 +262,10 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
 impl VolumePanMode {
     pub fn initiate_mode_transition(
         &mut self,
-        from_mode: Mode,
+        from_mode: ModeState,
         upstream: Sender<TrackMsg>,
     ) -> ModeState {
+        println!("Initiating mode transition to ReaperVolPan");
         self.core
             .track_hw_assignments
             .lock()
@@ -276,8 +279,37 @@ impl VolumePanMode {
                         .send(TrackMsg::Query(TrackQuery { guid: *guid }));
                 }
             });
-        let barrier = Barrier::new(from_mode, Mode::ReaperVolPan);
+        let barrier = Barrier::new(from_mode.mode, Mode::ReaperVolPan);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
+        for (i, g) in self
+            .core
+            .track_hw_assignments
+            .lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            println!("Checking assignment for channel {}: {:?}", i, g);
+            if let Some(guid) = g {
+                if from_mode.new_selected_track_guid == Some(*guid) {
+                    println!("Setting LED for channel {} to ON", i);
+                    self.to_xtouch
+                        .send(DownstreamMsg::SelectLED(SelectLEDMsg {
+                            idx: i as i32,
+                            state: LEDState::On,
+                        }))
+                        .unwrap();
+                } else {
+                    println!("Setting LED for channel {} to OFF", i);
+                    self.to_xtouch
+                        .send(DownstreamMsg::SelectLED(SelectLEDMsg {
+                            idx: i as i32,
+                            state: LEDState::Off,
+                        }))
+                        .unwrap();
+                }
+            }
+        }
         ModeState {
             mode: Mode::ReaperVolPan,
             state: State::WaitingBarrierFromUpstream(barrier),

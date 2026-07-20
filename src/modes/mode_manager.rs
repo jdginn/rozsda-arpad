@@ -154,18 +154,34 @@ impl ModeManager {
 
         thread::spawn(move || {
             let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
+                println!("Handling mode transition: {:?}", mode);
+                println!(
+                    "Selected track guid: {:?}",
+                    manager.reaper_currently_selected_track_guid
+                );
                 // If the mode has indicated a new track selection, update it with the mode manager
                 if let Some(selected_track_guid) = mode.new_selected_track_guid {
+                    println!("Updating selected track guid to: {:?}", selected_track_guid);
+                    // self.to_xtouch
+                    //     .send(
+                    //         SelectLEDMsg {
+                    //             idx: select_msg.idx,
+                    //             state: LEDState::On,
+                    //         }
+                    //         .into(),
+                    //     )
+                    //     .unwrap();
                     manager.reaper_currently_selected_track_guid = Some(selected_track_guid)
                 }
                 if mode.state == State::RequestingModeTransition {
                     match mode.mode {
                         Mode::ReaperVolPan => {
+                            println!("Transitioning to ReaperVolPan mode");
                             manager.curr_mode = reaper_pan_vol_clone
                                 .lock()
                                 .unwrap()
                                 .initiate_mode_transition(
-                                    manager.curr_mode.mode,
+                                    manager.curr_mode,
                                     manager.to_reaper.clone(),
                                 );
                         }
