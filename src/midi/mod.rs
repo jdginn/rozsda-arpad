@@ -1,5 +1,5 @@
 mod base;
-mod encoder_led_mappings;
+pub mod v1m;
 pub mod xtouch;
 
 use base::{MidiDevice, MidiError};
