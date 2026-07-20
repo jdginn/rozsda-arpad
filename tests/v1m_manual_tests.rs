@@ -6,6 +6,7 @@
 //
 // Run with: cargo test --test v1m_manual_tests -- --nocapture --test-threads=1
 
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::time::Duration;
 
@@ -13,9 +14,10 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::v1m::{
-    ArmLEDMsg, Color, DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState,
-    MuteLEDMsg, ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg,
-    ScribbleStripLine2TextMsg, SoloLEDMsg, UpstreamMsg, V1mBuilder,
+    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, Color,
+    DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MuteLEDMsg,
+    ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg,
+    SoloLEDMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -784,13 +786,49 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
 
     // Case 3: Light/Light mode with distinct background colors (wrapping)
     let colors = [
-        Color::Red,
-        Color::Green,
-        Color::Yellow,
-        Color::Blue,
-        Color::Magenta,
-        Color::Cyan,
-        Color::Grey,
+        ("red", Color { r: 127, g: 0, b: 0 }),
+        ("green", Color { r: 0, g: 127, b: 0 }),
+        ("blue", Color { r: 0, g: 0, b: 127 }),
+        (
+            "yellow",
+            Color {
+                r: 127,
+                g: 127,
+                b: 0,
+            },
+        ),
+        (
+            "cyan",
+            Color {
+                r: 0,
+                g: 127,
+                b: 127,
+            },
+        ),
+        (
+            "magenta",
+            Color {
+                r: 127,
+                g: 0,
+                b: 127,
+            },
+        ),
+        (
+            "white",
+            Color {
+                r: 127,
+                g: 127,
+                b: 127,
+            },
+        ),
+        (
+            "orange",
+            Color {
+                r: 127,
+                g: 63,
+                b: 0,
+            },
+        ),
     ];
     for channel in 0..8 {
         let test_name = format!("scribble_channel_{}_light_light_color", channel);
@@ -799,15 +837,53 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         tx.send(DownstreamMsg::ScribbleStripBackgroundColor(
             ScribbleStripBackgroundColorMsg {
                 idx: channel,
-                color: colors[channel as usize % colors.len()],
+                color: colors[channel as usize % colors.len()].1,
             },
         ))
         .unwrap();
 
-        let expected_color = colors[channel as usize % colors.len()];
+        let expected_color = colors[channel as usize % colors.len()].0;
         let result = prompt_user(&format!(
             "Did channel {} display in Light/Light mode with background color {:?}?",
             channel, expected_color
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    // Case 4: Bottom line 1 text "BottomN"
+    for channel in 0..8 {
+        let test_name = format!("scribble_channel_{}_line1", channel);
+        println!("\nTest: {}", test_name);
+        tx.send(DownstreamMsg::BottomScribbleStripLine1Text(
+            BottomScribbleStripLine1TextMsg {
+                idx: channel,
+                text: format!("Bottom{}", channel),
+            },
+        ))
+        .unwrap();
+
+        let result = prompt_user(&format!(
+            "Did channel {} lower scribble strip line 1 display \"Bottom{}\"?",
+            channel, channel
+        ));
+        results.push(TestSummary::new(&test_name, result));
+    }
+
+    // Case 5: Bottom line2 text "BelowN"
+    for channel in 0..8 {
+        let test_name = format!("scribble_channel_{}_line2", channel);
+        println!("\nTest: {}", test_name);
+        tx.send(DownstreamMsg::BottomScribbleStripLine2Text(
+            BottomScribbleStripLine2TextMsg {
+                idx: channel,
+                text: format!("Below{}", channel),
+            },
+        ))
+        .unwrap();
+
+        let result = prompt_user(&format!(
+            "Did channel {} lower scribble strip line 2 display \"Below{}\"?",
+            channel, channel
         ));
         results.push(TestSummary::new(&test_name, result));
     }
