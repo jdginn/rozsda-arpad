@@ -974,7 +974,14 @@ fn test_12_state_propagates_correctly_during_mode_entry() {
     let (upstream_sender, upstream_receiver) = unbounded();
 
     // Initiate mode transition
-    let _result_mode = mode.initiate_mode_transition(Mode::ReaperSends, upstream_sender);
+    let _result_mode = mode.initiate_mode_transition(
+        ModeState {
+            mode: Mode::ReaperSends,
+            state: State::RequestingModeTransition,
+            new_selected_track_guid: Some(track_guid_1),
+        },
+        upstream_sender,
+    );
 
     // Should send TrackQuery for each assigned track
     let msg1 = to_reaper_rx.recv_timeout(Duration::from_millis(100));

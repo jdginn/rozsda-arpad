@@ -282,6 +282,10 @@ impl TrackSendsMode {
         upstream: Sender<TrackMsg>,
         selected_track_guid: Uuid,
     ) -> ModeState {
+        println!(
+            "TrackSendsMode: initiating mode transition from {:?} to ReaperSends for track {:?}",
+            from_mode, selected_track_guid
+        );
         self.selected_track_guid = Some(selected_track_guid);
         upstream
             .send(TrackMsg::Query(TrackQuery {

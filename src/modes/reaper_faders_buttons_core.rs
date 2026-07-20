@@ -19,7 +19,7 @@ use crate::track::track;
 //
 // Reaper's Select doesn't seem to be respected
 //
-// Scribbles aren't working
+// We have only implemented naming on scribbles
 //
 // FIXME:
 
