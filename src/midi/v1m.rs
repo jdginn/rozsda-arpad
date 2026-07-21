@@ -179,6 +179,11 @@ pub struct ScribbleStripBackgroundColorMsg {
     pub color: Color,
 }
 
+#[derive(Clone, Debug)]
+pub struct TouchScreenUpdateMsg {
+    pub data: Vec<u8>,
+}
+
 #[derive(Clone, Copy, Debug, EnumFrom)]
 pub enum UpstreamMsg {
     Barrier(Barrier),
@@ -263,6 +268,9 @@ pub enum DownstreamMsg {
     BottomScribbleStripLine2Text(BottomScribbleStripLine2TextMsg),
     #[enum_from]
     ScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
+
+    #[enum_from]
+    TouchScreenUpdate(TouchScreenUpdateMsg),
 
     // Encoder assign messages
     Track(LEDState),
@@ -853,6 +861,78 @@ impl Set<BottomScribbleStripLine2TextMsg> for BottomScribbleStrips {
     }
 }
 
+type TouchScreenError = String;
+
+pub struct TouchScreen {
+    base: Arc<Mutex<MidiDevice>>,
+}
+
+impl TouchScreen {
+    fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
+        Self { base }
+    }
+
+    fn write(&self) -> Result<(), TouchScreenError> {
+        let init_bytes = vec![0xef, 0x7f, 0x7f, 0xf7];
+        println!("\nSending touchscreen init msg: {:02x?}\n", init_bytes);
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&init_bytes)
+            .map_err(|e| format!("Failed to send touch screen init message: {}", e))?;
+        let macos_bytes = vec![0xec, 0x2a, 0x01, 0xf7];
+        println!("\nSending touchscreen macos msg: {:02x?}\n", macos_bytes);
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&macos_bytes)
+            .map_err(|e| format!("Failed to send touchscreen macos message: {}", e))?;
+        // let send_data_bytes = vec![
+        //     0xf0, 0x1d, 0x03, 0x10, 0x09, 0x25, 0x21, 0x00, 0x08, 0x09, 0x09, 0x00, 0x00, 0x7f,
+        //     0x00, 0x00, 0x00, 0x00, 0xf7,
+        // ];
+        // println!(
+        //     "\nSending touchscreen send data msg: {:02x?}\n",
+        //     send_data_bytes
+        // );
+        // self.base
+        //     .lock()
+        //     .unwrap()
+        //     .midi_out
+        //     .send(&send_data_bytes)
+        //     .map_err(|e| format!("Failed to send touchscreen send data message: {}", e))?;
+        // let send_text_bytes = vec![
+        //     0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26, 0x01, 0x01, 0x00, 0x0c, 0x02, 0x08, 0x32, 0x54,
+        //     0x54, 0x54, 0xf7,
+        // ];
+        let send_text_bytes = vec![
+            0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26, 0x01, 0x01, 0x00, 0x01, 0x01, 0x08, 0x54, 0x72,
+            0x61, 0x63, 0xf7,
+        ];
+        println!("\nSending touchscreen text msg: {:02x?}\n", send_text_bytes);
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&send_text_bytes)
+            .map_err(|e| format!("Failed to send touchscreen text message: {}", e))?;
+        let save_config_bytes = vec![0xec, 0x2d, 0x01, 0xf7];
+        println!(
+            "\nSending touchscreen save config msg: {:02x?}\n",
+            save_config_bytes
+        );
+        self.base
+            .lock()
+            .unwrap()
+            .midi_out
+            .send(&save_config_bytes)
+            .map_err(|e| format!("Failed to send touchscreen save config message: {}", e))?;
+        Ok(())
+    }
+}
+
 pub struct V1mBuilder {
     pub base: Arc<Mutex<MidiDevice>>,
     pub num_channels: usize,
@@ -999,6 +1079,7 @@ impl V1mBuilder {
         }
         let top_scribbles = TopScribbleStrips::new(self.base.clone(), self.num_channels);
         let bottom_scribbles = BottomScribbleStrips::new(self.base.clone(), self.num_channels);
+        let touchscreen = TouchScreen::new(self.base.clone());
         // Global view
         let mut b = Button {
             base: self.base.clone(),
@@ -1037,6 +1118,7 @@ impl V1mBuilder {
             selects,
             top_scribbles,
             bottom_scribbles,
+            touchscreen,
         };
 
         thread::spawn(move || {
@@ -1095,6 +1177,9 @@ impl V1mBuilder {
                         DownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
+                        DownstreamMsg::TouchScreenUpdate(touch_msg) => {
+                            v1m.touchscreen.write().unwrap();
+                        }
                         _ => panic!("Message {:?} implemented yet!", msg),
                     }
                 }
@@ -1112,6 +1197,7 @@ pub struct V1m {
     pub selects: Vec<Button>,
     pub top_scribbles: TopScribbleStrips,
     pub bottom_scribbles: BottomScribbleStrips,
+    pub touchscreen: TouchScreen,
     input: Receiver<DownstreamMsg>,
     upstream: Sender<UpstreamMsg>,
 }

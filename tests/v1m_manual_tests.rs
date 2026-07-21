@@ -17,7 +17,7 @@ use arpad_rust::midi::v1m::{
     ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, Color,
     DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MuteLEDMsg,
     ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg,
-    SoloLEDMsg, UpstreamMsg, V1mBuilder,
+    SoloLEDMsg, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -40,6 +40,45 @@ fn find_v1m_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std
     }
     for (i, p) in midi_out.ports().iter().enumerate() {
         if output_port.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 1" {
+            output_port = Some(p.clone());
+            break;
+        }
+    }
+
+    if input_port.is_none() {
+        return Err("Could not find X-Touch MIDI input port".into());
+    }
+
+    println!("Found input port {}", input_port.clone().unwrap().id());
+
+    if let Some(output_port) = output_port {
+        println!(
+            "Connecting to output port '{}' ...",
+            midi_out.port_name(&output_port)?
+        );
+        let output_connection = midi_out.connect(&output_port, "midir-test")?;
+        Ok((input_port.unwrap(), output_connection))
+    } else {
+        Err("Could not find X-Touch MIDI output port".into())
+    }
+}
+
+fn find_imap_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std::error::Error>> {
+    let mut midi_in = MidiInput::new("midir input port sniff")?;
+    midi_in.ignore(Ignore::None);
+    let midi_out = MidiOutput::new("midir output port sniff")?;
+
+    let mut input_port = None;
+    let mut output_port = None;
+
+    for (i, p) in midi_in.ports().iter().enumerate() {
+        if input_port.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 4" {
+            input_port = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_out.ports().iter().enumerate() {
+        if output_port.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 4" {
             output_port = Some(p.clone());
             break;
         }
@@ -930,6 +969,47 @@ fn v1m_scribble_strip_tests() {
     .build(downstream_rx, upstream_tx);
 
     let results = run_scribble_strip_tests(&downstream_tx);
+}
+
+#[test]
+#[ignore] // Must be run manually with --ignored flag
+fn v1m_touchscreen_test() {
+    println!("\n");
+    println!("╔════════════════════════════════════════════════════════════════╗");
+    println!("║          v1m Touchscreen Test Suite                      ║");
+    println!("╚════════════════════════════════════════════════════════════════╝");
+    println!("\nNOTE: This test requires v1m hardware to be connected.");
+    println!("Messages will be sent to the hardware for manual verification.\n");
+
+    print!("Is v1m hardware connected and ready? [Y/N]: ");
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    if !input.trim().eq_ignore_ascii_case("y") {
+        println!("Test aborted. Please connect v1m hardware and try again.");
+        return;
+    }
+
+    let (input_port, output_connection) = match find_imap_ports() {
+        Ok(ports) => ports,
+        Err(err) => {
+            println!("Error finding v1m MIDI ports: {}", err);
+            println!("Test aborted. Please ensure v1m is connected and try again.");
+            return;
+        }
+    };
+    let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
+    V1mBuilder::new(input_port, output_connection, 8).build(downstream_rx, upstream_tx);
+
+    downstream_tx.send(DownstreamMsg::TouchScreenUpdate(TouchScreenUpdateMsg {
+        data: vec![
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+            0x0E, 0x0F,
+        ],
+    }));
 }
 
 // ============================================================================

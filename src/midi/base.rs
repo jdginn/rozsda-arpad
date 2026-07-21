@@ -227,6 +227,7 @@ impl MidiDevice {
                         ))
                         .unwrap()
                         .to_structured();
+                        println!("Received message: {:?}", structured);
                         match structured {
                             StructuredShortMessage::NoteOn {
                                 channel,
