@@ -948,14 +948,14 @@ impl TouchScreenWriteContainer {
 type TouchScreenError = String;
 
 pub struct TouchScreen {
-    base: Arc<Mutex<MidiDevice>>,
+    midi: Arc<Mutex<MidiDevice>>,
     buttons: [TouchScreenButton; TOUCHSCREEN_BUTTONS],
 }
 
 impl TouchScreen {
-    fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
+    fn new(midi: Arc<Mutex<MidiDevice>>) -> Self {
         Self {
-            base,
+            midi,
             buttons: [TouchScreenButton::new(); TOUCHSCREEN_BUTTONS],
         }
     }
@@ -973,7 +973,7 @@ impl TouchScreen {
         // We don't really know what this message does but iMAP always sends it.
         const INIT_BYTES: [u8; 4] = [0xef, 0x7f, 0x7f, 0xf7];
         println!("\nSending touchscreen init msg: {:02x?}\n", INIT_BYTES);
-        self.base
+        self.midi
             .lock()
             .unwrap()
             .midi_out
@@ -983,7 +983,7 @@ impl TouchScreen {
         // Inform V1 that we are macos. Do we need this? Who knows!
         const MACOS_BYTES: [u8; 4] = [0xec, 0x2a, 0x01, 0xf7];
         println!("\nSending touchscreen macos msg: {:02x?}\n", MACOS_BYTES);
-        self.base
+        self.midi
             .lock()
             .unwrap()
             .midi_out
@@ -1048,7 +1048,7 @@ impl TouchScreen {
             0x61, 0x63, 0xf7,
         ];
         println!("\nSending touchscreen text msg: {:02x?}\n", send_text_bytes);
-        self.base
+        self.midi
             .lock()
             .unwrap()
             .midi_out
@@ -1059,18 +1059,30 @@ impl TouchScreen {
 }
 
 pub struct V1mBuilder {
-    pub base: Arc<Mutex<MidiDevice>>,
+    pub main_midi: Arc<Mutex<MidiDevice>>,
+    pub config_midi: Arc<Mutex<MidiDevice>>,
     pub num_channels: usize,
 }
 
 impl V1mBuilder {
     pub fn new(
-        midi_in_port: MidiInputPort,
-        midi_out: MidiOutputConnection,
+        main_midi_in_port: MidiInputPort,
+        main_midi_out: MidiOutputConnection,
+        config_midi_in_port: MidiInputPort,
+        config_midi_out: MidiOutputConnection,
         num_channels: usize,
     ) -> Self {
         Self {
-            base: Arc::new(Mutex::new(MidiDevice::new("v1m", midi_in_port, midi_out))),
+            main_midi: Arc::new(Mutex::new(MidiDevice::new(
+                "v1m",
+                main_midi_in_port,
+                main_midi_out,
+            ))),
+            config_midi: Arc::new(Mutex::new(MidiDevice::new(
+                "v1m-config",
+                config_midi_in_port,
+                config_midi_out,
+            ))),
             num_channels,
         }
     }
@@ -1079,7 +1091,7 @@ impl V1mBuilder {
         let mut faders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut f = Fader {
-                base: self.base.clone(),
+                base: self.main_midi.clone(),
                 channel: Channel::new(i as u8),
             };
             let upstream_fader = upstream.clone();
@@ -1094,7 +1106,7 @@ impl V1mBuilder {
         let mut encoders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut e = Encoder {
-                base: self.base.clone(),
+                base: self.main_midi.clone(),
                 knob_cc: 0x10 + i as u8,
                 click_note: 0x20 + i as u8,
                 led_cc: 0x30 + i as u8,
@@ -1129,7 +1141,7 @@ impl V1mBuilder {
         for i in 0..self.num_channels {
             // TODO: repeat this for the other button types
             let mut b = Button {
-                base: self.base.clone(),
+                base: self.main_midi.clone(),
                 channel: Channel::new(0),
                 midi_note: 16 + i as u8,
             };
@@ -1148,7 +1160,7 @@ impl V1mBuilder {
         let mut solos = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut b = Button {
-                base: self.base.clone(),
+                base: self.main_midi.clone(),
                 channel: Channel::new(0),
                 midi_note: 8 + i as u8,
             };
@@ -1167,7 +1179,7 @@ impl V1mBuilder {
         let mut arms = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut b = Button {
-                base: self.base.clone(),
+                base: self.main_midi.clone(),
                 channel: Channel::new(0),
                 midi_note: i as u8,
             };
@@ -1186,7 +1198,7 @@ impl V1mBuilder {
         let mut selects = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
             let mut b = Button {
-                base: self.base.clone(),
+                base: self.main_midi.clone(),
                 channel: Channel::new(0),
                 midi_note: 24 + i as u8,
             };
@@ -1202,12 +1214,12 @@ impl V1mBuilder {
             });
             selects.push(b);
         }
-        let top_scribbles = TopScribbleStrips::new(self.base.clone(), self.num_channels);
-        let bottom_scribbles = BottomScribbleStrips::new(self.base.clone(), self.num_channels);
-        let touchscreen = TouchScreen::new(self.base.clone());
+        let top_scribbles = TopScribbleStrips::new(self.main_midi.clone(), self.num_channels);
+        let bottom_scribbles = BottomScribbleStrips::new(self.main_midi.clone(), self.num_channels);
+        let touchscreen = TouchScreen::new(self.config_midi.clone());
         // Global view
         let mut b = Button {
-            base: self.base.clone(),
+            base: self.main_midi.clone(),
             channel: Channel::new(0),
             midi_note: 51,
         };
@@ -1219,7 +1231,7 @@ impl V1mBuilder {
         });
         // MIDITracks view
         let mut b = Button {
-            base: self.base.clone(),
+            base: self.main_midi.clone(),
             channel: Channel::new(0),
             midi_note: 62,
         };
@@ -1230,7 +1242,7 @@ impl V1mBuilder {
             _ => panic!("Unexpected MIDITracks button velocity: {}", velocity),
         });
 
-        self.base.lock().unwrap().run();
+        self.main_midi.lock().unwrap().run();
 
         let mut v1m = V1m {
             input,
