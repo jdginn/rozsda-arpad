@@ -16,6 +16,44 @@ use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
+#[derive(Clone, Copy, Debug)]
+pub enum Slot {
+    DAW1,
+    DAW2,
+    DAW3,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum DawId {
+    Bitwig,
+    Cubase,
+    ProTools,
+    Logic,
+    Live,
+    Reaper,
+    Reason,
+    StudioOne,
+    FLStudio,
+    Cakewalk,
+    DigitalPerformer,
+    Samplitude,
+    Harrison,
+    Nuendo,
+    Audition,
+    Tracktion,
+    Ability,
+    Luna,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TouchScreenLayer {
+    Blue,
+    Cyan,
+    Yellow,
+    User1,
+    User2,
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct FaderAbsMsg {
     pub idx: i32,
@@ -181,7 +219,12 @@ pub struct ScribbleStripBackgroundColorMsg {
 
 #[derive(Clone, Debug)]
 pub struct TouchScreenUpdateMsg {
-    pub data: Vec<u8>,
+    pub slot: Slot,
+    pub daw_id: DawId,
+    pub row: usize,
+    pub column: usize,
+    pub layer: TouchScreenLayer,
+    pub text: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, EnumFrom)]
@@ -861,34 +904,127 @@ impl Set<BottomScribbleStripLine2TextMsg> for BottomScribbleStrips {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct TouchScreenButton {
+    text: &'static str,
+}
+
+impl TouchScreenButton {
+    fn new() -> Self {
+        Self { text: "" }
+    }
+}
+
+const TOUCHSCREEN_COLUMNS: usize = 6;
+const TOUCHSCREEN_ROWS: usize = 4;
+const TOUCHSCREEN_LAYERS: usize = 5;
+const TOUCHSCREEN_BUTTONS: usize = TOUCHSCREEN_COLUMNS * TOUCHSCREEN_ROWS * TOUCHSCREEN_LAYERS;
+
+struct TouchScreenWriteContainer {
+    slot: Slot,
+    daw_id: DawId,
+    row: usize,
+    column: usize,
+    layer: TouchScreenLayer,
+    text: &'static str,
+}
+
+impl TouchScreenWriteContainer {
+    fn button_idx(&self) -> usize {
+        let layer_idx = match self.layer {
+            TouchScreenLayer::Blue => 0,
+            TouchScreenLayer::Cyan => 1,
+            TouchScreenLayer::Yellow => 2,
+            TouchScreenLayer::User1 => 3,
+            TouchScreenLayer::User2 => 4,
+        };
+
+        layer_idx * TOUCHSCREEN_ROWS * TOUCHSCREEN_COLUMNS
+            + self.row * TOUCHSCREEN_COLUMNS
+            + self.column
+    }
+}
+
 type TouchScreenError = String;
 
 pub struct TouchScreen {
     base: Arc<Mutex<MidiDevice>>,
+    buttons: [TouchScreenButton; TOUCHSCREEN_BUTTONS],
 }
 
 impl TouchScreen {
     fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
-        Self { base }
+        Self {
+            base,
+            buttons: [TouchScreenButton::new(); TOUCHSCREEN_BUTTONS],
+        }
     }
 
-    fn write(&self) -> Result<(), TouchScreenError> {
-        let init_bytes = vec![0xef, 0x7f, 0x7f, 0xf7];
-        println!("\nSending touchscreen init msg: {:02x?}\n", init_bytes);
+    fn write(&mut self, messages: Vec<TouchScreenWriteContainer>) -> Result<(), TouchScreenError> {
+        // Set text for each message in self.butons
+        for message in messages.iter() {
+            let idx = message.button_idx();
+            self.buttons[idx].text = message.text;
+        }
+
+        // Decide how many sysex messages we need to send
+        // Send the relevant sysex messages
+
+        // We don't really know what this message does but iMAP always sends it.
+        const INIT_BYTES: [u8; 4] = [0xef, 0x7f, 0x7f, 0xf7];
+        println!("\nSending touchscreen init msg: {:02x?}\n", INIT_BYTES);
         self.base
             .lock()
             .unwrap()
             .midi_out
-            .send(&init_bytes)
+            .send(&INIT_BYTES)
             .map_err(|e| format!("Failed to send touch screen init message: {}", e))?;
-        let macos_bytes = vec![0xec, 0x2a, 0x01, 0xf7];
-        println!("\nSending touchscreen macos msg: {:02x?}\n", macos_bytes);
+
+        // Inform V1 that we are macos. Do we need this? Who knows!
+        const MACOS_BYTES: [u8; 4] = [0xec, 0x2a, 0x01, 0xf7];
+        println!("\nSending touchscreen macos msg: {:02x?}\n", MACOS_BYTES);
         self.base
             .lock()
             .unwrap()
             .midi_out
-            .send(&macos_bytes)
+            .send(&MACOS_BYTES)
             .map_err(|e| format!("Failed to send touchscreen macos message: {}", e))?;
+
+        // Touchscreen text message is formatted as:
+        // [6-byte header] [slot] [daw id] [part #] [n buttons] [n lines] [bytes per line] [text...]
+        const TOUCHSCREEN_TEXT_HEADER: [u8; 6] = [0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26];
+        let mut touchscreen_text_bytes = TOUCHSCREEN_TEXT_HEADER.to_vec();
+        let slot_id: u8 = match messages[0].slot {
+            Slot::DAW1 => 0x01,
+            Slot::DAW2 => 0x02,
+            Slot::DAW3 => 0x03,
+        };
+        touchscreen_text_bytes.push(slot_id);
+        let daw_id: u8 = match messages[0].daw_id {
+            DawId::Bitwig => 0x01,
+            DawId::Cubase => 0x02,
+            DawId::ProTools => 0x03,
+            DawId::Logic => 0x04,
+            DawId::Live => 0x05,
+            DawId::Reaper => 0x06,
+            DawId::Reason => 0x07,
+            DawId::StudioOne => 0x08,
+            DawId::FLStudio => 0x09,
+            DawId::Cakewalk => 0x0a,
+            DawId::DigitalPerformer => 0x0b,
+            DawId::Samplitude => 0x0c,
+            DawId::Harrison => 0x0d,
+            DawId::Nuendo => 0x0e,
+            DawId::Audition => 0x0f,
+            DawId::Tracktion => 0x10,
+            DawId::Ability => 0x11,
+            DawId::Luna => 0x12,
+        };
+        touchscreen_text_bytes.push(daw_id);
+        touchscreen_text_bytes.push(0x00); // part #
+        touchscreen_text_bytes.push(messages.len() as u8); //FIXME:
+        touchscreen_text_bytes.push(0x02); // lines
+
         // let send_data_bytes = vec![
         //     0xf0, 0x1d, 0x03, 0x10, 0x09, 0x25, 0x21, 0x00, 0x08, 0x09, 0x09, 0x00, 0x00, 0x7f,
         //     0x00, 0x00, 0x00, 0x00, 0xf7,
@@ -918,17 +1054,6 @@ impl TouchScreen {
             .midi_out
             .send(&send_text_bytes)
             .map_err(|e| format!("Failed to send touchscreen text message: {}", e))?;
-        let save_config_bytes = vec![0xec, 0x2d, 0x01, 0xf7];
-        println!(
-            "\nSending touchscreen save config msg: {:02x?}\n",
-            save_config_bytes
-        );
-        self.base
-            .lock()
-            .unwrap()
-            .midi_out
-            .send(&save_config_bytes)
-            .map_err(|e| format!("Failed to send touchscreen save config message: {}", e))?;
         Ok(())
     }
 }
@@ -1178,7 +1303,16 @@ impl V1mBuilder {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
                         DownstreamMsg::TouchScreenUpdate(touch_msg) => {
-                            v1m.touchscreen.write().unwrap();
+                            v1m.touchscreen
+                                .write(vec![TouchScreenWriteContainer {
+                                    slot: touch_msg.slot,
+                                    daw_id: touch_msg.daw_id,
+                                    row: touch_msg.row,
+                                    column: touch_msg.column,
+                                    layer: touch_msg.layer,
+                                    text: touch_msg.text,
+                                }])
+                                .unwrap();
                         }
                         _ => panic!("Message {:?} implemented yet!", msg),
                     }
