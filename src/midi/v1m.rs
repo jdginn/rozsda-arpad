@@ -943,6 +943,16 @@ impl TouchScreenWriteContainer {
             + self.row * TOUCHSCREEN_COLUMNS
             + self.column
     }
+
+    fn part(&self) -> usize {
+        match self.layer {
+            TouchScreenLayer::Blue => self.row / 2,
+            TouchScreenLayer::Cyan => 2 + self.row / 2,
+            TouchScreenLayer::Yellow => 4 + self.row / 2,
+            TouchScreenLayer::User1 => 6 + self.row / 2,
+            TouchScreenLayer::User2 => 8 + self.row / 2,
+        }
+    }
 }
 
 type TouchScreenError = String;
@@ -960,100 +970,111 @@ impl TouchScreen {
         }
     }
 
-    fn write(&mut self, messages: Vec<TouchScreenWriteContainer>) -> Result<(), TouchScreenError> {
+    fn write_button_text(
+        &mut self,
+        messages: Vec<TouchScreenWriteContainer>,
+    ) -> Result<(), TouchScreenError> {
+        let mut parts_need_set: [bool; 10] = [false; 10]; // Placeholder for parts that need to be set
+
         // Set text for each message in self.butons
         for message in messages.iter() {
             let idx = message.button_idx();
             self.buttons[idx].text = message.text;
+            parts_need_set[message.part()] = true;
         }
 
-        // Decide how many sysex messages we need to send
-        // Send the relevant sysex messages
+        for part in 0..parts_need_set.len() {
+            if parts_need_set[part] {
+                println!("Part {} needs to be set", part);
 
-        // We don't really know what this message does but iMAP always sends it.
-        const INIT_BYTES: [u8; 4] = [0xef, 0x7f, 0x7f, 0xf7];
-        println!("\nSending touchscreen init msg: {:02x?}\n", INIT_BYTES);
-        self.midi
-            .lock()
-            .unwrap()
-            .midi_out
-            .send(&INIT_BYTES)
-            .map_err(|e| format!("Failed to send touch screen init message: {}", e))?;
+                // We don't really know what this message does but iMAP always sends it.
+                const INIT_BYTES: [u8; 4] = [0xef, 0x7f, 0x7f, 0xf7];
+                println!("\nSending touchscreen init msg: {:02x?}\n", INIT_BYTES);
+                self.midi
+                    .lock()
+                    .unwrap()
+                    .midi_out
+                    .send(&INIT_BYTES)
+                    .map_err(|e| format!("Failed to send touch screen init message: {}", e))?;
 
-        // Inform V1 that we are macos. Do we need this? Who knows!
-        const MACOS_BYTES: [u8; 4] = [0xec, 0x2a, 0x01, 0xf7];
-        println!("\nSending touchscreen macos msg: {:02x?}\n", MACOS_BYTES);
-        self.midi
-            .lock()
-            .unwrap()
-            .midi_out
-            .send(&MACOS_BYTES)
-            .map_err(|e| format!("Failed to send touchscreen macos message: {}", e))?;
+                // Inform V1 that we are macos. Do we need this? Who knows!
+                const MACOS_BYTES: [u8; 4] = [0xec, 0x2a, 0x01, 0xf7];
+                println!("\nSending touchscreen macos msg: {:02x?}\n", MACOS_BYTES);
+                self.midi
+                    .lock()
+                    .unwrap()
+                    .midi_out
+                    .send(&MACOS_BYTES)
+                    .map_err(|e| format!("Failed to send touchscreen macos message: {}", e))?;
 
-        // Touchscreen text message is formatted as:
-        // [6-byte header] [slot] [daw id] [part #] [n buttons] [n lines] [bytes per line] [text...]
-        const TOUCHSCREEN_TEXT_HEADER: [u8; 6] = [0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26];
-        let mut touchscreen_text_bytes = TOUCHSCREEN_TEXT_HEADER.to_vec();
-        let slot_id: u8 = match messages[0].slot {
-            Slot::DAW1 => 0x01,
-            Slot::DAW2 => 0x02,
-            Slot::DAW3 => 0x03,
-        };
-        touchscreen_text_bytes.push(slot_id);
-        let daw_id: u8 = match messages[0].daw_id {
-            DawId::Bitwig => 0x01,
-            DawId::Cubase => 0x02,
-            DawId::ProTools => 0x03,
-            DawId::Logic => 0x04,
-            DawId::Live => 0x05,
-            DawId::Reaper => 0x06,
-            DawId::Reason => 0x07,
-            DawId::StudioOne => 0x08,
-            DawId::FLStudio => 0x09,
-            DawId::Cakewalk => 0x0a,
-            DawId::DigitalPerformer => 0x0b,
-            DawId::Samplitude => 0x0c,
-            DawId::Harrison => 0x0d,
-            DawId::Nuendo => 0x0e,
-            DawId::Audition => 0x0f,
-            DawId::Tracktion => 0x10,
-            DawId::Ability => 0x11,
-            DawId::Luna => 0x12,
-        };
-        touchscreen_text_bytes.push(daw_id);
-        touchscreen_text_bytes.push(0x00); // part #
-        touchscreen_text_bytes.push(messages.len() as u8); //FIXME:
-        touchscreen_text_bytes.push(0x02); // lines
+                // Touchscreen text message is formatted as:
+                // [6-byte header] [slot] [daw id] [part #] [n buttons] [n lines] [bytes per line] [text...]
+                const TOUCHSCREEN_TEXT_HEADER: [u8; 6] = [0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26];
+                let mut touchscreen_text_sysex = TOUCHSCREEN_TEXT_HEADER.to_vec();
+                let slot_id: u8 = match messages[0].slot {
+                    Slot::DAW1 => 0x01,
+                    Slot::DAW2 => 0x02,
+                    Slot::DAW3 => 0x03,
+                };
+                touchscreen_text_sysex.push(slot_id);
+                let daw_id: u8 = match messages[0].daw_id {
+                    DawId::Bitwig => 0x01,
+                    DawId::Cubase => 0x02,
+                    DawId::ProTools => 0x03,
+                    DawId::Logic => 0x04,
+                    DawId::Live => 0x05,
+                    DawId::Reaper => 0x06,
+                    DawId::Reason => 0x07,
+                    DawId::StudioOne => 0x08,
+                    DawId::FLStudio => 0x09,
+                    DawId::Cakewalk => 0x0a,
+                    DawId::DigitalPerformer => 0x0b,
+                    DawId::Samplitude => 0x0c,
+                    DawId::Harrison => 0x0d,
+                    DawId::Nuendo => 0x0e,
+                    DawId::Audition => 0x0f,
+                    DawId::Tracktion => 0x10,
+                    DawId::Ability => 0x11,
+                    DawId::Luna => 0x12,
+                };
+                touchscreen_text_sysex.push(daw_id);
+                touchscreen_text_sysex.push(part as u8); // part #
+                touchscreen_text_sysex.push(0x0c); // # buttons
+                touchscreen_text_sysex.push(0x02); // lines
+                for i in part * 12..(part + 1) * 12 {
+                    let mut padded = [0x20u8; 16];
+                    let src = self.buttons[i].text.as_bytes();
+                    let n = src.len().min(16);
+                    padded[..n].copy_from_slice(&src[..n]);
+                    touchscreen_text_sysex.extend_from_slice(&padded);
+                }
+                touchscreen_text_sysex.push(0xf7); // end of sysex
 
-        // let send_data_bytes = vec![
-        //     0xf0, 0x1d, 0x03, 0x10, 0x09, 0x25, 0x21, 0x00, 0x08, 0x09, 0x09, 0x00, 0x00, 0x7f,
-        //     0x00, 0x00, 0x00, 0x00, 0xf7,
-        // ];
-        // println!(
-        //     "\nSending touchscreen send data msg: {:02x?}\n",
-        //     send_data_bytes
-        // );
-        // self.base
-        //     .lock()
-        //     .unwrap()
-        //     .midi_out
-        //     .send(&send_data_bytes)
-        //     .map_err(|e| format!("Failed to send touchscreen send data message: {}", e))?;
-        // let send_text_bytes = vec![
-        //     0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26, 0x01, 0x01, 0x00, 0x0c, 0x02, 0x08, 0x32, 0x54,
-        //     0x54, 0x54, 0xf7,
-        // ];
-        let send_text_bytes = vec![
-            0xf0, 0x1d, 0x03, 0x10, 0x09, 0x26, 0x01, 0x01, 0x00, 0x01, 0x01, 0x08, 0x54, 0x72,
-            0x61, 0x63, 0xf7,
-        ];
-        println!("\nSending touchscreen text msg: {:02x?}\n", send_text_bytes);
-        self.midi
-            .lock()
-            .unwrap()
-            .midi_out
-            .send(&send_text_bytes)
-            .map_err(|e| format!("Failed to send touchscreen text message: {}", e))?;
+                println!(
+                    "\nSending touchscreen text msg: {:02x?}\n",
+                    touchscreen_text_sysex
+                );
+                self.midi
+                    .lock()
+                    .unwrap()
+                    .midi_out
+                    .send(&touchscreen_text_sysex)
+                    .map_err(|e| format!("Failed to send touchscreen text message: {}", e))?;
+
+                // Send switch slot message to cause touchscreen to refresh showing updated text
+                let switch_slot_sysex = vec![0xec, 0x22, slot_id << 5 | daw_id];
+                println!(
+                    "\nSending touchscreen switch slot msg: {:02x?}\n",
+                    switch_slot_sysex
+                );
+                self.midi
+                    .lock()
+                    .unwrap()
+                    .midi_out
+                    .send(&switch_slot_sysex)
+                    .map_err(|e| format!("Failed to send touchscreen switch slot message: {}", e))?
+            }
+        }
         Ok(())
     }
 }
@@ -1316,7 +1337,7 @@ impl V1mBuilder {
                         }
                         DownstreamMsg::TouchScreenUpdate(touch_msg) => {
                             v1m.touchscreen
-                                .write(vec![TouchScreenWriteContainer {
+                                .write_button_text(vec![TouchScreenWriteContainer {
                                     slot: touch_msg.slot,
                                     daw_id: touch_msg.daw_id,
                                     row: touch_msg.row,
