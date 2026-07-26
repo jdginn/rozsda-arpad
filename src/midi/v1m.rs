@@ -63,10 +63,22 @@ pub enum DawId {
 #[derive(Clone, Copy, Debug)]
 pub enum TouchScreenLayer {
     Blue,
-    Cyan,
+    Green,
     Yellow,
     User1,
     User2,
+}
+
+impl std::fmt::Display for TouchScreenLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TouchScreenLayer::Blue => write!(f, "Blue"),
+            TouchScreenLayer::Green => write!(f, "Green"),
+            TouchScreenLayer::Yellow => write!(f, "Yellow"),
+            TouchScreenLayer::User1 => write!(f, "User1"),
+            TouchScreenLayer::User2 => write!(f, "User2"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Copy)]
@@ -256,7 +268,7 @@ pub struct TouchScreenUpdateMsg {
     pub row: usize,
     pub column: usize,
     pub layer: TouchScreenLayer,
-    pub text: &'static str,
+    pub text: String,
 }
 
 #[derive(Clone, Copy, Debug, EnumFrom)]
@@ -353,6 +365,8 @@ pub enum DownstreamMsg {
 
     #[enum_from]
     TouchScreenUpdate(TouchScreenUpdateMsg),
+    #[enum_from]
+    TouchScreenBatchUpdate(Vec<TouchScreenUpdateMsg>),
 
     // Encoder assign messages
     Track(LEDState),
@@ -1065,14 +1079,16 @@ impl Set<BottomScribbleStripLine2TextMsg> for BottomScribbleStrips {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct TouchScreenButton {
-    text: &'static str,
+    text: String,
 }
 
 impl TouchScreenButton {
     fn new() -> Self {
-        Self { text: "" }
+        Self {
+            text: "".to_string(),
+        }
     }
 }
 
@@ -1087,14 +1103,14 @@ struct TouchScreenWriteContainer {
     row: usize,
     column: usize,
     layer: TouchScreenLayer,
-    text: &'static str,
+    text: String,
 }
 
 impl TouchScreenWriteContainer {
     fn button_idx(&self) -> usize {
         let layer_idx = match self.layer {
             TouchScreenLayer::Blue => 0,
-            TouchScreenLayer::Cyan => 1,
+            TouchScreenLayer::Green => 1,
             TouchScreenLayer::Yellow => 2,
             TouchScreenLayer::User1 => 3,
             TouchScreenLayer::User2 => 4,
@@ -1108,7 +1124,7 @@ impl TouchScreenWriteContainer {
     fn part(&self) -> usize {
         match self.layer {
             TouchScreenLayer::Blue => self.row / 2,
-            TouchScreenLayer::Cyan => 2 + self.row / 2,
+            TouchScreenLayer::Green => 2 + self.row / 2,
             TouchScreenLayer::Yellow => 4 + self.row / 2,
             TouchScreenLayer::User1 => 6 + self.row / 2,
             TouchScreenLayer::User2 => 8 + self.row / 2,
@@ -1120,14 +1136,14 @@ type TouchScreenError = String;
 
 pub struct TouchScreen {
     midi: Arc<Mutex<MidiDevice>>,
-    buttons: [TouchScreenButton; TOUCHSCREEN_BUTTONS],
+    buttons: Vec<TouchScreenButton>,
 }
 
 impl TouchScreen {
     fn new(midi: Arc<Mutex<MidiDevice>>) -> Self {
         Self {
             midi,
-            buttons: [TouchScreenButton::new(); TOUCHSCREEN_BUTTONS],
+            buttons: vec![TouchScreenButton::new(); TOUCHSCREEN_BUTTONS],
         }
     }
 
@@ -1140,7 +1156,7 @@ impl TouchScreen {
         // Set text for each message in self.butons
         for message in messages.iter() {
             let idx = message.button_idx();
-            self.buttons[idx].text = message.text;
+            self.buttons[idx].text = message.text.clone();
             parts_need_set[message.part()] = true;
         }
 
@@ -1540,6 +1556,20 @@ impl V1mBuilder {
                                     text: touch_msg.text,
                                 }])
                                 .unwrap();
+                        }
+                        DownstreamMsg::TouchScreenBatchUpdate(touch_msgs) => {
+                            let containers: Vec<TouchScreenWriteContainer> = touch_msgs
+                                .into_iter()
+                                .map(|touch_msg| TouchScreenWriteContainer {
+                                    slot: touch_msg.slot,
+                                    daw_id: touch_msg.daw_id,
+                                    row: touch_msg.row,
+                                    column: touch_msg.column,
+                                    layer: touch_msg.layer,
+                                    text: touch_msg.text,
+                                })
+                                .collect();
+                            v1m.touchscreen.write_button_text(containers).unwrap();
                         }
                         _ => panic!("Message {:?} not implemented yet!", msg),
                     }

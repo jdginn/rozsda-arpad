@@ -1183,14 +1183,35 @@ fn v1m_touchscreen_tests() {
     )
     .build(downstream_rx, upstream_tx);
 
-    downstream_tx.send(DownstreamMsg::TouchScreenUpdate(TouchScreenUpdateMsg {
-        slot: Slot::DAW1,
-        daw_id: DawId::Reaper,
-        column: 0x0,
-        row: 0x0,
-        layer: TouchScreenLayer::Blue,
-        text: "foo",
-    }));
+    for layer in [
+        TouchScreenLayer::Blue,
+        TouchScreenLayer::Green,
+        TouchScreenLayer::Yellow,
+        TouchScreenLayer::User1,
+        TouchScreenLayer::User2,
+    ] {
+        let test_name = format!("touchscreen_layer_{:?}_update", layer);
+        let mut messages = vec![];
+        for row in 0..4 {
+            for col in 0..6 {
+                messages.push(TouchScreenUpdateMsg {
+                    slot: Slot::DAW1,
+                    daw_id: DawId::Reaper,
+                    column: col,
+                    row,
+                    layer,
+                    text: format!("{}-{}-{}", layer, row, col),
+                });
+            }
+        }
+        downstream_tx
+            .send(DownstreamMsg::TouchScreenBatchUpdate(messages))
+            .unwrap();
+        let result = prompt_user(&format!(
+            "Are all buttons layer {} set to show layer-row-column?",
+            layer,
+        ));
+    }
 }
 
 // ============================================================================
