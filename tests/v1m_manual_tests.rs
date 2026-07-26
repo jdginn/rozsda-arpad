@@ -14,50 +14,83 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::v1m::{
-    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, Color,
+    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, Color, DawId,
     DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MuteLEDMsg,
-    ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg,
-    SoloLEDMsg, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
+    ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, Slot,
+    SoloLEDMsg, TouchScreenLayer, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
 // Helper functions for connecting to the hardware
 // ===========================================================================
 
-fn find_v1m_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std::error::Error>> {
+fn find_v1m_ports() -> Result<
+    (
+        MidiInputPort,
+        MidiOutputConnection,
+        MidiInputPort,
+        MidiOutputConnection,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let mut midi_in = MidiInput::new("midir input port sniff")?;
     midi_in.ignore(Ignore::None);
-    let midi_out = MidiOutput::new("midir output port sniff")?;
+    let midi_out_1 = MidiOutput::new("midir output port sniff")?;
+    let midi_out_4 = MidiOutput::new("midir output port sniff")?;
 
-    let mut input_port = None;
-    let mut output_port = None;
+    let mut input_port_1 = None;
+    let mut output_port_1 = None;
+    let mut input_port_4 = None;
+    let mut output_port_4 = None;
 
     for (i, p) in midi_in.ports().iter().enumerate() {
-        if input_port.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 1" {
-            input_port = Some(p.clone());
+        if input_port_1.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 1" {
+            input_port_1 = Some(p.clone());
             break;
         }
     }
-    for (i, p) in midi_out.ports().iter().enumerate() {
-        if output_port.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 1" {
-            output_port = Some(p.clone());
+    for (i, p) in midi_out_1.ports().iter().enumerate() {
+        if output_port_1.is_none() && midi_out_1.port_name(p)? == "iCON V1-M Port 1" {
+            output_port_1 = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_in.ports().iter().enumerate() {
+        if input_port_4.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 4" {
+            input_port_4 = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_out_1.ports().iter().enumerate() {
+        if output_port_4.is_none() && midi_out_1.port_name(p)? == "iCON V1-M Port 4" {
+            output_port_4 = Some(p.clone());
             break;
         }
     }
 
-    if input_port.is_none() {
+    if input_port_1.is_none() {
         return Err("Could not find X-Touch MIDI input port".into());
     }
 
-    println!("Found input port {}", input_port.clone().unwrap().id());
+    println!("Found input port {}", input_port_1.clone().unwrap().id());
 
-    if let Some(output_port) = output_port {
-        println!(
-            "Connecting to output port '{}' ...",
-            midi_out.port_name(&output_port)?
-        );
-        let output_connection = midi_out.connect(&output_port, "midir-test")?;
-        Ok((input_port.unwrap(), output_connection))
+    if let Some(output_port_1) = output_port_1 {
+        if let Some(output_port_4) = output_port_4 {
+            println!(
+                "Connecting to output port '{}' ...",
+                midi_out_1.port_name(&output_port_1)?
+            );
+            let output_connection_1 = midi_out_1.connect(&output_port_1, "midir-test")?;
+            let output_connection_4 = midi_out_4.connect(&output_port_4, "midir-test")?;
+            Ok((
+                input_port_1.unwrap(),
+                output_connection_1,
+                input_port_4.unwrap(),
+                output_connection_4,
+            ))
+        } else {
+            Err("Could not find X-Touch MIDI output port".into())
+        }
     } else {
         Err("Could not find X-Touch MIDI output port".into())
     }
@@ -951,19 +984,22 @@ fn v1m_scribble_strip_tests() {
         return;
     }
 
-    let (input_port, output_connection) = match find_v1m_ports() {
-        Ok(ports) => ports,
-        Err(err) => {
-            println!("Error finding v1m MIDI ports: {}", err);
-            println!("Test aborted. Please ensure v1m is connected and try again.");
-            return;
-        }
-    };
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
     let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
     let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
     V1mBuilder::new(
-        input_port,        // Use default MIDI input port
-        output_connection, // Use default MIDI output port
+        input_port_1,        // Use default MIDI input port
+        output_connection_1, // Use default MIDI output port
+        input_port_4,
+        output_connection_4,
         8,
     )
     .build(downstream_rx, upstream_tx);
@@ -973,7 +1009,7 @@ fn v1m_scribble_strip_tests() {
 
 #[test]
 #[ignore] // Must be run manually with --ignored flag
-fn v1m_touchscreen_test() {
+fn v1m_touchscreen_tests() {
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║          v1m Touchscreen Test Suite                      ║");
@@ -992,23 +1028,33 @@ fn v1m_touchscreen_test() {
         return;
     }
 
-    let (input_port, output_connection) = match find_imap_ports() {
-        Ok(ports) => ports,
-        Err(err) => {
-            println!("Error finding v1m MIDI ports: {}", err);
-            println!("Test aborted. Please ensure v1m is connected and try again.");
-            return;
-        }
-    };
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
     let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
     let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
-    V1mBuilder::new(input_port, output_connection, 8).build(downstream_rx, upstream_tx);
+    V1mBuilder::new(
+        input_port_1,
+        output_connection_1,
+        input_port_4,
+        output_connection_4,
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
 
     downstream_tx.send(DownstreamMsg::TouchScreenUpdate(TouchScreenUpdateMsg {
-        data: vec![
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-            0x0E, 0x0F,
-        ],
+        slot: Slot::DAW1,
+        daw_id: DawId::Reaper,
+        column: 0x0,
+        row: 0x0,
+        layer: TouchScreenLayer::Blue,
+        text: "foo",
     }));
 }
 
@@ -1021,7 +1067,7 @@ fn run_encoder_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     println!("v1m Encoder Output Tests");
     println!("========================================");
     println!("These tests send messages to v1m hardware.");
-    println!("Please verify the scribble strip displays the expected text.\n");
+    println!("Please verify the encoders show the expected behavior.\n");
 
     let mut results = Vec::new();
 
@@ -1067,19 +1113,22 @@ fn v1m_encoder_tests() {
         return;
     }
 
-    let (input_port, output_connection) = match find_v1m_ports() {
-        Ok(ports) => ports,
-        Err(err) => {
-            println!("Error finding v1m MIDI ports: {}", err);
-            println!("Test aborted. Please ensure v1m is connected and try again.");
-            return;
-        }
-    };
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
     let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
     let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
     V1mBuilder::new(
-        input_port,        // Use default MIDI input port
-        output_connection, // Use default MIDI output port
+        input_port_1,        // Use default MIDI input port
+        output_connection_1, // Use default MIDI output port
+        input_port_4,
+        output_connection_4,
         8,
     )
     .build(downstream_rx, upstream_tx);
@@ -1112,20 +1161,23 @@ fn v1m_manual_output_tests() {
         return;
     }
 
-    let (input_port, output_connection) = match find_v1m_ports() {
-        Ok(ports) => ports,
-        Err(err) => {
-            println!("Error finding v1m MIDI ports: {}", err);
-            println!("Test aborted. Please ensure v1m is connected and try again.");
-            return;
-        }
-    };
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
 
     let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
     let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
     V1mBuilder::new(
-        input_port,        // Use default MIDI input port
-        output_connection, // Use default MIDI output port
+        input_port_1,        // Use default MIDI input port
+        output_connection_1, // Use default MIDI output port
+        input_port_4,
+        output_connection_4,
         8,
     )
     .build(downstream_rx, upstream_tx);
@@ -1155,20 +1207,23 @@ fn v1m_manual_input_tests() {
     //     return;
     // }
 
-    let (input_port, output_connection) = match find_v1m_ports() {
-        Ok(ports) => ports,
-        Err(err) => {
-            println!("Error finding v1m MIDI ports: {}", err);
-            println!("Test aborted. Please ensure v1m is connected and try again.");
-            return;
-        }
-    };
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
 
     let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
     let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
     V1mBuilder::new(
-        input_port,        // Use default MIDI input port
-        output_connection, // Use default MIDI output port
+        input_port_1,        // Use default MIDI input port
+        output_connection_1, // Use default MIDI output port
+        input_port_4,
+        output_connection_4,
         8,
     )
     .build(downstream_rx, upstream_tx);
