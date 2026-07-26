@@ -15,7 +15,7 @@ use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::v1m::{
     ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, Color, DawId,
-    DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MuteLEDMsg,
+    DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MeterMsg, MuteLEDMsg,
     ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, Slot,
     SoloLEDMsg, TouchScreenLayer, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
 };
@@ -806,6 +806,86 @@ fn run_input_tests(rx: &Receiver<UpstreamMsg>) -> Vec<TestSummary> {
 }
 
 // ============================================================================
+// Meters tests
+// ============================================================================
+fn run_meters_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
+    println!("\n========================================");
+    println!("v1m Meters Tests");
+    println!("========================================");
+    println!("These tests send messages to v1m hardware.");
+    println!("Please verify the meters display the expected levels.\n");
+
+    let mut results = Vec::new();
+
+    // Test meter levels for each channel
+    for idx in 0..8 {
+        let test_name = format!("meter_channel_{}_levels", idx);
+        println!("\nTest: {}", test_name);
+
+        // Send a series of meter levels from -60dB to 10dB
+        let levels_db: [i32; 14] = [
+            -80, -60, -50, -40, -30, -20, -14, -10, -8, -6, -4, -2, 0, 10,
+        ];
+        for db in levels_db {
+            tx.send(DownstreamMsg::Meter(MeterMsg { idx, db: db as f64 }))
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let result = prompt_user(&format!(
+                "Did the meter for channel {} display {}db?",
+                idx, db
+            ));
+            results.push(TestSummary::new(&test_name, result));
+        }
+    }
+
+    results
+}
+
+#[test]
+#[ignore] // Must be run manually with --ignored flag
+fn v1m_meters_tests() {
+    println!("\n");
+    println!("╔════════════════════════════════════════════════════════════════╗");
+    println!("║          v1m Meters Test Suite                                ║");
+    println!("╚════════════════════════════════════════════════════════════════╝");
+    println!("\nNOTE: This test requires v1m hardware to be connected.");
+    println!("Messages will be sent to the hardware for manual verification.\n");
+
+    print!("Is v1m hardware connected and ready? [Y/N]: ");
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    if !input.trim().eq_ignore_ascii_case("y") {
+        println!("Test aborted. Please connect v1m hardware and try again.");
+        return;
+    }
+
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
+    let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
+    V1mBuilder::new(
+        input_port_1,        // Use default MIDI input port
+        output_connection_1, // Use default MIDI output port
+        input_port_4,
+        output_connection_4,
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
+
+    let results = run_meters_tests(&downstream_tx);
+}
+
+// ============================================================================
 // Scribble strip tests
 // ============================================================================
 //
@@ -1015,7 +1095,7 @@ fn v1m_touchscreen_tests() {
     println!("║          v1m Touchscreen Test Suite                      ║");
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!("\nNOTE: This test requires v1m hardware to be connected.");
-    println!("Messages will be sent to the hardware for manual verification.\n");
+    println!("Messages wisll be sent to the hardware for manual verification.\n");
 
     print!("Is v1m hardware connected and ready? [Y/N]: ");
     io::stdout().flush().unwrap();
