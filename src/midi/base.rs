@@ -183,6 +183,28 @@ impl Set<u16> for PitchBendBuilder<'_> {
     }
 }
 
+pub struct ChannelPressure {
+    pub channel: u8,
+}
+
+pub struct ChannelPressureBuilder<'a> {
+    pub device: &'a mut MidiDevice,
+    pub spec: ChannelPressure,
+}
+
+impl Set<u8> for ChannelPressureBuilder<'_> {
+    type Error = MidiError;
+
+    fn set(&mut self, value: u8) -> Result<(), Self::Error> {
+        let message: RawShortMessage =
+            ShortMessageFactory::channel_pressure(Channel::new(self.spec.channel), U7::new(value));
+        self.device
+            .midi_out
+            .send(&byte_slice(message))
+            .map_err(MidiError::Send)
+    }
+}
+
 pub struct MidiDevice {
     name: String,
     midi_in_port: MidiInputPort,

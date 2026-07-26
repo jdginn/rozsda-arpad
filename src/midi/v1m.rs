@@ -9,8 +9,8 @@ use midir::{MidiInputPort, MidiOutputConnection};
 use derive_enum_from::EnumFrom;
 
 use crate::midi::base::{
-    ControlChange, ControlChangeBuilder, NoteOff, NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend,
-    PitchBendBuilder,
+    ChannelPressure, ChannelPressureBuilder, ControlChange, ControlChangeBuilder, NoteOff,
+    NoteOffBuilder, NoteOn, NoteOnBuilder, PitchBend, PitchBendBuilder,
 };
 use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
@@ -180,6 +180,12 @@ pub struct SelectLEDMsg {
     pub state: LEDState,
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct MeterMsg {
+    pub idx: i32,
+    pub db: f64,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Color {
     pub r: u8,
@@ -299,6 +305,8 @@ pub enum DownstreamMsg {
     ArmLED(ArmLEDMsg),
     #[enum_from]
     SelectLED(SelectLEDMsg),
+    #[enum_from]
+    Meter(MeterMsg),
 
     // Scribble strip messages
     #[enum_from]
@@ -508,6 +516,99 @@ impl Set<LEDState> for Button {
             LEDState::On => 127,
             LEDState::Flash => 1,
         })
+    }
+}
+
+pub struct Meters {
+    base: Arc<Mutex<MidiDevice>>,
+}
+
+impl Meters {
+    fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
+        Self { base }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MeterLevelCode {
+    L0 = 0x0, // < -60 dB
+    L1 = 0x1, // >= -60
+    L2 = 0x2, // >= -50
+    L3 = 0x3, // >= -40
+    L4 = 0x4, // >= -30
+    L5 = 0x5, // >= -20
+    L6 = 0x6, // >= -14
+    L7 = 0x7, // >= -10
+    L8 = 0x8, // >= -8
+    L9 = 0x9, // >= -6
+    LA = 0xA, // >= -4
+    LB = 0xB, // >= -2
+    LC = 0xC, // >=  0
+    LD = 0xD, // >   0 (100% / over 0 dB)
+}
+
+impl MeterLevelCode {
+    #[inline]
+    pub fn as_nibble(self) -> u8 {
+        self as u8
+    }
+}
+
+/// Map dB value to MCU meter nibble (0x0..0xD).
+/// Ignores 0xE/0xF overload control codes as requested.
+fn db_to_meter_code(db: f64) -> MeterLevelCode {
+    if !db.is_finite() {
+        return MeterLevelCode::L0;
+    }
+
+    if db > 0.0 {
+        MeterLevelCode::LD
+    } else if db >= 0.0 {
+        MeterLevelCode::LC
+    } else if db >= -2.0 {
+        MeterLevelCode::LB
+    } else if db >= -4.0 {
+        MeterLevelCode::LA
+    } else if db >= -6.0 {
+        MeterLevelCode::L9
+    } else if db >= -8.0 {
+        MeterLevelCode::L8
+    } else if db >= -10.0 {
+        MeterLevelCode::L7
+    } else if db >= -14.0 {
+        MeterLevelCode::L6
+    } else if db >= -20.0 {
+        MeterLevelCode::L5
+    } else if db >= -30.0 {
+        MeterLevelCode::L4
+    } else if db >= -40.0 {
+        MeterLevelCode::L3
+    } else if db >= -50.0 {
+        MeterLevelCode::L2
+    } else if db >= -60.0 {
+        MeterLevelCode::L1
+    } else {
+        MeterLevelCode::L0
+    }
+}
+
+/// Build full channel-pressure value `0xsv`:
+/// - `strip` is channel strip index 0..=7
+/// - low nibble is meter code
+pub fn meter_byte(idx: u8, db: f64) -> u8 {
+    let s = (idx & 0x0F) << 4;
+    let v = db_to_meter_code(db).as_nibble() & 0x0F;
+    s | v
+}
+impl Set<MeterMsg> for Meters {
+    type Error = MidiError;
+
+    fn set(&mut self, msg: MeterMsg) -> Result<(), Self::Error> {
+        ChannelPressureBuilder {
+            device: &mut self.base.lock().unwrap(),
+            spec: ChannelPressure { channel: 0 },
+        }
+        .set(meter_byte(msg.idx as u8, msg.db))
     }
 }
 
@@ -1235,6 +1336,7 @@ impl V1mBuilder {
             });
             selects.push(b);
         }
+        let meters = Meters::new(self.main_midi.clone());
         let top_scribbles = TopScribbleStrips::new(self.main_midi.clone(), self.num_channels);
         let bottom_scribbles = BottomScribbleStrips::new(self.main_midi.clone(), self.num_channels);
         let touchscreen = TouchScreen::new(self.config_midi.clone());
@@ -1274,6 +1376,7 @@ impl V1mBuilder {
             solos,
             arms,
             selects,
+            meters,
             top_scribbles,
             bottom_scribbles,
             touchscreen,
@@ -1320,6 +1423,9 @@ impl V1mBuilder {
                                 .set(select_msg.state)
                                 .unwrap();
                         }
+                        DownstreamMsg::Meter(meter_msg) => {
+                            v1m.meters.set(meter_msg).unwrap();
+                        }
                         DownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
@@ -1362,6 +1468,7 @@ pub struct V1m {
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,
     pub selects: Vec<Button>,
+    pub meters: Meters,
     pub top_scribbles: TopScribbleStrips,
     pub bottom_scribbles: BottomScribbleStrips,
     pub touchscreen: TouchScreen,
