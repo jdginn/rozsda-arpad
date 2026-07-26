@@ -14,10 +14,11 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::v1m::{
-    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, Color, DawId,
-    DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState, MeterMsg, MuteLEDMsg,
-    ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, Slot,
-    SoloLEDMsg, TouchScreenLayer, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
+    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, ChannelMeterMsg,
+    Color, DawId, DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState,
+    MasterMeterMsg, MuteLEDMsg, ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg,
+    ScribbleStripLine2TextMsg, Slot, SoloLEDMsg, StereoChannel, TouchScreenLayer,
+    TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -817,18 +818,43 @@ fn run_meters_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
 
     let mut results = Vec::new();
 
+    // Send a series of meter levels from -60dB to 10dB
+    let levels_db: [i32; 14] = [
+        -80, -60, -50, -40, -30, -20, -14, -10, -8, -6, -4, -2, 0, 10,
+    ];
+
+    for channel in [StereoChannel::Left, StereoChannel::Right] {
+        let test_name = format!("master_meter_{}_levels", channel);
+        println!("\nTest: {}", test_name);
+        for db in levels_db {
+            if let Err(e) = tx.send(DownstreamMsg::MasterMeter(MasterMeterMsg {
+                channel,
+                db: db as f64,
+            })) {
+                println!("Error sending MasterMeter message: {}", e);
+                results.push(TestSummary::new(&test_name, TestResult::Fail));
+                continue;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let result = prompt_user(&format!(
+                "Did the meter for master {} display {}db?",
+                channel, db
+            ));
+            results.push(TestSummary::new(&test_name, result));
+        }
+    }
+
     // Test meter levels for each channel
     for idx in 0..8 {
         let test_name = format!("meter_channel_{}_levels", idx);
         println!("\nTest: {}", test_name);
 
-        // Send a series of meter levels from -60dB to 10dB
-        let levels_db: [i32; 14] = [
-            -80, -60, -50, -40, -30, -20, -14, -10, -8, -6, -4, -2, 0, 10,
-        ];
         for db in levels_db {
-            tx.send(DownstreamMsg::Meter(MeterMsg { idx, db: db as f64 }))
-                .unwrap();
+            tx.send(DownstreamMsg::ChannelMeter(ChannelMeterMsg {
+                idx,
+                db: db as f64,
+            }))
+            .unwrap();
             std::thread::sleep(std::time::Duration::from_millis(100));
             let result = prompt_user(&format!(
                 "Did the meter for channel {} display {}db?",
