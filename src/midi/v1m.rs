@@ -17,6 +17,21 @@ use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
 #[derive(Clone, Copy, Debug)]
+pub enum StereoChannel {
+    Left,
+    Right,
+}
+
+impl std::fmt::Display for StereoChannel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StereoChannel::Left => write!(f, "Left"),
+            StereoChannel::Right => write!(f, "Right"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum Slot {
     DAW1,
     DAW2,
@@ -181,8 +196,14 @@ pub struct SelectLEDMsg {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct MeterMsg {
+pub struct ChannelMeterMsg {
     pub idx: i32,
+    pub db: f64,
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct MasterMeterMsg {
+    pub channel: StereoChannel,
     pub db: f64,
 }
 
@@ -306,7 +327,9 @@ pub enum DownstreamMsg {
     #[enum_from]
     SelectLED(SelectLEDMsg),
     #[enum_from]
-    Meter(MeterMsg),
+    ChannelMeter(ChannelMeterMsg),
+    #[enum_from]
+    MasterMeter(MasterMeterMsg),
 
     // Scribble strip messages
     #[enum_from]
@@ -519,16 +542,6 @@ impl Set<LEDState> for Button {
     }
 }
 
-pub struct Meters {
-    base: Arc<Mutex<MidiDevice>>,
-}
-
-impl Meters {
-    fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
-        Self { base }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MeterLevelCode {
     L0 = 0x0, // < -60 dB
@@ -600,15 +613,54 @@ pub fn meter_byte(idx: u8, db: f64) -> u8 {
     let v = db_to_meter_code(db).as_nibble() & 0x0F;
     s | v
 }
-impl Set<MeterMsg> for Meters {
+
+pub struct ChannelMeters {
+    base: Arc<Mutex<MidiDevice>>,
+}
+
+impl ChannelMeters {
+    fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
+        Self { base }
+    }
+}
+
+// NOTE: channel meters retain their last setting for about 300ms
+impl Set<ChannelMeterMsg> for ChannelMeters {
     type Error = MidiError;
 
-    fn set(&mut self, msg: MeterMsg) -> Result<(), Self::Error> {
+    fn set(&mut self, msg: ChannelMeterMsg) -> Result<(), Self::Error> {
         ChannelPressureBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: ChannelPressure { channel: 0 },
         }
         .set(meter_byte(msg.idx as u8, msg.db))
+    }
+}
+
+pub struct MasterMeters {
+    base: Arc<Mutex<MidiDevice>>,
+}
+
+impl MasterMeters {
+    fn new(base: Arc<Mutex<MidiDevice>>) -> Self {
+        Self { base }
+    }
+}
+
+// NOTE: master meters retaing their last setting forever
+impl Set<MasterMeterMsg> for MasterMeters {
+    type Error = MidiError;
+
+    fn set(&mut self, msg: MasterMeterMsg) -> Result<(), Self::Error> {
+        let idx = match msg.channel {
+            StereoChannel::Left => 0,
+            StereoChannel::Right => 1,
+        };
+        ChannelPressureBuilder {
+            device: &mut self.base.lock().unwrap(),
+            spec: ChannelPressure { channel: 1 },
+        }
+        .set(meter_byte(idx, msg.db))
     }
 }
 
@@ -1336,7 +1388,8 @@ impl V1mBuilder {
             });
             selects.push(b);
         }
-        let meters = Meters::new(self.main_midi.clone());
+        let channel_meters = ChannelMeters::new(self.main_midi.clone());
+        let master_meters = MasterMeters::new(self.main_midi.clone());
         let top_scribbles = TopScribbleStrips::new(self.main_midi.clone(), self.num_channels);
         let bottom_scribbles = BottomScribbleStrips::new(self.main_midi.clone(), self.num_channels);
         let touchscreen = TouchScreen::new(self.config_midi.clone());
@@ -1376,7 +1429,8 @@ impl V1mBuilder {
             solos,
             arms,
             selects,
-            meters,
+            channel_meters,
+            master_meters,
             top_scribbles,
             bottom_scribbles,
             touchscreen,
@@ -1423,8 +1477,11 @@ impl V1mBuilder {
                                 .set(select_msg.state)
                                 .unwrap();
                         }
-                        DownstreamMsg::Meter(meter_msg) => {
-                            v1m.meters.set(meter_msg).unwrap();
+                        DownstreamMsg::ChannelMeter(meter_msg) => {
+                            v1m.channel_meters.set(meter_msg).unwrap();
+                        }
+                        DownstreamMsg::MasterMeter(meter_msg) => {
+                            v1m.master_meters.set(meter_msg).unwrap();
                         }
                         DownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
@@ -1453,7 +1510,7 @@ impl V1mBuilder {
                                 }])
                                 .unwrap();
                         }
-                        _ => panic!("Message {:?} implemented yet!", msg),
+                        _ => panic!("Message {:?} not implemented yet!", msg),
                     }
                 }
             }
@@ -1468,7 +1525,8 @@ pub struct V1m {
     pub solos: Vec<Button>,
     pub arms: Vec<Button>,
     pub selects: Vec<Button>,
-    pub meters: Meters,
+    pub channel_meters: ChannelMeters,
+    pub master_meters: MasterMeters,
     pub top_scribbles: TopScribbleStrips,
     pub bottom_scribbles: BottomScribbleStrips,
     pub touchscreen: TouchScreen,
