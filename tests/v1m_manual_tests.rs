@@ -14,11 +14,11 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 
 use arpad_rust::midi::v1m::{
-    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, ChannelMeterMsg,
-    Color, DawId, DownstreamMsg, EncoderRingMode, EncoderRingMsg, FaderAbsMsg, LEDState,
-    MasterMeterMsg, MuteLEDMsg, ScribbleStripBackgroundColorMsg, ScribbleStripLine1TextMsg,
-    ScribbleStripLine2TextMsg, Slot, SoloLEDMsg, StereoChannel, TouchScreenLayer,
-    TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
+    ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, ChannelFaderMsg,
+    ChannelMeterMsg, Color, DawId, DownstreamMsg, EncoderRingMode, EncoderRingMsg, LEDState,
+    MasterFaderMsg, MasterMeterMsg, MuteLEDMsg, ScribbleStripBackgroundColorMsg,
+    ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, Slot, SoloLEDMsg, StereoChannel,
+    TouchScreenLayer, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -238,12 +238,41 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
 
     let mut results = Vec::new();
 
+    {
+        let test_name = "master_fader_to_max";
+        println!("\nTest: {}", test_name);
+        tx.send(DownstreamMsg::MasterFader(MasterFaderMsg { value: 1.0 }))
+            .unwrap();
+
+        let result = prompt_user("Did master fader move to maximum position (+10dB)?");
+        results.push(TestSummary::new(test_name, result));
+
+        let test_name = "master_fader_to_min";
+        println!("\nTest: {}", test_name);
+        tx.send(DownstreamMsg::MasterFader(MasterFaderMsg { value: 0.0 }))
+            .unwrap();
+
+        let result = prompt_user("Did master fader move to minimum position (-Inf)?");
+        results.push(TestSummary::new(test_name, result));
+
+        let test_name = "masetr_fader__to_unity";
+        println!("\nTest: {}", test_name);
+
+        tx.send(DownstreamMsg::MasterFader(MasterFaderMsg {
+            value: 0.75, // Approximate unity gain position
+        }))
+        .unwrap();
+
+        let result = prompt_user("Did master fader move to approximately unity gain (0dB)?");
+        results.push(TestSummary::new(test_name, result));
+    }
+
     // Test fader movement
     for channel in 0..8 {
         let test_name = format!("fader_channel_{}_to_max", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
+        tx.send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: channel,
             value: 1.0,
         }))
@@ -260,7 +289,7 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_min", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
+        tx.send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: channel,
             value: 0.0,
         }))
@@ -277,7 +306,7 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_unity", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
+        tx.send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: channel,
             value: 0.75, // Approximate unity gain position
         }))
@@ -700,7 +729,7 @@ fn run_input_tests(rx: &Receiver<UpstreamMsg>) -> Vec<TestSummary> {
         let timeout = std::time::Instant::now();
         while timeout.elapsed() < Duration::from_secs(3) {
             if let Ok(msg) = rx.recv_timeout(Duration::from_millis(100)) {
-                if let UpstreamMsg::FaderAbs(fader) = msg {
+                if let UpstreamMsg::ChannelFader(fader) = msg {
                     if fader.idx == channel {
                         received_message = true;
                         println!(

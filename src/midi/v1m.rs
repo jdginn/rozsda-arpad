@@ -70,8 +70,13 @@ pub enum TouchScreenLayer {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct FaderAbsMsg {
+pub struct ChannelFaderMsg {
     pub idx: i32,
+    pub value: f64, // Probably too much precision?
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct MasterFaderMsg {
     pub value: f64, // Probably too much precision?
 }
 
@@ -259,7 +264,8 @@ pub enum UpstreamMsg {
     Barrier(Barrier),
 
     // Channel strip messages
-    FaderAbs(FaderAbsMsg),
+    ChannelFader(ChannelFaderMsg),
+    MasterFader(MasterFaderMsg),
     EncoderTurnInc(EncoderTurnCW),
     EncoderTurnDec(EncoderTurnCCW),
     EncoderPress(EncoderPressMsg),
@@ -315,7 +321,9 @@ pub enum DownstreamMsg {
 
     // Channel strip messages
     #[enum_from]
-    FaderAbs(FaderAbsMsg),
+    ChannelFader(ChannelFaderMsg),
+    #[enum_from]
+    MasterFader(MasterFaderMsg),
     #[enum_from]
     EncoderRingLED(EncoderRingMsg),
     #[enum_from]
@@ -1270,12 +1278,24 @@ impl V1mBuilder {
             };
             let upstream_fader = upstream.clone();
             f.bind(move |value| {
-                let _ = upstream_fader.send(UpstreamMsg::from(FaderAbsMsg {
+                let _ = upstream_fader.send(UpstreamMsg::from(ChannelFaderMsg {
                     idx: i as i32,
                     value: value as f64 / 16383.0, // TODO: check this...
                 }));
             });
             faders.push(f);
+        }
+        let mut master_fader = Fader {
+            base: self.main_midi.clone(),
+            channel: Channel::new(8),
+        };
+        {
+            let upstream_fader = upstream.clone();
+            master_fader.bind(move |value| {
+                let _ = upstream_fader.send(UpstreamMsg::from(MasterFaderMsg {
+                    value: value as f64 / 16383.0, // TODO: check this...
+                }));
+            });
         }
         let mut encoders = Vec::with_capacity(self.num_channels);
         for i in 0..self.num_channels {
@@ -1423,7 +1443,8 @@ impl V1mBuilder {
         let mut v1m = V1m {
             input,
             upstream,
-            faders,
+            channel_faders: faders,
+            master_fader,
             encoders,
             mutes,
             solos,
@@ -1443,14 +1464,24 @@ impl V1mBuilder {
                         DownstreamMsg::Barrier(barrier_msg) => {
                             let _ = v1m.upstream.send(UpstreamMsg::Barrier(barrier_msg));
                         }
-                        DownstreamMsg::FaderAbs(fader_msg) => {
+                        DownstreamMsg::ChannelFader(fader_msg) => {
                             println!(
                                 "Setting fader {} to value {} (raw value {})\n",
                                 fader_msg.idx,
                                 fader_msg.value,
                                 (fader_msg.value * 16383.0) as i32
                             );
-                            v1m.faders[fader_msg.idx as usize]
+                            v1m.channel_faders[fader_msg.idx as usize]
+                                .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
+                                .unwrap();
+                        }
+                        DownstreamMsg::MasterFader(fader_msg) => {
+                            println!(
+                                "Setting master fader to value {} (raw value {})\n",
+                                fader_msg.value,
+                                (fader_msg.value * 16383.0) as i32
+                            );
+                            v1m.master_fader
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
                                 .unwrap();
                         }
@@ -1519,7 +1550,8 @@ impl V1mBuilder {
 }
 
 pub struct V1m {
-    pub faders: Vec<Fader>,
+    pub channel_faders: Vec<Fader>,
+    pub master_fader: Fader,
     pub encoders: Vec<Encoder>,
     pub mutes: Vec<Button>,
     pub solos: Vec<Button>,
