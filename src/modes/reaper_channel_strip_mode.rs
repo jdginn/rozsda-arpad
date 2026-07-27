@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
-use crate::midi::xtouch;
+use crate::midi::v1m;
 use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
@@ -30,7 +30,7 @@ struct Widgets {
 }
 
 impl Widgets {
-    fn new(to_downstream: Sender<xtouch::DownstreamMsg>) -> Self {
+    fn new(to_downstream: Sender<v1m::DownstreamMsg>) -> Self {
         Widgets {
             hp_filter: widgets::ChannelWidget::new(to_downstream.clone()),
             low_freq: widgets::ChannelWidget::new(to_downstream.clone()),
@@ -70,7 +70,7 @@ impl Widgets {
         self.gain.handle_message_from_upstream(msg);
     }
 
-    fn handle_message_from_downstream(&mut self, msg: xtouch::UpstreamMsg) -> Vec<ChannelStripMsg> {
+    fn handle_message_from_downstream(&mut self, msg: v1m::UpstreamMsg) -> Vec<ChannelStripMsg> {
         let mut responses = Vec::new();
 
         responses.extend(self.hp_filter.handle_message_from_downstream(msg));
@@ -163,8 +163,8 @@ pub struct ChannelStripMode {
     selected_track_guid: Option<Uuid>,
     to_reaper: Sender<TrackMsg>,
     _from_reaper: Receiver<TrackMsg>,
-    to_xtouch: Sender<xtouch::DownstreamMsg>,
-    _from_xtouch: Receiver<xtouch::UpstreamMsg>,
+    to_v1m: Sender<v1m::DownstreamMsg>,
+    _from_v1m: Receiver<v1m::UpstreamMsg>,
 }
 
 impl ChannelStripMode {
@@ -172,32 +172,30 @@ impl ChannelStripMode {
         num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<xtouch::UpstreamMsg>,
-        to_xtouch: Sender<xtouch::DownstreamMsg>,
+        from_v1m: Receiver<v1m::UpstreamMsg>,
+        to_v1m: Sender<v1m::DownstreamMsg>,
     ) -> Self {
         ChannelStripMode {
             core: VolumeFadersCore::new(num_channels),
             routers: HashMap::new(),
-            widgets: Widgets::new(to_xtouch.clone()),
+            widgets: Widgets::new(to_v1m.clone()),
             selected_track_guid: None,
             to_reaper,
             _from_reaper: from_reaper,
-            to_xtouch,
-            _from_xtouch: from_xtouch,
+            to_v1m,
+            _from_v1m: from_v1m,
         }
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
-    for ChannelStripMode
-{
+impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for ChannelStripMode {
     fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
         match TrackDataMsg::try_from(msg) {
             Err(TrackMsg::Barrier(barrier)) => {
                 // Forward barriers downstream (they need to reflect back upstream for the mode to
                 // transition)
-                self.to_xtouch
-                    .send(xtouch::DownstreamMsg::Barrier(barrier))
+                self.to_v1m
+                    .send(v1m::DownstreamMsg::Barrier(barrier))
                     .unwrap();
                 match curr_mode.state {
                     // If we were already waiting on a barrier from upstream, check if this is the one
@@ -236,7 +234,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                         // (e.g. volume on faders, mute/arm/solo buttons)
                         self.core.handle_message_from_upstream(
                             msg.clone(),
-                            self.to_xtouch.clone(),
+                            self.to_v1m.clone(),
                             |_| {},
                         );
                         if let Some(selected_guid) = self.selected_track_guid {
@@ -265,7 +263,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
     }
     fn handle_messages_from_downstream(
         &mut self,
-        msg: xtouch::UpstreamMsg,
+        msg: v1m::UpstreamMsg,
         curr_mode: ModeState,
     ) -> ModeState {
         match msg {
@@ -274,7 +272,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
             //
             // Note, we do not need to forward this barrier onward, since the hardware is not
             // allowed to reflect barriers back upstream.
-            xtouch::UpstreamMsg::Barrier(barrier) => {
+            v1m::UpstreamMsg::Barrier(barrier) => {
                 match curr_mode.state {
                     State::WaitingBarrierFromDownstream(expected_barrier) => {
                         if barrier == expected_barrier {
@@ -299,24 +297,24 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 // Handle barrier messages if needed
             }
             // GlobalPress maps to ReaperVolPan mode
-            xtouch::UpstreamMsg::GlobalPress => ModeState {
+            v1m::UpstreamMsg::GlobalPress => ModeState {
                 mode: Mode::ReaperVolPan,
                 state: State::RequestingModeTransition,
                 new_selected_track_guid: None,
             },
             // MIDITracksPress maps to ReaperSends mode
-            xtouch::UpstreamMsg::MIDITracksPress => ModeState {
+            v1m::UpstreamMsg::MIDITracksPress => ModeState {
                 mode: Mode::ReaperSends,
                 state: State::RequestingModeTransition,
                 new_selected_track_guid: None,
             },
-            xtouch::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
+            v1m::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
             // If a new track is selected, we need to initiate a mode transition so that the
             // widgets are controlling the new track
             //
             // TODO: do we need to handle this case separately or do we simply expect a reflected
             // message back from Reaper?
-            xtouch::UpstreamMsg::SelectPress(msg) => {
+            v1m::UpstreamMsg::SelectPress(msg) => {
                 let selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
                 match selected_track_guid {
                     Some(selected_track_guid) => ModeState {
@@ -332,7 +330,7 @@ impl ModeHandler<TrackMsg, TrackMsg, xtouch::DownstreamMsg, xtouch::UpstreamMsg>
                 self.core.handle_message_from_downstream(
                     msg,
                     self.to_reaper.clone(),
-                    self.to_xtouch.clone(),
+                    self.to_v1m.clone(),
                 );
                 if let Some(selected_track_guid) = self.selected_track_guid {
                     let router = self

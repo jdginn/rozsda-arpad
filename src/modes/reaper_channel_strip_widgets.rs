@@ -1,6 +1,6 @@
 use crossbeam_channel::Sender;
 
-use crate::midi::xtouch;
+use crate::midi::v1m;
 use crate::modes::reaper_channel_strip_router::{
     BandMode, BypassMode, ChannelStripMsg, CompOrder, CompType, EqPosition, EqType, SaturationType,
 };
@@ -87,7 +87,7 @@ struct ChannelWidgetColors {
 /// ChannelWidgetCore handles shared logic around mode switching and message passing.
 struct ChannelWidgetCore {
     mode: ChannelWidgetMode,
-    to_downstream: Sender<xtouch::DownstreamMsg>,
+    to_downstream: Sender<v1m::DownstreamMsg>,
 }
 
 impl ChannelWidgetCore {
@@ -190,7 +190,7 @@ pub struct ChannelWidget<B: ChannelWidgetBehavior> {
 }
 
 impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
-    pub fn new(to_downstream: Sender<xtouch::DownstreamMsg>) -> Self {
+    pub fn new(to_downstream: Sender<v1m::DownstreamMsg>) -> Self {
         Self {
             core: ChannelWidgetCore {
                 mode: ChannelWidgetMode::Default,
@@ -297,24 +297,24 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     }
 
     fn send_feedback(&mut self) {
-        // FIXME: depends on actually implementing scribble for Xtouch...
+        // FIXME: depends on actually implementing scribble for v1m...
 
         // TODO: send color, labels, and range info downstream
         // Pseudocode:
-        // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetColor(B::INDEX, self.color()));
-        // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetLabel1(B::INDEX, self.label1()));
-        // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetLabel3(B::INDEX, self.label3()));
-        // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetLabel4(B::INDEX, self.label4()));
-        // self.core.downstream_tx.send(XTouchxtouch::DownstreamMsg::SetRange(B::INDEX, self.behavior.range())); FIXME: add to trait
-        // self.core.downstream_tx.send(XtouchDownstreaMsg::SetLabel2(B::INDEX, self.behavior.label2()) FIXME: add to trait
+        // self.core.downstream_tx.send(v1mv1m::DownstreamMsg::SetColor(B::INDEX, self.color()));
+        // self.core.downstream_tx.send(v1mv1m::DownstreamMsg::SetLabel1(B::INDEX, self.label1()));
+        // self.core.downstream_tx.send(v1mv1m::DownstreamMsg::SetLabel3(B::INDEX, self.label3()));
+        // self.core.downstream_tx.send(v1mv1m::DownstreamMsg::SetLabel4(B::INDEX, self.label4()));
+        // self.core.downstream_tx.send(v1mv1m::DownstreamMsg::SetRange(B::INDEX, self.behavior.range())); FIXME: add to trait
+        // self.core.downstream_tx.send(v1mDownstreaMsg::SetLabel2(B::INDEX, self.behavior.label2()) FIXME: add to trait
 
         // Toy example
         self.core
             .to_downstream
             .send(
-                xtouch::EncoderRingMsg {
+                v1m::EncoderRingMsg {
                     idx: B::INDEX as i32,
-                    mode: xtouch::EncoderRingMode::Point,
+                    mode: v1m::EncoderRingMode::Point,
                     val: 0, // TODO: get from behavior
                 }
                 .into(),
@@ -325,18 +325,18 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
     // TODO: this needs to return ChannelStripMsg (and possibly send upstream through a channel?)
     pub fn handle_message_from_downstream(
         &mut self,
-        msg: xtouch::UpstreamMsg,
+        msg: v1m::UpstreamMsg,
     ) -> Vec<ChannelStripMsg> {
         let index = B::INDEX;
         match msg {
-            xtouch::UpstreamMsg::EncoderPress(msg) => {
+            v1m::UpstreamMsg::EncoderPress(msg) => {
                 if msg.idx as usize == index {
                     self.mode_change_button_press()
                 } else {
                     vec![]
                 }
             }
-            xtouch::UpstreamMsg::EncoderRelease(msg) => {
+            v1m::UpstreamMsg::EncoderRelease(msg) => {
                 if msg.idx as usize == index {
                     self.mode_change_button_release();
                     match self.core.mode {
@@ -350,7 +350,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
                     vec![]
                 }
             }
-            xtouch::UpstreamMsg::EncoderTurnInc(msg) => {
+            v1m::UpstreamMsg::EncoderTurnInc(msg) => {
                 if msg.idx as usize == index {
                     match self.core.mode {
                         ChannelWidgetMode::Disabled => vec![],
@@ -363,7 +363,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
                     vec![]
                 }
             }
-            xtouch::UpstreamMsg::EncoderTurnDec(msg) => {
+            v1m::UpstreamMsg::EncoderTurnDec(msg) => {
                 if msg.idx as usize == index {
                     match self.core.mode {
                         ChannelWidgetMode::Disabled => vec![],

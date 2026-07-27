@@ -15,7 +15,7 @@ use osc::generated_osc;
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
 use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
-use arpad_rust::midi::xtouch;
+use arpad_rust::midi::v1m;
 use arpad_rust::modes::mode_manager;
 use arpad_rust::track::track;
 
@@ -31,43 +31,76 @@ struct Cli {
     dev_osc_address: String,
 }
 
-fn find_xtouch_ports() -> Result<(MidiInputPort, MidiOutputConnection), Box<dyn std::error::Error>>
-{
+fn find_v1m_ports() -> Result<
+    (
+        MidiInputPort,
+        MidiOutputConnection,
+        MidiInputPort,
+        MidiOutputConnection,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let mut midi_in = MidiInput::new("midir input port sniff")?;
     midi_in.ignore(Ignore::None);
     let midi_out = MidiOutput::new("midir output port sniff")?;
+    let midi_out_2 = MidiOutput::new("midir output port sniff")?;
 
-    let mut input_port = None;
-    let mut output_port = None;
+    let mut input_port_1 = None;
+    let mut output_port_1 = None;
+    let mut input_port_4 = None;
+    let mut output_port_4 = None;
 
     for (i, p) in midi_in.ports().iter().enumerate() {
-        if input_port.is_none() && midi_in.port_name(p)? == "X-Touch INT" {
-            input_port = Some(p.clone());
+        println!("Input port {}: {}", i, midi_in.port_name(p)?);
+        if input_port_1.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 1" {
+            input_port_1 = Some(p.clone());
             break;
         }
     }
     for (i, p) in midi_out.ports().iter().enumerate() {
-        if output_port.is_none() && midi_out.port_name(p)? == "X-Touch INT" {
-            output_port = Some(p.clone());
+        if output_port_1.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 1" {
+            output_port_1 = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_in.ports().iter().enumerate() {
+        if input_port_4.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 4" {
+            input_port_4 = Some(p.clone());
+            break;
+        }
+    }
+    for (i, p) in midi_out.ports().iter().enumerate() {
+        if output_port_4.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 4" {
+            output_port_4 = Some(p.clone());
             break;
         }
     }
 
-    if input_port.is_none() {
-        return Err("Could not find X-Touch MIDI input port".into());
+    if input_port_1.is_none() {
+        return Err("Could not find V1m MIDI input port".into());
     }
 
-    println!("Found input port {}", input_port.clone().unwrap().id());
+    println!("Found input port {}", input_port_1.clone().unwrap().id());
 
-    if let Some(output_port) = output_port {
+    if let Some(output_port_1) = output_port_1 {
         println!(
             "Connecting to output port '{}' ...",
-            midi_out.port_name(&output_port)?
+            midi_out.port_name(&output_port_1)?
         );
-        let output_connection = midi_out.connect(&output_port, "midir-test")?;
-        Ok((input_port.unwrap(), output_connection))
+        let output_connection_1 = midi_out.connect(&output_port_1, "midir-test")?;
+        if let Some(output_port_4) = output_port_4 {
+            let output_connection_4 = midi_out_2.connect(&output_port_4, "midir-test")?;
+            Ok((
+                input_port_1.unwrap(),
+                output_connection_1,
+                input_port_4.unwrap(),
+                output_connection_4,
+            ))
+        } else {
+            Err("Could not find V1m MIDI output port".into())
+        }
     } else {
-        Err("Could not find X-Touch MIDI output port".into())
+        Err("Could not find V1m MIDI output port".into())
     }
 }
 
@@ -106,16 +139,23 @@ fn main() {
         to_mode_manager_rx.clone(),
         from_mode_manager_tx.clone(),
     );
-    let (input_port, output_connection) = match find_xtouch_ports() {
-        Ok(ports) => ports,
-        Err(err) => {
-            println!("Error finding XTouch MIDI ports: {}", err);
-            println!("Please ensure XTouch is connected and try again.");
-            return;
-        }
-    };
-    xtouch::XTouchBuilder::new(input_port, output_connection, 8)
-        .build(from_mode_manager_rx.clone(), to_mode_manager_tx.clone());
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding XTouch MIDI ports: {}", err);
+                println!("Please ensure XTouch is connected and try again.");
+                return;
+            }
+        };
+    v1m::V1mBuilder::new(
+        input_port_1,
+        output_connection_1,
+        input_port_4,
+        output_connection_4,
+        8,
+    )
+    .build(from_mode_manager_rx.clone(), to_mode_manager_tx.clone());
 
     let dispatcher = {
         let reaper = reaper.clone();

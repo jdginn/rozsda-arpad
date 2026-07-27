@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use crossbeam_channel::Sender;
 use uuid::Uuid;
 
-use crate::midi::xtouch;
+use crate::midi::v1m;
 use crate::modes::button::Button;
 use crate::track::track;
 
@@ -113,7 +113,7 @@ impl VolumeFadersCore {
     pub fn handle_message_from_upstream<F>(
         &mut self,
         msg: track::DataMsg,
-        to_downstream: Sender<xtouch::DownstreamMsg>,
+        to_downstream: Sender<v1m::DownstreamMsg>,
         mut track_index_epilogue: F,
     ) where
         F: FnMut(TrackIndexUpdateEpilogue),
@@ -151,30 +151,29 @@ impl VolumeFadersCore {
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     let track_state = *self.get_track_state(msg.track_guid);
                     // Send volume
-                    let _ =
-                        to_downstream.send(xtouch::DownstreamMsg::FaderAbs(xtouch::FaderAbsMsg {
+                    let _ = to_downstream.send(v1m::DownstreamMsg::ChannelFader(
+                        v1m::ChannelFaderMsg {
                             idx: hw_channel as i32,
                             value: track_state.volume as f64,
-                        }));
+                        },
+                    ));
                     // Update EPSILON tracking for volume since we just sent it
                     self.last_sent_volume[hw_channel] = track_state.volume;
 
                     // Send mute LED
-                    let _ =
-                        to_downstream.send(xtouch::DownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
-                            idx: hw_channel as i32,
-                            state: xtouch::LEDState::from(track_state.buttons.mute.is_on()),
-                        }));
-                    // Send solo LED
-                    let _ =
-                        to_downstream.send(xtouch::DownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
-                            idx: hw_channel as i32,
-                            state: xtouch::LEDState::from(track_state.buttons.solo.is_on()),
-                        }));
-                    // Send arm LED
-                    let _ = to_downstream.send(xtouch::DownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
+                    let _ = to_downstream.send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
-                        state: xtouch::LEDState::from(track_state.buttons.arm.is_on()),
+                        state: v1m::LEDState::from(track_state.buttons.mute.is_on()),
+                    }));
+                    // Send solo LED
+                    let _ = to_downstream.send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                        idx: hw_channel as i32,
+                        state: v1m::LEDState::from(track_state.buttons.solo.is_on()),
+                    }));
+                    // Send arm LED
+                    let _ = to_downstream.send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                        idx: hw_channel as i32,
+                        state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
                     }));
                     track_index_epilogue(TrackIndexUpdateEpilogue {
                         track_guid: msg.track_guid,
@@ -190,10 +189,10 @@ impl VolumeFadersCore {
                     // (self.last_sent_volume[hw_channel] - msg.volume).abs() >= FADER_EPSILON;
 
                     if should_send {
-                        // Send volume update to XTouch for the corresponding fader
+                        // Send volume update to v1m for the corresponding fader
                         let fader_value = msg.volume; // TODO: scale appropriately
-                        let _ = to_downstream.send(xtouch::DownstreamMsg::FaderAbs(
-                            xtouch::FaderAbsMsg {
+                        let _ = to_downstream.send(v1m::DownstreamMsg::ChannelFader(
+                            v1m::ChannelFaderMsg {
                                 idx: hw_channel as i32,
                                 value: fader_value as f64,
                             },
@@ -209,12 +208,11 @@ impl VolumeFadersCore {
                     .mute
                     .set(msg.muted);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                    // Send mute LED update to XTouch
-                    let _ =
-                        to_downstream.send(xtouch::DownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
-                            idx: hw_channel as i32,
-                            state: xtouch::LEDState::from(msg.muted),
-                        }));
+                    // Send mute LED update to v1m
+                    let _ = to_downstream.send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                        idx: hw_channel as i32,
+                        state: v1m::LEDState::from(msg.muted),
+                    }));
                 }
             }
             track::DataMsg::Soloed(msg) => {
@@ -223,12 +221,11 @@ impl VolumeFadersCore {
                     .solo
                     .set(msg.soloed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                    // Send solo LED update to XTouch
-                    let _ =
-                        to_downstream.send(xtouch::DownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
-                            idx: hw_channel as i32,
-                            state: xtouch::LEDState::from(msg.soloed),
-                        }));
+                    // Send solo LED update to v1m
+                    let _ = to_downstream.send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                        idx: hw_channel as i32,
+                        state: v1m::LEDState::from(msg.soloed),
+                    }));
                 }
             }
             track::DataMsg::Armed(msg) => {
@@ -237,10 +234,10 @@ impl VolumeFadersCore {
                     .arm
                     .set(msg.armed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
-                    // Send arm LED update to XTouch
-                    let _ = to_downstream.send(xtouch::DownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
+                    // Send arm LED update to v1m
+                    let _ = to_downstream.send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
-                        state: xtouch::LEDState::from(msg.armed),
+                        state: v1m::LEDState::from(msg.armed),
                     }));
                 }
             }
@@ -252,12 +249,12 @@ impl VolumeFadersCore {
 
     pub fn handle_message_from_downstream(
         &mut self,
-        msg: xtouch::UpstreamMsg,
+        msg: v1m::UpstreamMsg,
         to_upstream: Sender<track::TrackMsg>,
-        to_downstream: Sender<xtouch::DownstreamMsg>,
+        to_downstream: Sender<v1m::DownstreamMsg>,
     ) {
         match msg {
-            xtouch::UpstreamMsg::FaderAbs(fader_msg) => {
+            v1m::UpstreamMsg::ChannelFader(fader_msg) => {
                 if let Some(guid) =
                     &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
                 {
@@ -269,15 +266,16 @@ impl VolumeFadersCore {
                         }
                         .into(),
                     );
-                    // Convince the xtouch to leave its faders where we put them
-                    let _ =
-                        to_downstream.send(xtouch::DownstreamMsg::FaderAbs(xtouch::FaderAbsMsg {
+                    // Convince the v1m to leave its faders where we put them
+                    let _ = to_downstream.send(v1m::DownstreamMsg::ChannelFader(
+                        v1m::ChannelFaderMsg {
                             idx: fader_msg.idx,
                             value: fader_msg.value,
-                        }));
+                        },
+                    ));
                 }
             }
-            xtouch::UpstreamMsg::MutePress(mute_msg) => {
+            v1m::UpstreamMsg::MutePress(mute_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
@@ -292,14 +290,14 @@ impl VolumeFadersCore {
                         .unwrap();
                     // Update the toggle on the hardware
                     to_downstream
-                        .send(xtouch::DownstreamMsg::MuteLED(xtouch::MuteLEDMsg {
+                        .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                             idx: mute_msg.idx,
-                            state: xtouch::LEDState::from(new_state),
+                            state: v1m::LEDState::from(new_state),
                         }))
                         .unwrap();
                 }
             }
-            xtouch::UpstreamMsg::SoloPress(solo_msg) => {
+            v1m::UpstreamMsg::SoloPress(solo_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
@@ -313,14 +311,14 @@ impl VolumeFadersCore {
                         )
                         .unwrap();
                     to_downstream
-                        .send(xtouch::DownstreamMsg::SoloLED(xtouch::SoloLEDMsg {
+                        .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                             idx: solo_msg.idx,
-                            state: xtouch::LEDState::from(new_state),
+                            state: v1m::LEDState::from(new_state),
                         }))
                         .unwrap();
                 }
             }
-            xtouch::UpstreamMsg::ArmPress(arm_msg) => {
+            v1m::UpstreamMsg::ArmPress(arm_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
@@ -334,9 +332,9 @@ impl VolumeFadersCore {
                         )
                         .unwrap();
                     to_downstream
-                        .send(xtouch::DownstreamMsg::ArmLED(xtouch::ArmLEDMsg {
+                        .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                             idx: arm_msg.idx,
-                            state: xtouch::LEDState::from(new_state),
+                            state: v1m::LEDState::from(new_state),
                         }))
                         .unwrap();
                 }
