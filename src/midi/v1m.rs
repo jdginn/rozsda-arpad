@@ -1218,6 +1218,7 @@ impl TouchScreen {
                 touchscreen_text_sysex.push(part as u8); // part #
                 touchscreen_text_sysex.push(0x0c); // # buttons
                 touchscreen_text_sysex.push(0x02); // lines
+                touchscreen_text_sysex.push(0x08); // bytes per line
                 for i in part * 12..(part + 1) * 12 {
                     let mut padded = [0x20u8; 16];
                     let src = self.buttons[i].text.as_bytes();
