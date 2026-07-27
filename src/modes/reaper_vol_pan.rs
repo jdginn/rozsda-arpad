@@ -263,6 +263,10 @@ impl VolumePanMode {
         upstream: Sender<TrackMsg>,
     ) -> ModeState {
         println!("Initiating mode transition to ReaperVolPan");
+        println!(
+            "Current track assignments: {:?}",
+            self.core.track_hw_assignments.lock().unwrap()
+        );
         self.core
             .track_hw_assignments
             .lock()
