@@ -6,7 +6,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
-use crate::midi::xtouch;
+use crate::midi::v1m;
 use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends::TrackSendsMode;
 use crate::modes::reaper_vol_pan::VolumePanMode;
@@ -94,8 +94,8 @@ pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
 pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
     to_reaper: Sender<TrackMsg>,
-    from_xtouch: Receiver<xtouch::UpstreamMsg>,
-    _to_xtouch: Sender<xtouch::DownstreamMsg>,
+    from_v1m: Receiver<v1m::UpstreamMsg>,
+    _to_v1m: Sender<v1m::DownstreamMsg>,
     pub curr_mode: ModeState,
 
     reaper_currently_selected_track_guid: Option<Uuid>,
@@ -107,14 +107,14 @@ impl ModeManager {
     pub fn start(
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
-        from_xtouch: Receiver<xtouch::UpstreamMsg>,
-        to_xtouch: Sender<xtouch::DownstreamMsg>,
+        from_v1m: Receiver<v1m::UpstreamMsg>,
+        to_v1m: Sender<v1m::DownstreamMsg>,
     ) {
         let mut manager = ModeManager {
             from_reaper: from_reaper.clone(),
             to_reaper: to_reaper.clone(),
-            from_xtouch: from_xtouch.clone(),
-            _to_xtouch: to_xtouch.clone(),
+            from_v1m: from_v1m.clone(),
+            _to_v1m: to_v1m.clone(),
             curr_mode: ModeState {
                 mode: Mode::ReaperVolPan,
                 state: State::Active,
@@ -128,24 +128,24 @@ impl ModeManager {
             8, // For now, assume we have 8 faders on the conroller
             from_reaper.clone(),
             to_reaper.clone(),
-            from_xtouch.clone(),
-            to_xtouch.clone(),
+            from_v1m.clone(),
+            to_v1m.clone(),
         )));
 
         let reaper_track_sends = Arc::new(Mutex::new(TrackSendsMode::new(
             8,
             from_reaper.clone(),
             to_reaper.clone(),
-            from_xtouch.clone(),
-            to_xtouch.clone(),
+            from_v1m.clone(),
+            to_v1m.clone(),
         )));
 
         let reaper_channel_strip = Arc::new(Mutex::new(ChannelStripMode::new(
             8,
             from_reaper.clone(),
             to_reaper.clone(),
-            from_xtouch.clone(),
-            to_xtouch.clone(),
+            from_v1m.clone(),
+            to_v1m.clone(),
         )));
 
         let reaper_pan_vol_clone = reaper_pan_vol.clone();
@@ -162,7 +162,7 @@ impl ModeManager {
                 // If the mode has indicated a new track selection, update it with the mode manager
                 if let Some(selected_track_guid) = mode.new_selected_track_guid {
                     println!("Updating selected track guid to: {:?}", selected_track_guid);
-                    // self.to_xtouch
+                    // self.to_v1m
                     //     .send(
                     //         SelectLEDMsg {
                     //             idx: select_msg.idx,
@@ -255,21 +255,21 @@ impl ModeManager {
                         }
                     }
                 }
-                    recv(manager.from_xtouch) -> msg => {
-                        if let Ok(xtouch_msg) = msg {
+                    recv(manager.from_v1m) -> msg => {
+                        if let Ok(v1m_msg) = msg {
                             let curr_mode = manager.curr_mode;
                             match curr_mode.mode{
                                 Mode::ReaperVolPan => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
-                                            match xtouch_msg {
-                                                xtouch::UpstreamMsg::Barrier(barrier) => {
+                                            match v1m_msg {
+                                                v1m::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
@@ -295,14 +295,14 @@ impl ModeManager {
                                 Mode::ReaperSends => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
-                                            match xtouch_msg {
-                                                xtouch::UpstreamMsg::Barrier(barrier) => {
+                                            match v1m_msg {
+                                                v1m::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
@@ -328,14 +328,14 @@ impl ModeManager {
                                 Mode::ReaperChannelStrip => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_downstream(xtouch_msg, curr_mode);
+                                            let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
                                         State::WaitingBarrierFromDownstream(expected_barrier) => {
-                                            match xtouch_msg {
-                                                xtouch::UpstreamMsg::Barrier(barrier) => {
+                                            match v1m_msg {
+                                                v1m::UpstreamMsg::Barrier(barrier) => {
                                                     if barrier == expected_barrier {
                                                         manager.curr_mode = ModeState {
                                                             mode: curr_mode.mode,
