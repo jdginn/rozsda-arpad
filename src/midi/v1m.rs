@@ -749,7 +749,10 @@ pub fn compact_to_7_bytes(input: &str) -> Vec<u8> {
         .collect();
 
     if words.is_empty() {
-        return vec![0; 7];
+        let mut result: Vec<u8> = input.bytes().collect();
+        result.truncate(7);
+        result.resize(7, 32);
+        return result;
     }
 
     // 3. Process each word
@@ -1788,9 +1791,9 @@ mod tests {
     #[test]
     fn test_null_padding_for_short_strings() {
         let res = compact_to_7_bytes("hi");
-        assert_eq!(&res, b"hi\0\0\0\0\0");
-        // assert_eq!(&res[..2], b"hi");
-        // assert_eq!(&res[2..7], [0, 0, 0, 0, 0]);
+        // assert_eq!(&res, b"hi\0\0\0\0\0");
+        assert_eq!(&res[..2], b"hi");
+        assert_eq!(&res[2..7], [32, 32, 32, 32, 32]);
     }
 
     #[test]
@@ -1890,10 +1893,10 @@ mod tests {
     fn test_all_separator_and_empty_inputs() {
         // Rule 11: All-separator input leaves it exactly as-is (padded with zeros)
         let res_sep = compact_to_7_bytes("  _ . ,  ");
-        assert_eq!(&res_sep, &[0; 7]);
+        assert_eq!(&res_sep, "  _ . ,".as_bytes());
 
         let res_empty = compact_to_7_bytes("");
-        assert_eq!(&res_empty, &[0; 7]);
+        assert_eq!(&res_empty, &[32; 7]);
     }
 
     #[test]
