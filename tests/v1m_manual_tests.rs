@@ -18,7 +18,7 @@ use arpad_rust::midi::v1m::{
     ChannelMeterMsg, Color, DawId, DownstreamMsg, EncoderRingMode, EncoderRingMsg, LEDState,
     MasterFaderMsg, MasterMeterMsg, MuteLEDMsg, ScribbleStripBackgroundColorMsg,
     ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, Slot, SoloLEDMsg, StereoChannel,
-    TouchScreenLayer, TouchScreenUpdateMsg, UpstreamMsg, V1mBuilder,
+    TouchScreenLayer, TouchScreenSetTextMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -1194,7 +1194,7 @@ fn v1m_touchscreen_tests() {
         let mut messages = vec![];
         for row in 0..4 {
             for col in 0..6 {
-                messages.push(TouchScreenUpdateMsg {
+                messages.push(TouchScreenSetTextMsg {
                     slot: Slot::DAW1,
                     daw_id: DawId::Reaper,
                     column: col,
@@ -1205,7 +1205,7 @@ fn v1m_touchscreen_tests() {
             }
         }
         downstream_tx
-            .send(DownstreamMsg::TouchScreenBatchUpdate(messages))
+            .send(DownstreamMsg::TouchScreenBatchSetText(messages))
             .unwrap();
         let result = prompt_user(&format!(
             "Are all buttons layer {} set to show layer-row-column?",
