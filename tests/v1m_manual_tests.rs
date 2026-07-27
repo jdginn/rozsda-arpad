@@ -1227,7 +1227,32 @@ fn run_encoder_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
 
     let mut results = Vec::new();
 
-    // Case 1: illuminate all segments
+    // Test all modes on encoder 1
+    for mode in [
+        EncoderRingMode::Point,
+        EncoderRingMode::FromCenter,
+        EncoderRingMode::FromLeft,
+        EncoderRingMode::Width,
+    ] {
+        for val in 0..=0xb {
+            let test_name = format!("encoder_mode_{}_{}", mode, val);
+            println!("\nTest: {}", test_name);
+            tx.send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                idx: 0,
+                mode,
+                val,
+            }))
+            .unwrap();
+
+            let result = prompt_user(&format!(
+                "Did channel 0 enoder display mode {} val {}?",
+                mode, val
+            ));
+            results.push(TestSummary::new(&test_name, result));
+        }
+    }
+
+    // Test all segments mode on all encoders
     for channel in 0..8 {
         let test_name = format!("encoder_channel_{}_all_segments", channel);
         println!("\nTest: {}", test_name);
