@@ -127,6 +127,17 @@ pub enum EncoderRingMode {
     Width,
 }
 
+impl std::fmt::Display for EncoderRingMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncoderRingMode::Point => write!(f, "Point"),
+            EncoderRingMode::FromCenter => write!(f, "FromCenter"),
+            EncoderRingMode::FromLeft => write!(f, "FromLeft"),
+            EncoderRingMode::Width => write!(f, "Width"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderRingLEDBlankMsg {
     pub idx: i32,
@@ -489,11 +500,6 @@ impl Encoder {
             EncoderRingMode::FromLeft => 0x02 << 4 | (val & 0xf),
             EncoderRingMode::Width => 0x03 << 4 | (val & 0xf),
         };
-
-        println!(
-            "Setting encoder LED ring for CC {} to mode {:?} with value {:b} (raw value {})\n",
-            self.led_cc, mode, new_val, val
-        );
 
         ControlChangeBuilder {
             device: &mut self.base.lock().unwrap(),
