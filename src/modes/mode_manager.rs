@@ -124,7 +124,7 @@ impl ModeManager {
         };
 
         // Each mode's implementation struct needs to be initialized here
-        let reaper_pan_vol = Arc::new(Mutex::new(VolumePanMode::new(
+        let reaper_vol_pan = Arc::new(Mutex::new(VolumePanMode::new(
             8, // For now, assume we have 8 faders on the conroller
             from_reaper.clone(),
             to_reaper.clone(),
@@ -148,7 +148,7 @@ impl ModeManager {
             to_v1m.clone(),
         )));
 
-        let reaper_pan_vol_clone = reaper_pan_vol.clone();
+        let reaper_vol_pan_clone = reaper_vol_pan.clone();
         let reaper_track_sends_clone = reaper_track_sends.clone();
         let reaper_channel_strip_clone = reaper_channel_strip.clone();
 
@@ -177,15 +177,20 @@ impl ModeManager {
                     match mode.mode {
                         Mode::ReaperVolPan => {
                             println!("Transitioning to ReaperVolPan mode");
-                            manager.curr_mode = reaper_pan_vol_clone
+                            if let Err(e) = reaper_vol_pan_clone.try_lock() {
+                                println!("Failed to lock reaper_vol_pane_clone: {:?}", e);
+                            }
+                            manager.curr_mode = reaper_vol_pan_clone
                                 .lock()
                                 .unwrap()
                                 .initiate_mode_transition(
                                     manager.curr_mode,
                                     manager.to_reaper.clone(),
                                 );
+                            println!("New mode state: {:?}", manager.curr_mode);
                         }
                         Mode::ReaperSends => {
+                            println!("Transitioning to ReaperSends mode");
                             // We can only enter this mode if we have a track selected
                             if let Some(selected_track_guid) =
                                 manager.reaper_currently_selected_track_guid
@@ -201,6 +206,7 @@ impl ModeManager {
                             }
                         }
                         Mode::ReaperChannelStrip => {
+                            println!("Transitioning to ReaperChannelStrip mode");
                             // We can only enter this mode if we have a track selected
                             if let Some(selected_track_guid) =
                                 manager.reaper_currently_selected_track_guid
@@ -241,13 +247,16 @@ impl ModeManager {
                                 // of jitter on the hw. But even then, we are not propagating
                                 // hardware settings upstream, so upstream should still always be
                                 // correct.
-                            handle_transitions(&mut manager, reaper_pan_vol.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
+                            let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
+                            handle_transitions(&mut manager, new_mode)
                         },
                         Mode::ReaperSends => {
-                            handle_transitions(&mut manager, reaper_track_sends.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
+                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
+                            handle_transitions(&mut manager, new_mode)
                         },
                         Mode::ReaperChannelStrip => {
-                            handle_transitions(&mut manager, reaper_channel_strip.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode))
+                            let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
+                            handle_transitions(&mut manager, new_mode)
                         },
                         Mode::MotuVolPan => {
                             panic!("MotuVolPan currently unsupported")
@@ -262,7 +271,7 @@ impl ModeManager {
                                 Mode::ReaperVolPan => {
                                     match curr_mode.state {
                                         State::Active => {
-                                            let new_mode = reaper_pan_vol.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
+                                            let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
                                             handle_transitions(&mut manager, new_mode);
                                         },
                                         // We don't send any messages up from the hw until the hw
