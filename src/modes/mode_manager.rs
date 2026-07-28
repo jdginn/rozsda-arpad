@@ -248,15 +248,22 @@ impl ModeManager {
                                 // hardware settings upstream, so upstream should still always be
                                 // correct.
                             let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
-                            handle_transitions(&mut manager, new_mode)
+                            if new_mode != curr_mode {
+                                println!("TRANSITION: {:?} -> {:?}", curr_mode, new_mode);
+                                handle_transitions(&mut manager, new_mode)
+                            }
                         },
                         Mode::ReaperSends => {
                             let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
-                            handle_transitions(&mut manager, new_mode)
+                            if new_mode != curr_mode {
+                                handle_transitions(&mut manager, new_mode)
+                            }
                         },
                         Mode::ReaperChannelStrip => {
                             let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
-                            handle_transitions(&mut manager, new_mode)
+                            if new_mode != curr_mode {
+                                handle_transitions(&mut manager, new_mode)
+                            }
                         },
                         Mode::MotuVolPan => {
                             panic!("MotuVolPan currently unsupported")
@@ -272,7 +279,9 @@ impl ModeManager {
                                     match curr_mode.state {
                                         State::Active => {
                                             let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
-                                            handle_transitions(&mut manager, new_mode);
+                                            if new_mode != curr_mode {
+                                                handle_transitions(&mut manager, new_mode);
+                                            }
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
@@ -305,7 +314,9 @@ impl ModeManager {
                                     match curr_mode.state {
                                         State::Active => {
                                             let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
-                                            handle_transitions(&mut manager, new_mode);
+                                            if new_mode != curr_mode {
+                                                handle_transitions(&mut manager, new_mode);
+                                            }
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
@@ -338,7 +349,9 @@ impl ModeManager {
                                     match curr_mode.state {
                                         State::Active => {
                                             let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
-                                            handle_transitions(&mut manager, new_mode);
+                                            if new_mode != curr_mode {
+                                                handle_transitions(&mut manager, new_mode);
+                                            }
                                         },
                                         // We don't send any messages up from the hw until the hw
                                         // is confirmed to reflect the upsream state
