@@ -590,6 +590,43 @@ fn test_mode_transition_sends_to_vol_pan_initiated_by_hardware() {
     // TODO: is there a better way to do this than sleeping?
     std::thread::sleep(Duration::from_millis(1));
 
+    // Handle the transition to track selected
+
+    // Consume the track query messages (one for each assigned track)
+    to_reaper_rx.recv().unwrap();
+    to_reaper_rx.recv().unwrap();
+    // Consume the barrier message
+    let barrier =
+        assert_upstream_barrier_msg!(to_reaper_rx, Mode::ReaperVolPan, Mode::ReaperVolPan);
+    // Mock the response to the track data query
+    reaper_tx
+        .send(
+            track::SendIndex {
+                track_guid: track1_guid,
+                send_index: 1,
+                send_guid: track2_guid,
+            }
+            .into(),
+        )
+        .unwrap();
+    drain_downstream_until_barrier(&to_v1m_rx);
+    reaper_tx.send(TrackMsg::Barrier(barrier)).unwrap();
+    let barrier = drain_downstream_until_barrier(&to_v1m_rx);
+    assert!(
+        barrier.unwrap().from == Mode::ReaperVolPan && barrier.unwrap().to == Mode::ReaperVolPan,
+        "Barrier should indicate transition from VolPan to VolPan"
+    );
+    // Once v1m reflects the barrier, the mode transition should be complete and messages should flow again
+    v1m_tx.send(UpstreamMsg::Barrier(barrier.unwrap())).unwrap();
+
+    v1m_tx
+        .send(UpstreamMsg::ChannelFader(ChannelFaderMsg {
+            idx: 0,
+            value: 0.75,
+        }))
+        .unwrap();
+    assert_upstream_volume_track_msg!(to_reaper_rx, &track1_guid, 0.75);
+
     // Initiate mode transition
     v1m_tx.send(UpstreamMsg::MIDITracksPress {}).unwrap();
 
