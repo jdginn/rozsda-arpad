@@ -98,6 +98,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 }
             }
             Ok(msg) => {
+                println!("TrackSendsMode: received message from upstream: {:?}", msg);
                 match msg {
                     // If a new track is selected, we need to initiate a mode transition so that we
                     // are controlling sends for that new track
@@ -112,21 +113,28 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                         }
                     }
                     track::DataMsg::SendIndex(msg) => {
+                        if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
+                            // Only process send index messages for the currently selected track
+                        } else {
+                            return curr_mode;
+                        }
                         let mut assignments = self.hw_assignments.lock().unwrap();
 
-                        if let Some(index) = TrackSendsMode::find_hw_channel_for_guid(
-                            msg.send_guid,
-                            assignments.to_vec(),
-                        ) {
-                            if index as i32 == msg.send_index {
-                                // No change, skip
-                                return curr_mode;
-                            }
-                            // Clear previous assignment
-                            //
-                            // TODO: are we sure this is the correct behavior?
-                            assignments[index] = None;
-                        }
+                        assignments[msg.send_index as usize] = Some(msg.send_guid);
+
+                        // if let Some(index) = TrackSendsMode::find_hw_channel_for_guid(
+                        //     msg.send_guid,
+                        //     assignments.to_vec(),
+                        // ) {
+                        //     if index as i32 == msg.send_index {
+                        //         // No change, skip
+                        //         return curr_mode;
+                        //     }
+                        //     // Clear previous assignment
+                        //     //
+                        //     // TODO: are we sure this is the correct behavior?
+                        //     assignments[index] = None;
+                        // }
                         // Add bounds checking to prevent panic on invalid send_index
                         // If out of bounds, silently ignore (could log error in production)
                         if (msg.send_index as usize) < assignments.len() {
@@ -162,6 +170,11 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                             .unwrap();
                     }
                     track::DataMsg::SendLevel(msg) => {
+                        if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
+                            // Only process send index messages for the currently selected track
+                        } else {
+                            return curr_mode;
+                        }
                         // Only send fader update if the send index is mapped to a target
                         let assignments = self.hw_assignments.lock().unwrap();
                         if let Some(Some(guid)) = assignments.get(msg.send_index as usize) {
@@ -182,6 +195,11 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                         }
                     }
                     track::DataMsg::SendPan(msg) => {
+                        if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
+                            // Only process send index messages for the currently selected track
+                        } else {
+                            return curr_mode;
+                        }
                         // Only send encoder update if the send index is mapped to a target
                         let assignments = self.hw_assignments.lock().unwrap();
                         if let Some(Some(guid)) = assignments.get(msg.send_index as usize) {
@@ -254,7 +272,13 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 }
             }
             UpstreamMsg::ChannelFader(fader_msg) => {
+                println!(
+                    "TrackSendsMode: received fader message from downstream: {:?}",
+                    fader_msg
+                );
+                // FIXME: seems like this is the issuer here V
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
+                    println!("Have guid");
                     self.to_reaper
                         .send(
                             track::SendLevel {
@@ -284,6 +308,9 @@ impl TrackSendsMode {
             "TrackSendsMode: initiating mode transition from {:?} to ReaperSends for track {:?}",
             from_mode, selected_track_guid
         );
+        //FIXME: seems like we need to reconfigure hw assignments here?
+        //FIXME: I think we also need to update fader positions, etc.
+        // Use the logic in reaper_vol_pan as a template
         self.selected_track_guid = Some(selected_track_guid);
         upstream
             .send(TrackMsg::Query(TrackQuery {
@@ -292,6 +319,34 @@ impl TrackSendsMode {
             .unwrap();
         let barrier = Barrier::new(from_mode, Mode::ReaperSends);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
+
+        // for (i, g) in self.hw_assignments.lock().unwrap().iter().enumerate() {
+        //     println!("Checking hw assignment for channel {}: {:?}", i, g);
+        //     if let Some(guid) = g {
+        //         println!("Setting fader for track {}'s send {}", guid, i);
+        //         let state = self
+        //             .track_send_states
+        //             .lock()
+        //             .unwrap()
+        //             .entry(*guid)
+        //             .or_default()
+        //             .clone();
+        //         self.to_v1m
+        //             .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+        //                 idx: i as i32,
+        //                 value: state.level as f64, // TODO: scale appropriately
+        //             }))
+        //             .unwrap();
+        //         self.to_v1m
+        //             .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+        //                 idx: i as i32,
+        //                 mode: EncoderRingMode::FromCenter,
+        //                 val: map_to_0xb(state.pan),
+        //             }))
+        //             .unwrap();
+        //     }
+        // }
+
         ModeState {
             mode: Mode::ReaperSends,
             state: State::WaitingBarrierFromUpstream(barrier),
