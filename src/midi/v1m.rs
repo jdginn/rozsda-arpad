@@ -95,11 +95,13 @@ pub struct MasterFaderMsg {
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderTurnCW {
     pub idx: i32,
+    pub accel: u8,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderTurnCCW {
     pub idx: i32,
+    pub accel: u8,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -437,11 +439,6 @@ impl Bind<u16> for Fader {
 impl Set<i32> for Fader {
     type Error = MidiError;
     fn set(&mut self, value: i32) -> Result<(), Self::Error> {
-        println!(
-            "Setting fader on channel {} to value {}\n",
-            self.channel.get(),
-            value
-        );
         PitchBendBuilder {
             device: &mut self.base.lock().unwrap(),
             spec: PitchBend {
@@ -1003,11 +1000,6 @@ impl TopScribbleStrips {
         }
         msg_bytes.push(0xf7);
 
-        println!(
-            "\nSending SysEx message for scribble strip colors and modes: {:02x?}\n",
-            msg_bytes
-        );
-
         self.base
             .lock()
             .unwrap()
@@ -1224,8 +1216,6 @@ impl TouchScreen {
 
         for part in 0..parts_need_set.len() {
             if parts_need_set[part] {
-                println!("Part {} needs to be set", part);
-
                 // We don't really know what this message does but iMAP always sends it.
                 const INIT_BYTES: [u8; 4] = [0xef, 0x7f, 0x7f, 0xf7];
                 self.midi
@@ -1323,8 +1313,6 @@ impl TouchScreen {
 
         for part in 0..parts_need_set.len() {
             if parts_need_set[part] {
-                println!("Part {} needs to be set", part);
-
                 // We don't really know what this message does but iMAP always sends it.
                 const INIT_BYTES: [u8; 4] = [0xef, 0x7f, 0x7f, 0xf7];
                 self.midi
@@ -1486,13 +1474,25 @@ impl V1mBuilder {
             let upstream_turn = upstream.clone();
             e.bind_turn(move |value| match value {
                 // TODO: 1 means CW slow all the way up to at least 5 is CW fast(er)
-                1..5 => upstream_turn
-                    .send(UpstreamMsg::from(EncoderTurnCW { idx: i as i32 }))
-                    .unwrap(),
+                1..6 => {
+                    println!("ENCODER ACCEL {}", value);
+                    upstream_turn
+                        .send(UpstreamMsg::from(EncoderTurnCW {
+                            idx: i as i32,
+                            accel: value,
+                        }))
+                        .unwrap()
+                }
                 // Similarly, 65 seems to mean slow but we can go all the way up to at least 68
-                65..68 => upstream_turn
-                    .send(UpstreamMsg::from(EncoderTurnCCW { idx: i as i32 }))
-                    .unwrap(),
+                65..69 => {
+                    println!("ENCODER ACCEL {}", value);
+                    upstream_turn
+                        .send(UpstreamMsg::from(EncoderTurnCCW {
+                            idx: i as i32,
+                            accel: (value - 64),
+                        }))
+                        .unwrap()
+                }
                 _ => println!("HERE: Unexpected encoder turn value: {}\n", value),
             });
             let upstream_press = upstream.clone();
@@ -1643,22 +1643,11 @@ impl V1mBuilder {
                             let _ = v1m.upstream.send(UpstreamMsg::Barrier(barrier_msg));
                         }
                         DownstreamMsg::ChannelFader(fader_msg) => {
-                            println!(
-                                "Setting fader {} to value {} (raw value {})\n",
-                                fader_msg.idx,
-                                fader_msg.value,
-                                (fader_msg.value * 16383.0) as i32
-                            );
                             v1m.channel_faders[fader_msg.idx as usize]
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
                                 .unwrap();
                         }
                         DownstreamMsg::MasterFader(fader_msg) => {
-                            println!(
-                                "Setting master fader to value {} (raw value {})\n",
-                                fader_msg.value,
-                                (fader_msg.value * 16383.0) as i32
-                            );
                             v1m.master_fader
                                 .set((fader_msg.value * 16383.0) as i32) // TODO: check this...
                                 .unwrap();
