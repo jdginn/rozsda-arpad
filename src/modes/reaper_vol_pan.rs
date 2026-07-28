@@ -92,21 +92,6 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                         state: State::RequestingModeTransition,
                         new_selected_track_guid: Some(msg.track_guid),
                     },
-                    track::DataMsg::Pan(msg) => {
-                        self.pan_states.insert(msg.track_guid, msg.pan);
-                        if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
-                            // Send pan update to v1m for the corresponding encoder
-                            let _ = self.to_v1m.send(
-                                v1m::EncoderRingMsg {
-                                    idx: hw_channel as i32,
-                                    mode: v1m::EncoderRingMode::Point,
-                                    val: map_to_0xb(msg.pan),
-                                }
-                                .into(),
-                            );
-                        }
-                        curr_mode
-                    }
                     track::DataMsg::Name(msg) => {
                         self.to_v1m
                             .send(
@@ -208,7 +193,7 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                     self.to_v1m
                         .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                             idx: encoder_msg.idx,
-                            mode: v1m::EncoderRingMode::Point,
+                            mode: v1m::EncoderRingMode::FromCenter,
                             val: map_to_0xb(new_pan),
                         }))
                         .unwrap();
@@ -219,7 +204,7 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and decrement it
                     let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
-                    let new_pan = (*current_pan + 0.05).min(1.0); // Clamp to max 1.0
+                    let new_pan = (*current_pan - 0.05).min(1.0); // Clamp to max 1.0
                     self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
@@ -237,7 +222,7 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                     self.to_v1m
                         .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                             idx: encoder_msg.idx,
-                            mode: v1m::EncoderRingMode::Point,
+                            mode: v1m::EncoderRingMode::FromCenter,
                             val: map_to_0xb(new_pan),
                         }))
                         .unwrap();
