@@ -235,7 +235,7 @@ fn assign_track_to_channel(
 
 #[test]
 fn test_vol_pan_select_transition() {
-    let (reaper_tx, to_reaper_rx, v1m_tx, to_v1m_rx) = setup_mode_manager_channels();
+    let (from_reaper_tx, to_reaper_rx, v1m_tx, to_v1m_rx) = setup_mode_manager_channels();
 
     // We start in VolPan mode
 
@@ -249,7 +249,7 @@ fn test_vol_pan_select_transition() {
     let track2_guid = Uuid::new_v4();
 
     // Register two tracks and select a track
-    reaper_tx
+    from_reaper_tx
         .send(
             track::ReaperTrackIndex {
                 track_guid: track1_guid,
@@ -258,7 +258,7 @@ fn test_vol_pan_select_transition() {
             .into(),
         )
         .unwrap();
-    reaper_tx
+    from_reaper_tx
         .send(
             track::ReaperTrackIndex {
                 track_guid: track2_guid,
@@ -267,7 +267,7 @@ fn test_vol_pan_select_transition() {
             .into(),
         )
         .unwrap();
-    reaper_tx
+    from_reaper_tx
         .send(
             track::Selected {
                 track_guid: track1_guid,
@@ -302,7 +302,7 @@ fn test_vol_pan_select_transition() {
     assert_no_message!(to_reaper_rx, 1);
 
     // Mock the response to the track data query
-    reaper_tx
+    from_reaper_tx
         .send(
             track::SendIndex {
                 track_guid: track1_guid,
@@ -328,7 +328,7 @@ fn test_vol_pan_select_transition() {
 
     // Reflect the barrier back from the reaper side indicating that we are done responding with
     // the queried data
-    reaper_tx.send(TrackMsg::Barrier(barrier)).unwrap();
+    from_reaper_tx.send(TrackMsg::Barrier(barrier)).unwrap();
 
     // v1m messages should still be blocked...
     v1m_tx
