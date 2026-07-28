@@ -160,7 +160,6 @@ fn main() {
     let dispatcher = {
         let reaper = reaper.clone();
         move |msg: OscMessage| {
-            println!("Received OSC message: {:?}", msg);
             reaper.with_mut(|reaper| {
                 let msg_clone = msg.clone();
                 dispatch_osc(
@@ -202,11 +201,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} index initial value: {:?}",
-                                        track_guid.clone(),
-                                        index
-                                    )
                                 }
                             });
                             // Track Name
@@ -222,11 +216,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} name initial value: {:?}",
-                                        track_guid.clone(),
-                                        name
-                                    )
                                 }
                             });
                             // Track Selected
@@ -242,11 +231,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} selected initial value: {:?}",
-                                        track_guid.clone(),
-                                        selected
-                                    )
                                 }
                             });
                             // Track Muted
@@ -262,11 +246,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} muted initial value: {:?}",
-                                        track_guid.clone(),
-                                        muted
-                                    )
                                 }
                             });
                             // Track Soloed
@@ -282,11 +261,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} soloed initial value: {:?}",
-                                        track_guid.clone(),
-                                        soloed
-                                    )
                                 }
                             });
                             // Track Armed
@@ -302,11 +276,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} armed initial value: {:?}",
-                                        track_guid.clone(),
-                                        rec_arm
-                                    )
                                 }
                             });
                             // Track Volume
@@ -322,11 +291,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} volume initial value: {:?}",
-                                        track_guid.clone(),
-                                        volume
-                                    )
                                 }
                             });
                             // Track Pan
@@ -342,11 +306,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} pan initial value: {:?}",
-                                        track_guid.clone(),
-                                        pan
-                                    )
                                 }
                             });
                         });
@@ -425,12 +384,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} send {} pan initial value: {:?}",
-                                        track_guid.clone(),
-                                        send_index,
-                                        send_pan
-                                    )
                                 }
                             });
                         });
@@ -644,7 +597,6 @@ fn main() {
 
     std::thread::spawn(move || {
         loop {
-            println!("Listening on {}", cli.osc_address);
             let mut buf = [0u8; rosc::decoder::MTU];
             match socket.recv_from(&mut buf) {
                 Ok((size, _addr)) => {
@@ -680,7 +632,7 @@ fn main() {
                     Ok(track::TrackMsg::Muted(msg))  => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_mute(msg.track_guid).set(TrackMuteArgs{mute: msg.muted}) {
-                                Ok(_) => println!("Successfully set mute for track {} to {}", msg.track_guid, msg.muted),
+                                Ok(_) => {},
                                 Err(e) => println!("Error setting mute for track {}", msg.track_guid),
                             };
                         })
@@ -688,7 +640,7 @@ fn main() {
                     Ok(track::TrackMsg::Soloed(msg)) => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_solo(msg.track_guid).set(generated_osc::TrackSoloArgs{solo: msg.soloed}) {
-                                Ok(_) => println!("Successfully set solo for track {} to {}", msg.track_guid, msg.soloed),
+                                Ok(_) => {},
                                 Err(e) => println!("Error setting solo for track {}", msg.track_guid),
                             };
                         })
@@ -696,7 +648,7 @@ fn main() {
                     Ok(track::TrackMsg::Armed(msg)) => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_rec_arm(msg.track_guid).set(generated_osc::TrackRecArmArgs{rec_arm: msg.armed}) {
-                                Ok(_) => println!("Successfully set armed for track {} to {}", msg.track_guid, msg.armed),
+                                Ok(_) => {},
                                 Err(e) => println!("Error setting armed for track {}", msg.track_guid),
                             };
                         })
@@ -704,7 +656,7 @@ fn main() {
                     Ok(track::TrackMsg::Selected(msg)) => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_selected(msg.track_guid).set(generated_osc::TrackSelectedArgs{selected: msg.selected}) {
-                                Ok(_) => println!("Successfully set selected for track {} to {}", msg.track_guid, msg.selected),
+                                Ok(_) => {},
                                 Err(e) => println!("Error setting selected for track {}", msg.track_guid),
                             };
                         })
@@ -712,7 +664,7 @@ fn main() {
                     Ok(track::TrackMsg::Pan(msg)) => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_pan(msg.track_guid).set(generated_osc::TrackPanArgs{pan: msg.pan}) {
-                                Ok(_) => println!("Successfully set pan for track {} to {}", msg.track_guid, msg.pan),
+                                Ok(_) => {},
                                 Err(e) => println!("Error setting pan for track {}", msg.track_guid),
                             };
                         })
@@ -720,7 +672,7 @@ fn main() {
                     Ok(track::TrackMsg::Volume(msg)) => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_volume(msg.track_guid).set(generated_osc::TrackVolumeArgs{volume: msg.volume}) {
-                                Ok(_) => println!("Successfully set volume for track {} to {}", msg.track_guid, msg.volume),
+                                Ok(_) => {},
                                 Err(e) => println!("Error setting volume for track {}", msg.track_guid),
                             };
                         })
