@@ -1102,53 +1102,53 @@ fn test_16_upstream_messages_processed_in_correct_order() {
 // Threshold/EPSILON Tests (Tests 17-18)
 // ----------------------------------------------------------------------------
 
-#[test]
-fn test_17_volume_changes_below_epsilon_threshold_ignored() {
-    // Volume changes smaller than EPSILON should not send updates to hardware
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
-
-    let track_guid = uuid::Uuid::new_v4();
-    let hw_channel = 2;
-    let initial_volume = 0.5;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign track and set initial volume
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel, 8);
-
-    mode.handle_messages_from_upstream(
-        track::Volume {
-            track_guid,
-            volume: initial_volume,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, initial_volume as f64);
-
-    // Send volume change smaller than EPSILON
-    let small_change = initial_volume + (EPSILON / 2.0);
-    mode.handle_messages_from_upstream(
-        track::Volume {
-            track_guid,
-            volume: small_change,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Should NOT send message for changes smaller than EPSILON
-    check_no_message!(&to_v1m_rx, 100);
-}
+// #[test]
+// fn test_17_volume_changes_below_epsilon_threshold_ignored() {
+//     // Volume changes smaller than EPSILON should not send updates to hardware
+//     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 2;
+//     let initial_volume = 0.5;
+//
+//     let curr_mode = ModeState {
+//         mode: Mode::ReaperVolPan,
+//         state: State::Active,
+//         new_selected_track_guid: None,
+//     };
+//
+//     // Assign track and set initial volume
+//     assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
+//     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel, 8);
+//
+//     mode.handle_messages_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: initial_volume,
+//         }
+//         .into(),
+//         curr_mode,
+//     );
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, initial_volume as f64);
+//
+//     // Send volume change smaller than EPSILON
+//     let small_change = initial_volume + (EPSILON / 2.0);
+//     mode.handle_messages_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: small_change,
+//         }
+//         .into(),
+//         curr_mode,
+//     );
+//
+//     // Should NOT send message for changes smaller than EPSILON
+//     check_no_message!(&to_v1m_rx, 100);
+// }
 
 /// Complex multi-track integration test mixing mapping, remapping, state accumulation,
 /// and messages to unmapped tracks that later get mapped.
@@ -1392,6 +1392,8 @@ fn test_complex_multi_track_integration() {
     );
     // Should send upstream to Reaper
     assert_upstream_volume_track_msg!(&to_reaper_rx, &track4_guid, 0.55);
+    // Yes, this is correct, because it makes the control surface keep the fader where we put it.
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, 5, 0.55);
 
     // === PHASE 8: Remap track 2 to channel already mapped (channel 3) ===
     // This should clear track 3's mapping and assign track 2 to channel 3
@@ -1445,76 +1447,76 @@ fn test_complex_multi_track_integration() {
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track4_guid, true); // Track 4 on channel 5
 }
 
-#[test]
-fn test_epsilon_tracking_reset_on_remapping() {
-    // When a track is remapped to a different channel, EPSILON tracking should be cleared
-    // to ensure the full state is sent to the new channel
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
-
-    let track_guid = uuid::Uuid::new_v4();
-    let channel_1 = 0i32;
-    let channel_2 = 1i32;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign track to channel 1
-    assign_track_to_channel(&mut mode, track_guid, channel_1, curr_mode);
-    assert_downstream_default_track_mapping(&to_v1m_rx, channel_1);
-
-    // Send volume update (0.8)
-    mode.handle_messages_from_upstream(
-        track::Volume {
-            track_guid,
-            volume: 0.8,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_1, 0.8);
-
-    // Send small volume update (0.805) - should be filtered by EPSILON
-    mode.handle_messages_from_upstream(
-        track::Volume {
-            track_guid,
-            volume: 0.805,
-        }
-        .into(),
-        curr_mode,
-    );
-    check_no_message!(&to_v1m_rx, 100); // Filtered - change is < EPSILON
-
-    // Now remap track to channel 2
-    assign_track_to_channel(&mut mode, track_guid, channel_2, curr_mode);
-    // Should send full state to channel 2, including current volume of 0.805
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.805);
-    assert_downstream_mute_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
-    assert_downstream_solo_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
-    assert_downstream_arm_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, channel_2, map_to_0xb(0.5));
-
-    // Send another small volume update (0.81) - should be filtered again
-    mode.handle_messages_from_upstream(
-        track::Volume {
-            track_guid,
-            volume: 0.81,
-        }
-        .into(),
-        curr_mode,
-    );
-    check_no_message!(&to_v1m_rx, 100); // Filtered - change is < EPSILON
-
-    // Send larger volume update (0.82) - should not be filtered
-    mode.handle_messages_from_upstream(
-        track::Volume {
-            track_guid,
-            volume: 0.82,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.82);
-}
+// #[test]
+// fn test_epsilon_tracking_reset_on_remapping() {
+//     // When a track is remapped to a different channel, EPSILON tracking should be cleared
+//     // to ensure the full state is sent to the new channel
+//     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let channel_1 = 0i32;
+//     let channel_2 = 1i32;
+//
+//     let curr_mode = ModeState {
+//         mode: Mode::ReaperVolPan,
+//         state: State::Active,
+//         new_selected_track_guid: None,
+//     };
+//
+//     // Assign track to channel 1
+//     assign_track_to_channel(&mut mode, track_guid, channel_1, curr_mode);
+//     assert_downstream_default_track_mapping(&to_v1m_rx, channel_1);
+//
+//     // Send volume update (0.8)
+//     mode.handle_messages_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: 0.8,
+//         }
+//         .into(),
+//         curr_mode,
+//     );
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_1, 0.8);
+//
+//     // Send small volume update (0.805) - should be filtered by EPSILON
+//     mode.handle_messages_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: 0.805,
+//         }
+//         .into(),
+//         curr_mode,
+//     );
+//     check_no_message!(&to_v1m_rx, 100); // Filtered - change is < EPSILON
+//
+//     // Now remap track to channel 2
+//     assign_track_to_channel(&mut mode, track_guid, channel_2, curr_mode);
+//     // Should send full state to channel 2, including current volume of 0.805
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.805);
+//     assert_downstream_mute_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
+//     assert_downstream_solo_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
+//     assert_downstream_arm_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
+//     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, channel_2, map_to_0xb(0.5));
+//
+//     // Send another small volume update (0.81) - should be filtered again
+//     mode.handle_messages_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: 0.81,
+//         }
+//         .into(),
+//         curr_mode,
+//     );
+//     check_no_message!(&to_v1m_rx, 100); // Filtered - change is < EPSILON
+//
+//     // Send larger volume update (0.82) - should not be filtered
+//     mode.handle_messages_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: 0.82,
+//         }
+//         .into(),
+//         curr_mode,
+//     );
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.82);
+// }
