@@ -663,18 +663,21 @@ fn main() {
     loop {
         select! {
             recv(from_socket_rx) -> msg => {
-            match msg {
-                Ok(msg) => {
-                    router.dispatch_osc(msg);
-                }
-                Err(e) => {
-                    println!("Error...")
+                match msg {
+                    Ok(msg) => {
+                        router.dispatch_osc(msg);
+                    }
+                    Err(e) => {
+                        println!("Error...")
+                    }
                 }
             }
-        }
             recv(to_reaper_rx) -> msg => {
                 match msg {
-                   Ok(track::TrackMsg::Muted(msg))  => {
+                    Ok(track::TrackMsg::Barrier(msg)) => {
+                        from_reaper_tx.send(track::TrackMsg::Barrier(msg)).unwrap();
+                    }
+                    Ok(track::TrackMsg::Muted(msg))  => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_mute(msg.track_guid).set(TrackMuteArgs{mute: msg.muted}) {
                                 Ok(_) => println!("Successfully set mute for track {} to {}", msg.track_guid, msg.muted),
@@ -723,7 +726,8 @@ fn main() {
                         })
                     }
                     Err(e) => {
-                        println!("Error...")}
+                        println!("Error...")
+                    }
                     _ => {}
                 }
             }
