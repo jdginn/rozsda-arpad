@@ -175,7 +175,14 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and increment it
                     let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
-                    let new_pan = (*current_pan + 0.05).min(1.0); // Clamp to max 1.0
+                    println!("Current pan {}", current_pan);
+                    let new_pan = match encoder_msg.accel {
+                        1 => (*current_pan + 0.05).min(1.0), // Increment by 0.05, clamp to max 1.0
+                        2 => (*current_pan + 0.1).min(1.0),  // Increment by 0.07, clamp to max 1.0
+                        3 => (*current_pan + 0.2).min(1.0),  // Increment by 0.1, clamp to max 1.0
+                        4 => (*current_pan + 0.4).min(1.0),  // Increment by 0.2, clamp to max 1.0
+                        _ => (*current_pan + 0.4).min(1.0),  // Increment by 0.2, clamp to max 1.0
+                    };
                     self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
@@ -204,7 +211,14 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and decrement it
                     let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
-                    let new_pan = (*current_pan - 0.05).min(1.0); // Clamp to max 1.0
+                    println!("Current pan {}", current_pan);
+                    let new_pan = match encoder_msg.accel {
+                        1 => (*current_pan - 0.05).max(-1.0), // Decrement by 0.05, clamp to min -1.0
+                        2 => (*current_pan - 0.1).max(-1.0), // Decrement by 0.05, clamp to min -1.0
+                        3 => (*current_pan - 0.2).max(-1.0), // Decrement by 0.05, clamp to min -1.0
+                        4 => (*current_pan - 0.4).max(-1.0), // Decrement by 0.05, clamp to min -1.0
+                        _ => (*current_pan - 0.4).max(-1.0), // Decrement by 0.05, clamp to min -1.0
+                    };
                     self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
