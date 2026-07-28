@@ -677,6 +677,22 @@ fn main() {
                             };
                         })
                     }
+                    Ok(track::TrackMsg::SendLevel(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_send_volume(msg.track_guid, msg.send_index-1).set(generated_osc::TrackSendVolumeArgs{volume: msg.level}) {
+                                Ok(_) => {},
+                                Err(e) => println!("Error setting send volume for track {} send {}", msg.track_guid, msg.send_index),
+                            };
+                        })
+                    }
+                    Ok(track::TrackMsg::SendPan(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_send_pan(msg.track_guid, msg.send_index-1).set(generated_osc::TrackSendPanArgs{pan: msg.pan}) {
+                                Ok(_) => {},
+                                Err(e) => println!("Error setting send pan for track {} send {}", msg.track_guid, msg.send_index),
+                            };
+                        })
+                    }
                     Err(e) => {
                         println!("Error...")
                     }
