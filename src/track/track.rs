@@ -4,7 +4,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
-use coalescible_derive::Coalescible;
+use coalescible_derive::{Coalescible, CoalescibleEnum};
 use derive_enum_from::EnumFrom;
 
 use crate::modes::mode_manager::Barrier;
@@ -13,7 +13,9 @@ use crate::modes::mode_manager::Barrier;
 #[derive(Clone, Debug, EnumFrom)]
 pub enum TrackMsg {
     Barrier(Barrier),
+    QueryAll,
     Query(TrackQuery),
+    Delete(Delete),
     Name(Name),
     ReaperTrackIndex(ReaperTrackIndex),
     Selected(Selected),
@@ -39,6 +41,7 @@ pub enum TrackMsg {
 // DataMsg exists to let us inspect whether a TrackMsg falls into this category of messages.
 #[derive(Clone, Debug)]
 pub enum DataMsg {
+    Delete(Delete),
     Name(Name),
     ReaperTrackIndex(ReaperTrackIndex),
     Selected(Selected),
@@ -65,6 +68,7 @@ impl TryFrom<TrackMsg> for DataMsg {
 
     fn try_from(msg: TrackMsg) -> Result<Self, Self::Error> {
         match msg {
+            TrackMsg::Delete(x) => Ok(DataMsg::Delete(x)),
             TrackMsg::Name(x) => Ok(DataMsg::Name(x)),
             TrackMsg::ReaperTrackIndex(x) => Ok(DataMsg::ReaperTrackIndex(x)),
             TrackMsg::Selected(x) => Ok(DataMsg::Selected(x)),
@@ -85,13 +89,21 @@ impl TryFrom<TrackMsg> for DataMsg {
             TrackMsg::FXParamMax(x) => Ok(DataMsg::FXParamMax(x)),
             TrackMsg::TrackData(x) => Ok(DataMsg::TrackData(x)),
 
-            other @ (TrackMsg::Barrier(_) | TrackMsg::Query(_)) => Err(other),
+            other @ (TrackMsg::Barrier(_) | TrackMsg::Query(_) | TrackMsg::QueryAll) => Err(other),
         }
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct QueryAll {}
+
 #[derive(Copy, Clone, Debug)]
 pub struct TrackQuery {
+    pub guid: Uuid,
+}
+
+#[derive(Clone, Debug, Coalescible)]
+pub struct Delete {
     pub guid: Uuid,
 }
 
@@ -360,6 +372,141 @@ pub struct TrackManager {
 }
 
 impl TrackManager {
+    fn send_track_query(&self, guid: &Uuid) {
+        if let Some(track) = self.tracks.get(guid) {
+            let response = TrackMsg::TrackData(track.clone());
+            self.to_downstream.send(response).unwrap();
+            self.to_downstream
+                .send(TrackMsg::ReaperTrackIndex(ReaperTrackIndex {
+                    track_guid: track.track_guid,
+                    track_index: track.reaper_track_index,
+                }))
+                .unwrap();
+            self.to_downstream
+                .send(TrackMsg::Name(Name {
+                    track_guid: track.track_guid,
+                    name: track.name.clone(),
+                }))
+                .unwrap();
+            self.to_downstream
+                .send(TrackMsg::Muted(Muted {
+                    track_guid: track.track_guid,
+                    muted: track.muted,
+                }))
+                .unwrap();
+            self.to_downstream
+                .send(TrackMsg::Soloed(Soloed {
+                    track_guid: track.track_guid,
+                    soloed: track.soloed,
+                }))
+                .unwrap();
+            self.to_downstream
+                .send(TrackMsg::Armed(Armed {
+                    track_guid: track.track_guid,
+                    armed: track.armed,
+                }))
+                .unwrap();
+            self.to_downstream
+                .send(TrackMsg::Volume(Volume {
+                    track_guid: track.track_guid,
+                    volume: track.volume,
+                }))
+                .unwrap();
+            self.to_downstream
+                .send(TrackMsg::Pan(Pan {
+                    track_guid: track.track_guid,
+                    pan: track.pan,
+                }))
+                .unwrap();
+            for (send_index, send) in track.sends.iter().enumerate() {
+                self.to_downstream
+                    .send(TrackMsg::SendIndex(SendIndex {
+                        track_guid: send.track_guid,
+                        send_index: send_index as i32,
+                        send_guid: send.target_guid,
+                    }))
+                    .unwrap();
+                self.to_downstream
+                    .send(TrackMsg::SendLevel(SendLevel {
+                        track_guid: send.track_guid,
+                        send_index: send_index as i32,
+                        level: send.level,
+                    }))
+                    .unwrap();
+                self.to_downstream
+                    .send(TrackMsg::SendPan(SendPan {
+                        track_guid: send.track_guid,
+                        send_index: send_index as i32,
+                        pan: send.pan,
+                    }))
+                    .unwrap();
+            }
+            for (fx_index, fx) in track.fx.iter().enumerate() {
+                self.to_downstream
+                    .send(TrackMsg::FXGuid(FXGuid {
+                        track_guid: fx.track_guid,
+                        fx_index: fx_index as i32,
+                        guid: fx.guid,
+                    }))
+                    .unwrap();
+                self.to_downstream
+                    .send(TrackMsg::FXName(FXName {
+                        track_guid: fx.track_guid,
+                        fx_index: fx_index as i32,
+                        name: fx.name.clone(),
+                    }))
+                    .unwrap();
+                self.to_downstream
+                    .send(TrackMsg::FXEnabled(FXEnabled {
+                        track_guid: fx.track_guid,
+                        fx_index: fx_index as i32,
+                        enabled: fx.enabled,
+                    }))
+                    .unwrap();
+                for (param_index, param) in fx.params.iter().enumerate() {
+                    self.to_downstream
+                        .send(TrackMsg::FXParamName(FXParamName {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            param_index: param_index as i32,
+                            name: format!("Param {}", param_index),
+                        }))
+                        .unwrap();
+                    self.to_downstream
+                        .send(TrackMsg::FXParamValue(FXParamValue {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            param_index: param_index as i32,
+                            value: param.value,
+                        }))
+                        .unwrap();
+                    self.to_downstream
+                        .send(TrackMsg::FXParamMin(FXParamMin {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            param_index: param_index as i32,
+                            min: param.min,
+                        }))
+                        .unwrap();
+                    self.to_downstream
+                        .send(TrackMsg::FXParamMax(FXParamMax {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            param_index: param_index as i32,
+                            max: param.max,
+                        }))
+                        .unwrap();
+                }
+            }
+            self.to_downstream
+                .send(TrackMsg::Selected(Selected {
+                    track_guid: track.track_guid,
+                    selected: track.selected,
+                }))
+                .unwrap();
+        }
+    }
+
     pub fn start(
         from_uptream: Receiver<TrackMsg>,
         to_upstream: Sender<TrackMsg>,
@@ -390,16 +537,6 @@ impl TrackManager {
                                         // Simply forward barriers
                                         manager.to_downstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
                                     }
-                                    Err(TrackMsg::Query(query_msg)) => {
-                                        println!("Received track query for GUID: {}", query_msg.guid);
-                                        let msg_cloned = query_msg;
-                                        // Respond with ALL of the current track data
-                                        if let Some(track) = manager.tracks.get(&msg_cloned.guid) {
-                                            println!("Found track data for GUID: {}, sending response", msg_cloned.guid);
-                                            let response = TrackMsg::TrackData(track.clone());
-                                            manager.to_upstream.send(response).unwrap();
-                                        }
-                                    }
                                     Err(other) => {
                                         println!("Received unsupported message type from upstream (this should never happen): {:?}", other);
                                     }
@@ -426,11 +563,12 @@ impl TrackManager {
                                     }
                                     Err(TrackMsg::Query(query_msg)) => {
                                         println!("Received track query for GUID: {}", query_msg.guid);
-                                        let msg_cloned = query_msg;
-                                        // Respond with ALL of the current track data
-                                        if let Some(track) = manager.tracks.get(&msg_cloned.guid) {
-                                            let response = TrackMsg::TrackData(track.clone());
-                                            manager.to_downstream.send(response).unwrap();
+                                            manager.send_track_query(&query_msg.guid);
+                                    }
+                                    Err(TrackMsg::QueryAll) => {
+                                        println!("Received track query for all tracks");
+                                        for guid in manager.tracks.keys() {
+                                            manager.send_track_query(guid);
                                         }
                                     }
                                     Err(other) => {
@@ -460,6 +598,13 @@ impl TrackManager {
     // can reuse the same code to handle upstream and downstream messages. DRY
     pub fn handle_track_data_msg(&mut self, msg: DataMsg) {
         match msg {
+            DataMsg::Delete(msg) => {
+                println!("Deleting track with GUID: {}", msg.guid);
+                self.tracks.remove(&msg.guid);
+                if self.selected_track == Some(msg.guid) {
+                    self.selected_track = None;
+                }
+            }
             DataMsg::Name(msg) => {
                 self.get_or_create_track(msg.track_guid).name = msg.name.clone();
             }

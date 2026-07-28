@@ -133,12 +133,13 @@ fn main() {
         to_track_manager_rx.clone(),
         from_track_manager_tx.clone(),
     );
-    mode_manager::ModeManager::start(
+    mode_manager::ModeManager::new_from_channels(
         from_track_manager_rx.clone(),
         to_track_manager_tx.clone(),
         to_mode_manager_rx.clone(),
         from_mode_manager_tx.clone(),
-    );
+    )
+    .run();
     let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
         match find_v1m_ports() {
             Ok(ports) => ports,
@@ -186,6 +187,14 @@ fn main() {
                                 ctx.track_guid, key_messages
                             );
                             let track_guid = ctx.track_guid;
+                            reaper.track_delete(track_guid).bind({
+                                let a_send = a_send.clone();
+                                move |_| {
+                                    a_send
+                                        .try_send(track::Delete { guid: track_guid }.into())
+                                        .unwrap();
+                                }
+                            });
                             // Track Index
                             //
                             // For now, we aren't doing anything with this
