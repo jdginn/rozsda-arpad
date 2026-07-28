@@ -355,7 +355,6 @@ impl TrackManager {
                     recv(manager.from_upstream) -> result=> {
                         match result{
                             Ok(msg) => {
-                                println!("Received message from upstream: {:?}", msg);
                                 match DataMsg::try_from(msg.clone()){
                                     Ok(data_msg) =>  {
                                         manager.handle_track_data_msg(data_msg.clone());
@@ -390,7 +389,6 @@ impl TrackManager {
                     recv(manager.from_downstream) -> result=> {
                         match result{
                             Ok(msg) => {
-                                println!("Received message from downstream: {:?}", msg);
                                 match DataMsg::try_from(msg.clone()){
                                     Ok(data_msg) =>  {
                                         manager.handle_track_data_msg(data_msg.clone());
@@ -439,41 +437,30 @@ impl TrackManager {
         match msg {
             DataMsg::Name(msg) => {
                 self.get_or_create_track(msg.track_guid).name = msg.name.clone();
-                println!("Track {} name set to {}", msg.track_guid, msg.name);
             }
             DataMsg::ReaperTrackIndex(msg) => {
                 self.get_or_create_track(msg.track_guid).reaper_track_index = msg.track_index;
-                println!(
-                    "Track {} Reaper index set to {:?}",
-                    msg.track_guid, msg.track_index
-                );
             }
             DataMsg::Selected(msg) => {
                 self.get_or_create_track(msg.track_guid).selected = msg.selected;
                 if msg.selected {
                     self.selected_track = Some(msg.track_guid);
                 }
-                println!("Track {} selected set to {}", msg.track_guid, msg.selected);
             }
             DataMsg::Muted(msg) => {
                 self.get_or_create_track(msg.track_guid).muted = msg.muted;
-                println!("Track {} muted set to {}", msg.track_guid, msg.muted);
             }
             DataMsg::Soloed(msg) => {
                 self.get_or_create_track(msg.track_guid).soloed = msg.soloed;
-                println!("Track {} soloed set to {}", msg.track_guid, msg.soloed);
             }
             DataMsg::Armed(msg) => {
                 self.get_or_create_track(msg.track_guid).armed = msg.armed;
-                println!("Track {} armed set to {}", msg.track_guid, msg.armed);
             }
             DataMsg::Volume(msg) => {
                 self.get_or_create_track(msg.track_guid).volume = msg.volume;
-                println!("Track {} volume set to {}", msg.track_guid, msg.volume);
             }
             DataMsg::Pan(msg) => {
                 self.get_or_create_track(msg.track_guid).pan = msg.pan;
-                println!("Track {} pan set to {}", msg.track_guid, msg.pan);
             }
             // Update everything!
             DataMsg::TrackData(track_data) => {
@@ -481,10 +468,6 @@ impl TrackManager {
             }
             DataMsg::SendIndex(msg) => {
                 self.get_or_create_track(msg.track_guid).set_send_index(msg);
-                println!(
-                    "Track {} send {} target GUID set to {}",
-                    msg.track_guid, msg.send_index, msg.send_guid
-                );
             }
             DataMsg::SendLevel(msg) => {
                 if let Some(send) = self
@@ -492,10 +475,6 @@ impl TrackManager {
                     .get_send_state(msg.send_index)
                 {
                     send.level = msg.level;
-                    println!(
-                        "Track {} send {} level set to {}",
-                        msg.track_guid, msg.send_index, msg.level
-                    );
                 }
             }
             DataMsg::SendPan(msg) => {
@@ -504,10 +483,6 @@ impl TrackManager {
                     .get_send_state(msg.send_index)
                 {
                     send.pan = msg.pan;
-                    println!(
-                        "Track {} send {} pan set to {}",
-                        msg.track_guid, send.send_index, msg.pan
-                    );
                 }
             }
             DataMsg::FXGuid(msg) => {
