@@ -172,10 +172,6 @@ impl Set<u16> for PitchBendBuilder<'_> {
             Channel::new(self.spec.channel),
             helgoboss_midi::U14::new(value),
         );
-        println!(
-            "Sending pitch bend change: channel={}, value={}",
-            self.spec.channel, value
-        );
         self.device
             .midi_out
             .send(&byte_slice(message))
@@ -249,7 +245,6 @@ impl MidiDevice {
                         ))
                         .unwrap()
                         .to_structured();
-                        println!("Received message: {:?}", structured);
                         match structured {
                             StructuredShortMessage::NoteOn {
                                 channel,
