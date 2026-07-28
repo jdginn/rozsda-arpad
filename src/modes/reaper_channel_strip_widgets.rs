@@ -1,6 +1,5 @@
-use crossbeam_channel::Sender;
-
 use crate::midi::v1m;
+use crate::modes::mode_manager::{DownstreamIo, UpstreamIo};
 use crate::modes::reaper_channel_strip_router::{
     BandMode, BypassMode, ChannelStripMsg, CompOrder, CompType, EqPosition, EqType, SaturationType,
 };
@@ -87,7 +86,6 @@ struct ChannelWidgetColors {
 /// ChannelWidgetCore handles shared logic around mode switching and message passing.
 struct ChannelWidgetCore {
     mode: ChannelWidgetMode,
-    to_downstream: Sender<v1m::DownstreamMsg>,
 }
 
 impl ChannelWidgetCore {
@@ -190,11 +188,10 @@ pub struct ChannelWidget<B: ChannelWidgetBehavior> {
 }
 
 impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
-    pub fn new(to_downstream: Sender<v1m::DownstreamMsg>) -> Self {
+    pub fn new() -> Self {
         Self {
             core: ChannelWidgetCore {
                 mode: ChannelWidgetMode::Default,
-                to_downstream,
             },
             behavior: B::new(),
         }
@@ -296,7 +293,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         // TODO: send feedback
     }
 
-    fn send_feedback(&mut self) {
+    fn send_feedback(&mut self, io: &mut dyn UpstreamIo) {
         // FIXME: depends on actually implementing scribble for v1m...
 
         // TODO: send color, labels, and range info downstream
@@ -309,17 +306,14 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         // self.core.downstream_tx.send(v1mDownstreaMsg::SetLabel2(B::INDEX, self.behavior.label2()) FIXME: add to trait
 
         // Toy example
-        self.core
-            .to_downstream
-            .send(
-                v1m::EncoderRingMsg {
-                    idx: B::INDEX as i32,
-                    mode: v1m::EncoderRingMode::Point,
-                    val: 0, // TODO: get from behavior
-                }
-                .into(),
-            )
-            .unwrap();
+        io.send_to_v1m(
+            v1m::EncoderRingMsg {
+                idx: B::INDEX as i32,
+                mode: v1m::EncoderRingMode::Point,
+                val: 0, // TODO: get from behavior
+            }
+            .into(),
+        )
     }
 
     // TODO: this needs to return ChannelStripMsg (and possibly send upstream through a channel?)

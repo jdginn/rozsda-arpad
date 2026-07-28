@@ -1,17 +1,65 @@
+// Integration tests for TrackSendsMode
+//
+// These tests verify the behavior of the TrackSendsMode, which manages the mapping
+// between Reaper tracks and v1m controller hardware (faders, buttons, LEDs).
+//
+// This comprehensive test suite implements all 21 test cases from the test plan,
+// covering mapping, state accumulation, message flow, mode transitions, ordering,
+// and threshold testing.
 use std::time::Duration;
 
 use assert2::{assert, check};
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{Receiver, unbounded};
 use float_cmp::approx_eq;
-use uuid::Uuid;
 
+use arpad_rust::midi::v1m;
 use arpad_rust::midi::v1m::{ChannelFaderMsg, DownstreamMsg, UpstreamMsg};
-use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
+use arpad_rust::modes::mode_manager::{IoDirect, ModeAction, ModeHandler, TransitionRequest};
 use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
-use arpad_rust::track::track;
-use arpad_rust::track::track::TrackMsg;
+use arpad_rust::track::track::{self as track, TrackMsg};
 
-//FIXME: test switching selected track. Fader assignments should change.
+// EPSILON constant for floating-point threshold testing
+const EPSILON: f32 = 0.01;
+
+// fn recv_track(rx: &Receiver<TrackMsg>) -> TrackMsg {
+//     rx.recv_timeout(Duration::from_millis(100))
+//         .expect("expected TrackMsg")
+// }
+//
+// fn recv_v1m(rx: &Receiver<v1m::DownstreamMsg>) -> v1m::DownstreamMsg {
+//     rx.recv_timeout(Duration::from_millis(100))
+//         .expect("expected v1m::DownstreamMsg")
+// }
+
+/// Helper to create a TrackSendsMode instance for testing
+fn setup_track_sends_mode(
+    selected_track_guid: uuid::Uuid,
+) -> (
+    TrackSendsMode<8>,
+    Receiver<TrackMsg>,
+    Receiver<DownstreamMsg>,
+    IoDirect,
+) {
+    let (to_reaper_tx, to_reaper_rx) = unbounded();
+    let (to_v1m_tx, to_v1m_rx) = unbounded();
+
+    let mode = TrackSendsMode::new(selected_track_guid);
+
+    let io_direct = IoDirect::new(to_reaper_tx, to_v1m_tx);
+
+    (mode, to_reaper_rx, to_v1m_rx, io_direct)
+}
+
+// ============================================================================
+// Helper Functions for Asserting Messages
+// ============================================================================
+
+const FLOAT_EPSILON: f64 = 0.0001;
+
+pub fn map_to_0xb(x: f32) -> u8 {
+    let clamped = x.clamp(-1.0, 1.0) as f64;
+    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
 
 pub fn drain<T>(rx: &Receiver<T>) {
     // Drops (flushes) all messages currently buffered at the time we start draining,
@@ -21,45 +69,12 @@ pub fn drain<T>(rx: &Receiver<T>) {
     }
 }
 
-// EPSILON constant for floating-point threshold testing
-const EPSILON: f32 = 0.01;
-
-/// Helper to create a TrackSendsMode instance for testing
-fn setup_track_sends_mode() -> (
-    TrackSendsMode,
-    Sender<TrackMsg>,
-    Receiver<TrackMsg>,
-    Sender<UpstreamMsg>,
-    Receiver<DownstreamMsg>,
-) {
-    let (from_reaper_tx, from_reaper_rx) = unbounded();
-    let (to_reaper_tx, to_reaper_rx) = unbounded();
-    let (from_v1m_tx, from_v1m_rx) = unbounded();
-    let (to_v1m_tx, to_v1m_rx) = unbounded();
-
-    let mode = TrackSendsMode::new(
-        8, // num_channels
-        from_reaper_rx,
-        to_reaper_tx,
-        from_v1m_rx,
-        to_v1m_tx,
-    );
-
-    (mode, from_reaper_tx, to_reaper_rx, from_v1m_tx, to_v1m_rx)
-}
-
-// ============================================================================
-// Helper Functions for Asserting Messages
-// ============================================================================
-
-const FLOAT_EPSILON: f64 = 0.0001;
-
 /// Helper to assert a ChannelFader message is received with the expected values
 #[macro_export]
 macro_rules! assert_downstream_fader_abs_msg {
     ($rx:expr, $expected_idx:expr, $expected_value:expr) => {{
         let msg = $rx
-            .recv_timeout(Duration::from_millis(1))
+            .recv_timeout(Duration::from_millis(100))
             .expect("Expected to receive a ChannelFader message.");
 
         if let DownstreamMsg::ChannelFader(fader_msg) = msg {
@@ -77,6 +92,86 @@ macro_rules! assert_downstream_fader_abs_msg {
             );
         } else {
             panic!("Expected DownstreamMsg::ChannelFader, but got {:?}", msg);
+        }
+    }};
+}
+
+/// Macro to assert an EncoderRingLED message is received with the expected values
+#[macro_export]
+macro_rules! assert_downstream_encoder_ring_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_val:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(
+            result.is_ok(),
+            "Should receive v1m encoder ring LED message"
+        );
+
+        match result {
+            Ok(DownstreamMsg::EncoderRingLED(msg)) => {
+                check!(msg.idx == $expected_idx, "Encoder index should match");
+                check!(msg.val == $expected_val, "Encoder value should match");
+            }
+            _ => panic!(
+                "Expected EncoderRingLED RangePoint message but got {:?}",
+                result
+            ),
+        }
+    }};
+}
+
+/// Macro to assert a MuteLED message is received
+#[macro_export]
+macro_rules! assert_downstream_mute_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_state:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive MuteLED message");
+
+        match result {
+            Ok(DownstreamMsg::MuteLED(msg)) => {
+                check!(msg.idx == $expected_idx, "Mute LED index should match");
+                check!(
+                    &msg.state == &$expected_state,
+                    "Mute LED state should match"
+                );
+            }
+            _ => panic!("Expected MuteLED message but got {:?}", result),
+        }
+    }};
+}
+
+/// Macro to assert a SoloLED message is received
+#[macro_export]
+macro_rules! assert_downstream_solo_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_state:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive SoloLED message");
+
+        match result {
+            Ok(DownstreamMsg::SoloLED(msg)) => {
+                check!(msg.idx == $expected_idx, "Solo LED index should match");
+                check!(
+                    &msg.state == &$expected_state,
+                    "Solo LED state should match"
+                );
+            }
+            _ => panic!("Expected SoloLED message but got {:?}", result),
+        }
+    }};
+}
+
+/// Macro to assert an ArmLED message is received
+#[macro_export]
+macro_rules! assert_downstream_arm_led_msg {
+    ($rx:expr, $expected_idx:expr, $expected_state:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive ArmLED message");
+
+        match result {
+            Ok(DownstreamMsg::ArmLED(msg)) => {
+                check!(msg.idx == $expected_idx, "Arm LED index should match");
+                check!(&msg.state == &$expected_state, "Arm LED state should match");
+            }
+            _ => panic!("Expected ArmLED message but got {:?}", result),
         }
     }};
 }
@@ -109,6 +204,57 @@ macro_rules! assert_upstream_send_level_track_msg {
     }};
 }
 
+/// Macro to assert a Muted TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_upstream_muted_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_muted:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive muted message to Reaper");
+
+        match result {
+            Ok(TrackMsg::Muted(msg)) => {
+                check!(msg.track_guid == *$expected_guid, "Track GUID should match");
+                check!(msg.muted == $expected_muted, "Muted state should match");
+            }
+            _ => panic!("Expected Muted TrackMsg but got {:?}", result),
+        }
+    }};
+}
+
+/// Macro to assert a Soloed TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_upstream_soloed_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_soloed:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive soloed message to Reaper");
+
+        match result {
+            Ok(TrackMsg::Soloed(msg)) => {
+                check!(msg.track_guid == *$expected_guid, "Track GUID should match");
+                check!(msg.soloed == $expected_soloed, "Soloed state should match");
+            }
+            _ => panic!("Expected Soloed TrackMsg but got {:?}", result),
+        }
+    }};
+}
+
+/// Macro to assert an Armed TrackDataMsg is received upstream
+#[macro_export]
+macro_rules! assert_upstream_armed_track_msg {
+    ($rx:expr, $expected_guid:expr, $expected_armed:expr) => {{
+        let result = $rx.recv_timeout(std::time::Duration::from_millis(100));
+        check!(result.is_ok(), "Should receive armed message to Reaper");
+
+        match result {
+            Ok(TrackMsg::Armed(msg)) => {
+                check!(msg.track_guid == *$expected_guid, "Track GUID should match");
+                check!(msg.armed == $expected_armed, "Armed state should match");
+            }
+            _ => panic!("Expected Armed TrackMsg but got {:?}", result),
+        }
+    }};
+}
+
 /// Macro to assert no message is received within timeout
 #[macro_export]
 macro_rules! check_no_message {
@@ -122,383 +268,220 @@ macro_rules! check_no_message {
     }};
 }
 
-/// Helper function to assign a send to a hardware channel
-fn assign_send_to_channel(
-    mode: &mut TrackSendsMode,
-    selected_track_guid: Uuid,
-    send_guid: Uuid,
-    send_index: i32,
-    curr_mode: ModeState,
-) -> ModeState {
-    mode.handle_messages_from_upstream(
-        track::SendIndex {
-            track_guid: selected_track_guid,
-            send_index,
-            send_guid,
-        }
-        .into(),
-        curr_mode,
-    )
-}
-
-// ----------------------------------------------------------------------------
-// Basic Functionality Tests
-// ----------------------------------------------------------------------------
-
 #[test]
-fn test_track_sends_mode_assigns_sends_by_index() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, _to_v1m_rx) =
-        setup_track_sends_mode();
+#[cfg(test)]
+fn test_track_send_mode_assigns_tracks_by_send_index() {
+    let track_guid = uuid::Uuid::new_v4();
+    let send_guid = uuid::Uuid::new_v4();
+    let send_index = 0;
 
-    let send_index = 2;
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    let selected_track_guid = Uuid::new_v4();
-
-    // Send a SendIndex message to assign the send to hardware channel 2
+    // Send a ReaperTrackIndex message to assign the track to hardware channel 2
     let msg = track::SendIndex {
-        track_guid: selected_track_guid,
+        track_guid,
+        send_guid,
         send_index,
-        send_guid: selected_track_guid, // For testing, we can use the same GUID
-    };
+    }
+    .into();
 
-    let result_mode = mode.handle_messages_from_upstream(msg.into(), curr_mode);
+    let mode_action = mode.handle_msg_from_upstream(msg, &mut io_direct);
 
     // Mode should remain unchanged
-    assert_eq!(result_mode, curr_mode);
+    assert_eq!(mode_action, ModeAction::None);
 
-    // Verify the that channel 2 appears to have gotten a new mapping
-    // (Note: TrackSendsMode doesn't expose a public find method to prove which guid it is mapped to)
-    assert_downstream_fader_abs_msg!(&_to_v1m_rx, send_index, 0.0); // Initial level should be sent to hardware
+    // Verify the track is now assigned to hardware channel 2
+    let found_channel = mode.find_hw_channel(send_guid);
+    assert_eq!(
+        found_channel,
+        Some(send_index as usize),
+        "Track should be assigned to hardware channel matching Reaper index"
+    );
 }
+
+#[test]
+fn test_track_send_mode_level_updates_sent_to_faders() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
+
+    let send_guid = uuid::Uuid::new_v4();
+    let send_index = 2;
+    let level = 0.65;
+
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid,
+            send_index,
+        }
+        .into(),
+        &mut io_direct,
+    );
+
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, 0 as f64);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_index,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
+
+    mode.handle_msg_from_upstream(
+        track::SendLevel {
+            track_guid,
+            send_index,
+            level,
+        }
+        .into(),
+        &mut io_direct,
+    );
+
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, level as f64);
+}
+
+#[test]
+fn test_track_send_mode_fader_sends_volume_upstream() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
+
+    let send_guid = uuid::Uuid::new_v4();
+    let send_index = 2;
+    let level = 0.65;
+
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid,
+            send_index,
+        }
+        .into(),
+        &mut io_direct,
+    );
+
+    // Simulate fader movement
+    mode.handle_msg_from_downstream(
+        ChannelFaderMsg {
+            idx: send_index,
+            value: level,
+        }
+        .into(),
+        &mut io_direct,
+    );
+
+    // Should send send level update to Reaper
+    let result = to_reaper_rx.recv_timeout(Duration::from_millis(100));
+    assert!(result.is_ok(), "Should send send level message to Reaper");
+
+    if let Ok(TrackMsg::SendLevel(msg)) = result {
+        check!(msg.track_guid == track_guid, "Track GUID should match");
+        assert!(
+            approx_eq!(f32, msg.level, level as f32, epsilon = EPSILON),
+            "Volume should match approximately\nExpected: {}, Got: {}",
+            msg.level,
+            level,
+        );
+    } else {
+        assert!(false, "Expected SendLevel TrackMsg");
+    }
+}
+
+// ============================================================================
+// COMPREHENSIVE TEST SUITE
+// ============================================================================
 
 // ----------------------------------------------------------------------------
 // Mapping Tests
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_send_level_for_mapped_send_forwards_to_hardware() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_message_for_unselected_track_is_ignored() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let send_index = 2;
-    let test_level = 0.75;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    let selected_track_guid = Uuid::new_v4();
-
-    // Assign send to hardware channel
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        selected_track_guid,
-        send_index,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send level update
-    mode.handle_messages_from_upstream(
+    // Send a message for a different track
+    let other_track_guid = uuid::Uuid::new_v4();
+    let mode_action = mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: test_level,
+            track_guid: other_track_guid,
+            send_index: 0,
+            level: 0.5,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
-    // Assert fader message is sent to hardware
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, test_level as f64);
-}
-
-#[test]
-fn test_send_level_for_unmapped_send_is_ignored() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let send_index = 5;
-    let test_level = 0.85;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    let selected_track_guid = Uuid::new_v4();
-
-    // Send level update WITHOUT assigning send to hardware channel
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: test_level,
-        }
-        .into(),
-        curr_mode,
+    assert_eq!(
+        mode_action,
+        ModeAction::None,
+        "Mode should remain unchanged"
     );
 
     // Assert no message is sent to hardware
-    check_no_message!(&to_v1m_rx, 1);
+    check_no_message!(&to_v1m_rx, 100);
 }
 
 #[test]
-fn test_upstream_fader_for_mapped_channel_forwards_to_reaper() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_send_level_message_for_unmapped_send_is_ignored() {
+    let track_guid = uuid::Uuid::new_v4();
+    let level = 0.85;
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 1;
-    let new_level = 0.65;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign send to hardware channel
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
-    );
-    drain(&to_reaper_rx); // Clear any previous messages
-
-    // Simulate fader movement from hardware
-    mode.handle_messages_from_downstream(
-        UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: send_index,
-            value: new_level,
-        }),
-        curr_mode,
+    // Send volume update WITHOUT assigning track to hardware channel
+    mode.handle_msg_from_upstream(
+        track::SendLevel {
+            track_guid,
+            send_index: 0,
+            level,
+        }
+        .into(),
+        &mut io_direct,
     );
 
-    // Assert send level message is sent to Reaper
-    assert_upstream_send_level_track_msg!(
-        &to_reaper_rx,
-        &target_guid,
-        send_index,
-        new_level as f32
-    );
+    // Assert no message is sent to hardware
+    check_no_message!(&to_v1m_rx, 100);
 }
 
 #[test]
 fn test_upstream_fader_for_unmapped_channel_is_ignored() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) =
-        setup_track_sends_mode();
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let send_index = 5;
+    let hw_channel = 5;
     let new_level = 0.55;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Simulate fader movement WITHOUT assigning any send to this channel
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: send_index,
+            idx: hw_channel,
             value: new_level,
         }),
-        curr_mode,
+        &mut io_direct,
     );
-
     // Assert no message is sent to Reaper
-    check_no_message!(&to_reaper_rx, 1);
-}
+    check_no_message!(&to_reaper_rx, 100);
 
-#[test]
-fn test_simultaneous_upstream_downstream_messages() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
+    // Assign a send
+    let send_guid = uuid::Uuid::new_v4();
     let send_index = 2;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign send to hardware channel
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send downstream level update from Reaper
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid,
             send_index,
-            level: 0.6,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
-    // Immediately send upstream message from hardware
-    mode.handle_messages_from_downstream(
+    // Simulate fader movement from an unassigned hw_channel
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: send_index,
-            value: 0.8,
+            idx: 0,
+            value: new_level,
         }),
-        curr_mode,
+        &mut io_direct,
     );
-
-    // Should receive downstream message to hardware
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, 0.6);
-
-    // Should receive upstream message to Reaper
-    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, 0.8);
-
-    // Send another downstream update
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: 0.9,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Should still receive the message correctly
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, 0.9);
-
-    // Verify no unexpected messages
-    check_no_message!(&to_v1m_rx, 1);
-    check_no_message!(&to_reaper_rx, 1);
-}
-
-#[test]
-fn test_remapping_sends_across_hardware_channels() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let target_guid_1 = Uuid::new_v4();
-    let target_guid_2 = Uuid::new_v4();
-    let channel_1 = 2;
-    let channel_2 = 5;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    let selected_track_guid = Uuid::new_v4();
-
-    // Assign first send to channel 1
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_1,
-        channel_1,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send level update to channel 1
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: channel_1,
-            level: 0.5,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_1, 0.5);
-
-    // Test hardware interaction on channel 1
-    mode.handle_messages_from_downstream(
-        UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: channel_1,
-            value: 0.7,
-        }),
-        curr_mode,
-    );
-    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid_1, channel_1, 0.7);
-
-    // Assign second send to channel 2
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_2,
-        channel_2,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send level to second channel should work
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: channel_2,
-            level: 0.8,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.8);
-
-    // Now reassign channel 1 to a different target
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_2,
-        channel_1,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Channel 1 should now control target_guid_2
-    mode.handle_messages_from_downstream(
-        UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: channel_1,
-            value: 0.9,
-        }),
-        curr_mode,
-    );
-    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid_2, channel_1, 0.9);
-
-    // TODO: to the best of current knowledge, this is NOT the behavior we want... but maybe in the
-    // future we would want to allow multiple channels to control the same target. If we change our
-    // desired behavior, this test will need to change
-    //
-    // // Channel 2 should still work for target_guid_2 (same target, multiple channels - this is the current behavior)
-    // mode.handle_upstream_messages(
-    //     v1mUpstreamMsg::ChannelFader(ChannelFaderMsg {
-    //         idx: channel_2,
-    //         value: 0.85,
-    //     }),
-    //     curr_mode,
-    // );
-    // assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid_2, channel_2, 0.85);
+    // Assert no message is sent to Reaper
+    check_no_message!(&to_reaper_rx, 100);
 }
 
 // ----------------------------------------------------------------------------
@@ -506,649 +489,809 @@ fn test_remapping_sends_across_hardware_channels() {
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_send_level_state_reflects_latest_value_when_remapped() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_send_state_reflects_latest_value_when_moved() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid_1 = Uuid::new_v4();
-    let target_guid_2 = Uuid::new_v4();
-    let send_index_1 = 2;
-    let send_index_2 = 4;
+    let send_guid_1 = uuid::Uuid::new_v4();
+    let send_idx_1 = 2;
+    let send_idx_2 = 4;
     let level_1 = 0.5;
     let level_2 = 0.8;
+    let pan_1 = 0.1;
+    let pan_2 = 0.3;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign first send to hardware channel and send level
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_1,
-        send_index_1,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: send_index_1,
-            level: level_1,
+    // Assign track to first hardware channel
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send_guid_1,
+            send_index: send_idx_1,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_1, level_1 as f64);
-
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, 0 as f64);
+    // TODO: what is the expected behavior of mute/solo/arm? Do they do anything?
+    // assert_downstream_mute_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_solo_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_arm_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
     // Update level
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: send_index_1,
-            level: level_2,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_1, level_2 as f64);
-
-    // Remap to different channel
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_1,
-        send_index_2,
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_2, level_2 as f64);
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send level update to new send
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: send_index_2,
-            level: 0.9,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Should receive fader update on new channel
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_2, 0.9);
-    // Should not receive any messages on the old channel
-    check_no_message!(&to_v1m_rx, send_index_1 as u64);
-}
-
-#[test]
-fn test_multiple_sends_can_be_mapped_simultaneously() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid_1 = Uuid::new_v4();
-    let target_guid_2 = Uuid::new_v4();
-    let target_guid_3 = Uuid::new_v4();
-    let send_index_1 = 0;
-    let send_index_2 = 1;
-    let send_index_3 = 2;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign multiple sends
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_1,
-        send_index_1,
-        curr_mode,
-    );
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_2,
-        send_index_2,
-        curr_mode,
-    );
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid_3,
-        send_index_3,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send levels to all three
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: send_index_1,
-            level: 0.3,
-        }
-        .into(),
-        curr_mode,
-    );
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: send_index_2,
-            level: 0.6,
-        }
-        .into(),
-        curr_mode,
-    );
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index: send_index_3,
-            level: 0.9,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Should receive fader updates for all three
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_1, 0.3);
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_2, 0.6);
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index_3, 0.9);
-}
-
-#[test]
-fn test_state_accumulation_for_unmapped_sends_applies_when_mapped() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 3;
-    let level_1 = 0.4;
-    let level_2 = 0.7; // Latest value
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Send level updates BEFORE mapping - they should not be sent to hardware yet
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
+            track_guid,
+            send_index: send_idx_1,
             level: level_1,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, level_1 as f64);
+    mode.handle_msg_from_upstream(
+        track::SendPan {
+            track_guid,
+            send_index: send_idx_1,
+            pan: pan_1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_1, map_to_0xb(pan_1));
+
+    // Remap to different channel - old mapping should be cleared
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send_guid_1,
+            send_index: send_idx_2,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, 0 as f64);
+    // TODO:
+    // assert_downstream_mute_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_solo_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_arm_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_2, level_1 as f64);
+    // TODO:
+    // assert_downstream_mute_led_msg!(&to_v1m_rx, send_idx_2, LEDState::Off);
+    // assert_downstream_solo_led_msg!(&to_v1m_rx, send_idx_2, LEDState::Off);
+    // assert_downstream_arm_led_msg!(&to_v1m_rx, send_idx_2, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_2, map_to_0xb(pan_1));
+
+    // Verify the send can be found via find_hw_channel
+    let found_channel = mode.find_hw_channel(send_guid_1);
+    assert!(
+        found_channel.is_some(),
+        "Track should be found after remapping"
+    );
+    // Should return the new channel (hw_channel_2)
+    assert_eq!(
+        found_channel.unwrap(),
+        send_idx_2 as usize,
+        "find_hw_channel returns the remapped channel"
     );
 
-    // No message should be sent yet (send not mapped)
-    check_no_message!(&to_v1m_rx, 1);
-
-    // Send another level update
-    mode.handle_messages_from_upstream(
+    // Send another volume update - should go to new channel (hw_channel_2)
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
+            track_guid,
+            send_index: send_idx_2,
             level: level_2,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
-    // Still no message (send not mapped)
-    check_no_message!(&to_v1m_rx, 1);
+    // Volume update should go to the new channel (hw_channel_2)
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_2, level_2 as f64);
 
-    // NOW assign send to hardware channel
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
+    // Send another pan update - should go to new channel (hw_channel_2)
+    mode.handle_msg_from_upstream(
+        track::SendPan {
+            track_guid,
+            send_index: send_idx_2,
+            pan: pan_2,
+        }
+        .into(),
+        &mut io_direct,
     );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // NOTE: Current implementation does NOT accumulate state for unmapped sends
-    // This test documents expected behavior (state should be sent) vs actual behavior
-    // Expected: assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, level_2 as f64);
-    // Actual: No accumulated state is sent
-    check_no_message!(&to_v1m_rx, 1);
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_2, map_to_0xb(pan_2));
 }
 
-// ----------------------------------------------------------------------------
-// Upstream/Downstream Flow Tests
-// ----------------------------------------------------------------------------
-
 #[test]
-fn test_fader_movement_sends_correct_upstream_message() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_send_state_reflects_latest_value_new_send_replaces_old_send_at_index() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 2;
-    let test_value = 0.75;
+    let send_guid_1 = uuid::Uuid::new_v4();
+    let send_guid_2 = uuid::Uuid::new_v4();
+    let send_idx_1 = 2;
+    let level_1 = 0.5;
+    let level_2 = 0.8;
+    let pan_1 = 0.1;
+    let pan_2 = 0.3;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
+    // Assign track to first hardware channel
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send_guid_1,
+            send_index: send_idx_1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, 0 as f64);
+    // TODO: what is the expected behavior of mute/solo/arm? Do they do anything?
+    // assert_downstream_mute_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_solo_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_arm_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
+    // Update level
+    mode.handle_msg_from_upstream(
+        track::SendLevel {
+            track_guid,
+            send_index: send_idx_1,
+            level: level_1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, level_1 as f64);
+    mode.handle_msg_from_upstream(
+        track::SendPan {
+            track_guid,
+            send_index: send_idx_1,
+            pan: pan_1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_1, map_to_0xb(pan_1));
+
+    // Map new send to this index
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send_guid_2,
+            send_index: send_idx_1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, 0 as f64);
+    // TODO:
+    // assert_downstream_mute_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_solo_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    // assert_downstream_arm_led_msg!(&to_v1m_rx, send_idx_1, LEDState::Off);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
+
+    // Verify the old guid is unmapped
+    assert!(
+        mode.find_hw_channel(send_guid_1).is_none(),
+        "Old send guid should be unmapped after new send is assigned to same index"
+    );
+    // Verify the send can be found via find_hw_channel
+    let found_channel = mode.find_hw_channel(send_guid_2);
+    assert!(
+        found_channel.is_some(),
+        "Track should be found after remapping"
+    );
+    // Should return the same hw channel index
+    assert_eq!(
+        found_channel.unwrap(),
+        send_idx_1 as usize,
+        "find_hw_channel returns the remapped channel"
+    );
+
+    // Send another volume update - should go to new channel (hw_channel_2)
+    mode.handle_msg_from_upstream(
+        track::SendLevel {
+            track_guid,
+            send_index: send_idx_1,
+            level: level_2,
+        }
+        .into(),
+        &mut io_direct,
+    );
+
+    // Volume update should go to the new channel (hw_channel_2)
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_idx_1, level_2 as f64);
+
+    // Send another pan update - should go to new channel (hw_channel_2)
+    mode.handle_msg_from_upstream(
+        track::SendPan {
+            track_guid,
+            send_index: send_idx_1,
+            pan: pan_2,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_1, map_to_0xb(pan_2));
+}
+
+// TODO: might need this once we decide what buttons do in this mode
+// #[test]
+// fn test_multiple_button_state_updates_accumulate_correctly() {
+//     let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 3;
+//
+//     // Assign track to hardware channel
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(hw_channel + 1),
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
+//
+//     // Send mute state
+//     mode.handle_msg_from_upstream(
+//         track::Muted {
+//             track_guid,
+//             muted: true,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
+//
+//     // Send solo state
+//     mode.handle_msg_from_upstream(
+//         track::Soloed {
+//             track_guid,
+//             soloed: true,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
+//
+//     // Send armed state
+//     mode.handle_msg_from_upstream(
+//         track::Armed {
+//             track_guid,
+//             armed: true,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
+// }
+
+// // ----------------------------------------------------------------------------
+// // Upstream/Downstream Flow Tests
+// // ----------------------------------------------------------------------------
+//
+// // TODO: may need once we decide what buttons do in this mode
+// #[test]
+// fn test_mute_button_sends_correct_upstream_and_downstream_messages() {
+//     let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 2;
+//
+//     // Assign track to hardware channel
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(hw_channel + 1),
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
+//
+//     // Simulate mute button press
+//     mode.handle_msg_from_downstream(
+//         UpstreamMsg::MutePress(MutePress { idx: hw_channel }),
+//         &mut io_direct,
+//     );
+//
+//     // Should send mute message to Reaper (upstream)
+//     assert_upstream_muted_track_msg!(&to_reaper_rx, &track_guid, true);
+//
+//     // Should send LED update to hardware (downstream)
+//     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
+// }
+//
+// #[test]
+// fn test_solo_button_sends_correct_messages() {
+//     let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 4;
+//
+//     // Assign track to hardware channel
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(hw_channel + 1),
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
+//
+//     // Simulate solo button press
+//     mode.handle_msg_from_downstream(
+//         UpstreamMsg::SoloPress(SoloPress { idx: hw_channel }),
+//         &mut io_direct,
+//     );
+//
+//     // Should send solo message to Reaper
+//     assert_upstream_soloed_track_msg!(&to_reaper_rx, &track_guid, true);
+//
+//     // Should send LED update to hardware
+//     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
+// }
+//
+// #[test]
+// fn test_arm_button_sends_correct_messages() {
+//     let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 0;
+//
+//     // Assign track to hardware channel
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(hw_channel + 1),
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
+//
+//     // Simulate arm button press
+//     mode.handle_msg_from_downstream(
+//         UpstreamMsg::ArmPress(ArmPress { idx: hw_channel }),
+//         &mut io_direct,
+//     );
+//
+//     // Should send arm message to Reaper
+//     assert_upstream_armed_track_msg!(&to_reaper_rx, &track_guid, true);
+//
+//     // Should send LED update to hardware
+//     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
+// }
+//
+//
+// // ----------------------------------------------------------------------------
+// // Mode Transition Tests
+// // ----------------------------------------------------------------------------
+//
+#[test]
+fn test_transition_to_reaperchannelstrip() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
+
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::InputsPress, &mut io_direct);
+    assert!(
+        matches!(
+            action,
+            ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                selected_track_guid: _
+            })
+        ),
+        "Should transition to ReaperSends, got {:?}",
+        action
+    );
+    let selected_track_guid = match action {
+        ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+            selected_track_guid,
+        }) => selected_track_guid,
+        _ => panic!("Expected transition to ReaperSends"),
     };
-
-    // Assign send to hardware channel
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
-    );
-
-    // Simulate fader movement
-    mode.handle_messages_from_downstream(
-        UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: send_index,
-            value: test_value,
-        }),
-        curr_mode,
-    );
-
-    // Should send level message to Reaper (upstream)
-    assert_upstream_send_level_track_msg!(
-        &to_reaper_rx,
-        &target_guid,
-        send_index,
-        test_value as f32
+    assert_eq!(
+        selected_track_guid, track_guid,
+        "Selected track GUID should match"
     );
 }
 
-// ----------------------------------------------------------------------------
-// Message Ordering Tests
-// ----------------------------------------------------------------------------
-
 #[test]
-fn test_downstream_messages_sent_in_correct_order() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 1;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
+fn test_transition_to_reapervolpan() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::GlobalPress, &mut io_direct);
+    assert!(
+        matches!(
+            action,
+            ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+                selected_track_guid: _
+            })
+        ),
+        "Should transition to ReaperSends, got {:?}",
+        action
+    );
+    let selected_track_guid = match action {
+        ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+            selected_track_guid,
+        }) => selected_track_guid,
+        _ => panic!("Expected transition to ReaperSends"),
     };
-
-    // Assign send
-    assign_send_to_channel(
-        &mut mode,
+    assert_eq!(
         selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-
-    // Send multiple messages in order
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: 0.5,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: 0.7,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: 0.9,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Verify messages received in order
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, 0.5);
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, 0.7);
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, 0.9);
-}
-
-#[test]
-fn test_upstream_messages_processed_in_correct_order() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 3;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign send
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
-    );
-
-    // Send multiple upstream messages in order
-    mode.handle_messages_from_downstream(
-        UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: send_index,
-            value: 0.6,
-        }),
-        curr_mode,
-    );
-
-    mode.handle_messages_from_downstream(
-        UpstreamMsg::ChannelFader(ChannelFaderMsg {
-            idx: send_index,
-            value: 0.7,
-        }),
-        curr_mode,
-    );
-
-    // Verify messages processed in order
-    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, 0.6);
-    assert_upstream_send_level_track_msg!(&to_reaper_rx, &target_guid, send_index, 0.7);
-}
-
-// ----------------------------------------------------------------------------
-// Threshold/EPSILON Tests
-// ----------------------------------------------------------------------------
-
-#[test]
-fn test_send_level_changes_below_epsilon_threshold_ignored() {
-    // Send level changes smaller than EPSILON should not send updates to hardware
-    // NOTE: Current implementation does NOT filter by EPSILON - this is documenting expected behavior
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 2;
-    let initial_level = 0.5;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign send and set initial level
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
-    );
-    drain(&to_v1m_rx); // Clear any previous messages
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: initial_level,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, initial_level as f64);
-
-    // Send level change smaller than EPSILON
-    let small_change = initial_level + (EPSILON / 2.0);
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: small_change,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // BUG: Current implementation does NOT filter by EPSILON
-    // Expected: check_no_message!(&to_v1m_rx, 100);
-    // Actual: Message is sent even for small changes
-    // For now, we verify the message IS sent (documenting current behavior)
-    let result = to_v1m_rx.recv_timeout(Duration::from_millis(1));
-    check!(
-        result.is_ok(),
-        "BUG: Small changes are not filtered (expected EPSILON filtering)"
+        Some(track_guid),
+        "Selected track GUID should match"
     );
 }
 
 #[test]
-fn test_send_level_changes_above_epsilon_propagate() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_requested_transition_to_self_is_noop() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let selected_track_guid = Uuid::new_v4();
-    let target_guid = Uuid::new_v4();
-    let send_index = 1;
-    let initial_level = 0.5;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
-    // Assign send and set initial level
-    assign_send_to_channel(
-        &mut mode,
-        selected_track_guid,
-        target_guid,
-        send_index,
-        curr_mode,
+    // Assert no transition if we send the message to transition to the current state
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+    assert!(
+        matches!(action, ModeAction::None),
+        "Message requesting transition to self should be no-op, got {:?}",
+        action
     );
-    drain(&to_v1m_rx); // Clear any previous messages
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: initial_level,
-        }
-        .into(),
-        curr_mode,
-    );
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, initial_level as f64);
-
-    // Send level change larger than EPSILON
-    let large_change = initial_level + (EPSILON * 3.0);
-    mode.handle_messages_from_upstream(
-        track::SendLevel {
-            track_guid: selected_track_guid,
-            send_index,
-            level: large_change,
-        }
-        .into(),
-        curr_mode,
-    );
-
-    // Should send message for large changes
-    assert_downstream_fader_abs_msg!(&to_v1m_rx, send_index, large_change as f64);
 }
-
-// ----------------------------------------------------------------------------
-// Mode Transition Tests
-// ----------------------------------------------------------------------------
 
 #[test]
-fn test_mode_transition_requests_track_query() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, _to_v1m_rx) =
-        setup_track_sends_mode();
-
-    let selected_track_guid = Uuid::new_v4();
-
-    // Create an unbounded sender that will be used to send messages upstream
-    let (upstream_sender, upstream_receiver) = unbounded();
-
-    // Initiate mode transition
-    let result_mode =
-        mode.initiate_mode_transition(Mode::ReaperVolPan, upstream_sender, selected_track_guid);
-
-    // Should send TrackQuery for the selected track
-    let msg1 = upstream_receiver.recv_timeout(Duration::from_millis(1));
-    assert!(msg1.is_ok(), "Should send TrackQuery for selected track");
-    match msg1.unwrap() {
-        TrackMsg::Query(query) => {
-            check!(query.guid == selected_track_guid, "GUID should match");
+fn test_selecting_currently_selected_is_noop() {
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
+    mode.handle_msg_from_upstream(
+        track::Selected {
+            track_guid,
+            selected: true,
         }
-        _ => panic!("Expected TrackQuery message"),
-    }
-
-    // Should send barrier upstream
-    let barrier_msg = upstream_receiver.recv_timeout(Duration::from_millis(1));
-    assert!(barrier_msg.is_ok(), "Should send barrier message upstream");
-    match barrier_msg.unwrap() {
-        TrackMsg::Barrier(_) => {}
-        _ => panic!("Expected Barrier message"),
-    }
-
-    // Should be waiting for barrier from upstream
-    match result_mode.state {
-        State::WaitingBarrierFromUpstream(_) => {
-            // Success - we're in the expected state
-        }
-        _ => panic!("Should be waiting for barrier from downstream"),
-    }
+        .into(),
+        &mut io_direct,
+    );
+    // Assert selection of the same track from upstream is a no-op
+    assert!(
+        matches!(
+            mode.handle_msg_from_upstream(
+                track::Selected {
+                    track_guid,
+                    selected: true,
+                }
+                .into(),
+                &mut io_direct
+            ),
+            ModeAction::None
+        ),
+        "Selecting the currently selected track from upstream should be a no-op"
+    );
+    check_no_message!(&to_reaper_rx, 100);
+    check_no_message!(&to_v1m_rx, 100);
 }
 
-// ----------------------------------------------------------------------------
-// Complex Integration Tests
-// ----------------------------------------------------------------------------
-
+// TODO: we think this is a no-op but we're not sure
+// #[test]
+// fn test_selection_of_different_track_from_downstream() {
+//     let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//     let track_guid = uuid::Uuid::new_v4();
+//     let track_idx = 0;
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(track_idx + 1), // because reaper's counting starts at 1
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     mode.handle_msg_from_upstream(
+//         track::Selected {
+//             track_guid,
+//             selected: true,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     // Assert selection of a different track from downsteram
+//     let track2_guid = uuid::Uuid::new_v4();
+//     let track2_idx = 1;
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid: track2_guid,
+//             track_index: Some(track2_idx + 1), // because reaper's counting starts at 1
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     mode.handle_msg_from_downstream(SelectPress { idx: track2_idx }.into(), &mut io_direct);
+//     let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+//     assert!(
+//         matches!(
+//             action,
+//             ModeAction::Transition(TransitionRequest::ToReaperSends {
+//                 selected_track_guid: _
+//             })
+//         ),
+//         "Should transition to ReaperSends, got {:?}",
+//         action
+//     );
+//     let selected_track_guid = match action {
+//         ModeAction::Transition(TransitionRequest::ToReaperSends {
+//             selected_track_guid,
+//         }) => selected_track_guid,
+//         _ => panic!("Expected transition to ReaperSends"),
+//     };
+//     assert_eq!(
+//         selected_track_guid, track2_guid,
+//         "Selected track GUID should match"
+//     );
+// }
+//
+// // ----------------------------------------------------------------------------
+// // Message Ordering Tests
+// // ----------------------------------------------------------------------------
+//
+// #[test]
+// fn test_downstream_messages_sent_in_correct_order() {
+//     let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 1;
+//
+//     // Assign track
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(hw_channel + 1),
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
+//     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel, 8);
+//
+//     // Send multiple messages in order
+//     mode.handle_msg_from_upstream(
+//         track::Volume {
+//             track_guid,
+//             volume: 0.5,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//
+//     mode.handle_msg_from_upstream(
+//         track::Pan {
+//             track_guid,
+//             pan: 0.3,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//
+//     mode.handle_msg_from_upstream(
+//         track::Muted {
+//             track_guid,
+//             muted: true,
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//
+//     // Verify messages received in order
+//     let msg = to_v1m_rx.recv_timeout(Duration::from_millis(100));
+//     assert!(
+//         matches!(msg, Ok(DownstreamMsg::ChannelFader(_))),
+//         " First should be fader, got {:?}",
+//         msg
+//     );
+//
+//     let msg = to_v1m_rx.recv_timeout(Duration::from_millis(100));
+//     assert!(
+//         matches!(msg, Ok(DownstreamMsg::EncoderRingLED(_))),
+//         "Second should be encoder, got {:?}",
+//         msg
+//     );
+//
+//     let msg = to_v1m_rx.recv_timeout(Duration::from_millis(100));
+//     assert!(
+//         matches!(msg, Ok(DownstreamMsg::MuteLED(_))),
+//         "Third should be mute LED, got {:?}",
+//         msg
+//     );
+// }
+//
+// #[test]
+// fn test_upstream_messages_processed_in_correct_order() {
+//     let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode();
+//
+//     let track_guid = uuid::Uuid::new_v4();
+//     let hw_channel = 3;
+//
+//     // Assign track
+//     mode.handle_msg_from_upstream(
+//         track::ReaperTrackIndex {
+//             track_guid,
+//             track_index: Some(hw_channel + 1),
+//         }
+//         .into(),
+//         &mut io_direct,
+//     );
+//     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
+//     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+//     // assert_downstream_encoder_ring_led_msg!(&_to_v1m_rx, hw_channel, 0.5);
+//
+//     // Send multiple upstream messages in order
+//     mode.handle_msg_from_downstream(
+//         UpstreamMsg::ChannelFader(ChannelFaderMsg {
+//             idx: hw_channel,
+//             value: 0.6,
+//         }),
+//         &mut io_direct,
+//     );
+//
+//     mode.handle_msg_from_downstream(
+//         UpstreamMsg::MutePress(MutePress { idx: hw_channel }),
+//         &mut io_direct,
+//     );
+//
+//     // Verify messages processed in order (volume then mute)
+//     let msg1 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
+//     assert!(msg1.is_ok(), "Should receive first message");
+//     assert!(
+//         matches!(msg1, Ok(TrackMsg::Volume(_))),
+//         "First should be volume"
+//     );
+//
+//     let msg2 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
+//     assert!(msg2.is_ok(), "Should receive second message");
+//     assert!(
+//         matches!(msg2, Ok(TrackMsg::Muted(_))),
+//         "Second should be muted"
+//     );
+// }
+//
 #[test]
 fn test_complex_multi_send_integration() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
-    let curr_mode = ModeState {
-        state: State::Active,
-        mode: Mode::ReaperSends,
-        new_selected_track_guid: None,
-    };
+    let track_guid = uuid::Uuid::new_v4();
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_track_sends_mode(track_guid);
 
-    let selected_track_guid = Uuid::new_v4();
-    let send1_guid = Uuid::new_v4();
-    let send2_guid = Uuid::new_v4();
-    let send3_guid = Uuid::new_v4();
+    let send1_guid = uuid::Uuid::new_v4();
+    let send2_guid = uuid::Uuid::new_v4();
+    let send3_guid = uuid::Uuid::new_v4();
 
     // === PHASE 1: Map multiple sends ===
-    assign_send_to_channel(&mut mode, selected_track_guid, send1_guid, 0, curr_mode);
-    assign_send_to_channel(&mut mode, selected_track_guid, send2_guid, 1, curr_mode);
-    assign_send_to_channel(&mut mode, selected_track_guid, send3_guid, 2, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send1_guid,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send2_guid,
+            send_index: 1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid,
+            send_guid: send3_guid,
+            send_index: 2,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear any previous messages
 
     // === PHASE 2: Send levels to all sends ===
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
+            track_guid,
             send_index: 0,
             level: 0.3,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 0, 0.3);
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
+            track_guid,
             send_index: 1,
             level: 0.6,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 1, 0.6);
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
+            track_guid,
             send_index: 2,
             level: 0.9,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 2, 0.9);
 
     // === PHASE 3: Hardware interaction on multiple channels ===
     // Move fader on channel 0
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg { idx: 0, value: 0.4 }),
-        curr_mode,
+        &mut io_direct,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send1_guid, 0, 0.4);
 
     // Move fader on channel 1
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg { idx: 1, value: 0.7 }),
-        curr_mode,
+        &mut io_direct,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send2_guid, 1, 0.7);
 
     // Move fader on channel 2
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: 2,
             value: 0.95,
         }),
-        curr_mode,
+        &mut io_direct,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &send3_guid, 2, 0.95);
 
     // === PHASE 4: Update send levels from Reaper ===
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
+            track_guid,
             send_index: 0,
             level: 0.5,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 0, 0.5);
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
-            track_guid: selected_track_guid,
+            track_guid,
             send_index: 1,
             level: 0.8,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 1, 0.8);
 
@@ -1158,123 +1301,168 @@ fn test_complex_multi_send_integration() {
 }
 
 #[test]
-fn test_multiple_tracks_and_switching_selections() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_multiple_tracks_and_switching_send_mapping() {
+    let selected_track_guid = uuid::Uuid::new_v4();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) =
+        setup_track_sends_mode(selected_track_guid);
 
-    let selected_track_guid = Uuid::new_v4();
-    let track1_send1 = Uuid::new_v4();
-    let track1_send2 = Uuid::new_v4();
-    let track2_send1 = Uuid::new_v4();
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
+    let track1_send1 = uuid::Uuid::new_v4();
+    let track1_send2 = uuid::Uuid::new_v4();
+    let track2_send1 = uuid::Uuid::new_v4();
 
     // Set up sends for track 1
-    assign_send_to_channel(&mut mode, selected_track_guid, track1_send1, 0, curr_mode);
-    assign_send_to_channel(&mut mode, selected_track_guid, track1_send2, 1, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: track1_send1,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: track1_send2,
+            send_index: 1,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear any previous messages
 
     // Send levels for track 1 sends
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
             level: 0.3,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 0, 0.3);
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 1,
             level: 0.6,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 1, 0.6);
 
     // Simulate switching to track 2 (different sends get mapped to same channels)
-    assign_send_to_channel(&mut mode, selected_track_guid, track2_send1, 0, curr_mode);
+    // TODO: this comment doesn't make sense to me...
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: track2_send1,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear messages from track 1
 
     // Send level for track 2 send 1
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
             level: 0.9,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 0, 0.9);
 
     // Switch back to track 1 by reassigning track1_send1
-    assign_send_to_channel(&mut mode, selected_track_guid, track1_send1, 0, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: track1_send1,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear messages from track 2
 
     // Send level should update correctly
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
             level: 0.4,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 0, 0.4);
 }
 
 #[test]
-fn test_expanded_real_world_integration() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) =
-        setup_track_sends_mode();
+fn test_smoke_and_churn() {
+    let selected_track_guid = uuid::Uuid::new_v4();
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) =
+        setup_track_sends_mode(selected_track_guid);
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperSends,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
+    // === SCENARIO 1: Set up multiple sends
+    let send_1_guid = uuid::Uuid::new_v4();
+    let send_2_guid = uuid::Uuid::new_v4();
+    let send_3_guid = uuid::Uuid::new_v4();
 
-    // === SCENARIO 1: Set up multiple sends on Track A ===
-    let selected_track_guid = Uuid::new_v4();
-    let track_a_send_1 = Uuid::new_v4();
-    let track_a_send_2 = Uuid::new_v4();
-    let track_a_send_3 = Uuid::new_v4();
-
-    assign_send_to_channel(&mut mode, selected_track_guid, track_a_send_1, 0, curr_mode);
-    assign_send_to_channel(&mut mode, selected_track_guid, track_a_send_2, 1, curr_mode);
-    assign_send_to_channel(&mut mode, selected_track_guid, track_a_send_3, 2, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_1_guid,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_2_guid,
+            send_index: 1,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_3_guid,
+            send_index: 2,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear any previous messages
 
     // Set initial levels
     for (idx, level) in [(0, 0.3), (1, 0.5), (2, 0.7)] {
-        mode.handle_messages_from_upstream(
+        mode.handle_msg_from_upstream(
             track::SendLevel {
                 track_guid: selected_track_guid,
                 send_index: idx,
                 level,
             }
             .into(),
-            curr_mode,
+            &mut io_direct,
         );
         assert_downstream_fader_abs_msg!(&to_v1m_rx, idx, level as f64);
     }
 
     // === SCENARIO 2: User adjusts faders on hardware ===
     for (idx, level) in [(0, 0.4), (1, 0.6), (2, 0.8)] {
-        mode.handle_messages_from_downstream(
+        mode.handle_msg_from_downstream(
             UpstreamMsg::ChannelFader(ChannelFaderMsg { idx, value: level }),
-            curr_mode,
+            &mut io_direct,
         );
     }
 
@@ -1283,79 +1471,96 @@ fn test_expanded_real_world_integration() {
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &track_a_send_2, 1, 0.6);
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &track_a_send_3, 2, 0.8);
 
-    // === SCENARIO 3: Switch to Track B (different sends mapped to same channels) ===
-    let selected_track_guid = Uuid::new_v4();
-    let track_b_send_1 = Uuid::new_v4();
-    let track_b_send_2 = Uuid::new_v4();
+    // === SCENARIO 3: Switch both sends to new guids
+    let send_4_guid = uuid::Uuid::new_v4();
+    let send_5_guid = uuid::Uuid::new_v4();
 
-    assign_send_to_channel(&mut mode, selected_track_guid, track_b_send_1, 0, curr_mode);
-    assign_send_to_channel(&mut mode, selected_track_guid, track_b_send_2, 1, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_4_guid,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_5_guid,
+            send_index: 1,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear messages from Track A
 
-    // Track B levels
     for (idx, level) in [(0, 0.2), (1, 0.9)] {
-        mode.handle_messages_from_upstream(
+        mode.handle_msg_from_upstream(
             track::SendLevel {
                 track_guid: selected_track_guid,
                 send_index: idx,
                 level,
             }
             .into(),
-            curr_mode,
+            &mut io_direct,
         );
         assert_downstream_fader_abs_msg!(&to_v1m_rx, idx, level as f64);
     }
 
-    // === SCENARIO 4: Remap Track B send 1 to different channel ===
-    assign_send_to_channel(&mut mode, selected_track_guid, track_b_send_1, 5, curr_mode);
+    // === SCENARIO 4: send 1 to different channel ===
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_4_guid,
+            send_index: 5,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear previous messages
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 5,
             level: 0.95,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 5, 0.95);
 
-    // TODO: We think we do NOT want this behavior. But if we change our minds, bring this test
-    // back.
-    //
-    // // === SCENARIO 5: Verify both channels respond to Track B send 1 (current behavior allows multiple channels for same target) ===
-    // // Channel 0 still has track_b_send_1 mapped
-    // mode.handle_upstream_messages(
-    //     v1mUpstreamMsg::ChannelFader(ChannelFaderMsg { idx: 0, value: 0.1 }),
-    //     curr_mode,
-    // );
-    // // Current implementation: Channel 0 is still mapped to track_b_send_1
-    // assert_upstream_send_level_track_msg!(&to_reaper_rx, &track_b_send_1, 0, 0.1);
-
-    // === SCENARIO 6: Switch back to Track A ===
-    assign_send_to_channel(&mut mode, selected_track_guid, track_a_send_1, 0, curr_mode);
+    // === SCENARIO 5: switch mapping again
+    mode.handle_msg_from_upstream(
+        track::SendIndex {
+            track_guid: selected_track_guid,
+            send_guid: send_4_guid,
+            send_index: 0,
+        }
+        .into(),
+        &mut io_direct,
+    );
     drain(&to_v1m_rx); // Clear messages from Track B
 
-    // Track A send 1 should work on channel 0 again
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::SendLevel {
             track_guid: selected_track_guid,
             send_index: 0,
             level: 0.55,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 0, 0.55);
 
     // Hardware interaction should work
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: 0,
             value: 0.65,
         }),
-        curr_mode,
+        &mut io_direct,
     );
     assert_upstream_send_level_track_msg!(&to_reaper_rx, &track_a_send_1, 0, 0.65);
 

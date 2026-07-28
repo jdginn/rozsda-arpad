@@ -17,6 +17,8 @@ use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
+pub const FADER_0DB: f32 = 0.72; // Placeholder value for 0dB on fader scale
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, std::hash::Hash)]
 pub enum StereoChannel {
     Left,
@@ -133,6 +135,8 @@ pub enum EncoderRingMode {
     FromLeft,
     Width,
 }
+
+pub const ENCODER_CENTER_MODE_CENTER: u8 = 0x06;
 
 impl std::fmt::Display for EncoderRingMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

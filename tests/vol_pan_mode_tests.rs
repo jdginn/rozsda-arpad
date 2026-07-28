@@ -9,42 +9,46 @@
 use std::time::Duration;
 
 use assert2::{assert, check};
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{Receiver, unbounded};
 use float_cmp::approx_eq;
 
+use arpad_rust::midi::v1m;
 use arpad_rust::midi::v1m::{
-    ArmPress, ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderTurnCW, LEDState, MutePress,
-    SoloPress, UpstreamMsg,
+    ArmPress, ChannelFaderMsg, DownstreamMsg, EncoderTurnCW, FADER_0DB, LEDState, MutePress,
+    SelectPress, SoloPress, UpstreamMsg,
 };
-use arpad_rust::modes::mode_manager::{Mode, ModeHandler, ModeState, State};
-use arpad_rust::modes::reaper_vol_pan::{FADER_0DB, VolumePanMode};
+use arpad_rust::modes::mode_manager::{IoDirect, ModeAction, ModeHandler, TransitionRequest};
+use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
 use arpad_rust::track::track::{self as track, TrackMsg};
 
 // EPSILON constant for floating-point threshold testing
 const EPSILON: f32 = 0.01;
 
+// fn recv_track(rx: &Receiver<TrackMsg>) -> TrackMsg {
+//     rx.recv_timeout(Duration::from_millis(100))
+//         .expect("expected TrackMsg")
+// }
+//
+// fn recv_v1m(rx: &Receiver<v1m::DownstreamMsg>) -> v1m::DownstreamMsg {
+//     rx.recv_timeout(Duration::from_millis(100))
+//         .expect("expected v1m::DownstreamMsg")
+// }
+
 /// Helper to create a VolumePanMode instance for testing
 fn setup_vol_pan_mode() -> (
-    VolumePanMode,
-    Sender<TrackMsg>,
+    VolumePanMode<8>,
     Receiver<TrackMsg>,
-    Sender<UpstreamMsg>,
     Receiver<DownstreamMsg>,
+    IoDirect,
 ) {
-    let (from_reaper_tx, from_reaper_rx) = unbounded();
     let (to_reaper_tx, to_reaper_rx) = unbounded();
-    let (from_v1m_tx, from_v1m_rx) = unbounded();
     let (to_v1m_tx, to_v1m_rx) = unbounded();
 
-    let mode = VolumePanMode::new(
-        8, // num_channels
-        from_reaper_rx,
-        to_reaper_tx,
-        from_v1m_rx,
-        to_v1m_tx,
-    );
+    let mode = VolumePanMode::new(None);
 
-    (mode, from_reaper_tx, to_reaper_rx, from_v1m_tx, to_v1m_rx)
+    let io_direct = IoDirect::new(to_reaper_tx, to_v1m_tx);
+
+    (mode, to_reaper_rx, to_v1m_rx, io_direct)
 }
 
 // ============================================================================
@@ -251,23 +255,6 @@ macro_rules! check_no_message {
     }};
 }
 
-/// Helper function to assign a track to a hardware channel
-fn assign_track_to_channel(
-    mode: &mut VolumePanMode,
-    guid: uuid::Uuid,
-    hw_channel: i32,
-    curr_mode: ModeState,
-) -> ModeState {
-    mode.handle_messages_from_upstream(
-        track::ReaperTrackIndex {
-            track_guid: guid,
-            track_index: Some(hw_channel + 1), // because reaper's counting starts at 1
-        }
-        .into(),
-        curr_mode,
-    )
-}
-
 /// Helper function to assert default track state messages after mapping
 /// Expects: fader at 0dB, all buttons off (LEDs off), pan at center (0.5)
 fn assert_downstream_default_track_mapping(to_v1m_rx: &Receiver<DownstreamMsg>, hw_channel: i32) {
@@ -275,21 +262,16 @@ fn assert_downstream_default_track_mapping(to_v1m_rx: &Receiver<DownstreamMsg>, 
     assert_downstream_mute_led_msg!(to_v1m_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(to_v1m_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(to_v1m_rx, hw_channel, 8);
+    assert_downstream_encoder_ring_led_msg!(to_v1m_rx, hw_channel, v1m::ENCODER_CENTER_MODE_CENTER);
 }
 
 #[test]
+#[cfg(test)]
 fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, _to_v1m_rx) = setup_vol_pan_mode();
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let reaper_index = 2;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
 
     // Send a ReaperTrackIndex message to assign the track to hardware channel 2
     let msg = track::ReaperTrackIndex {
@@ -298,10 +280,10 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
     }
     .into();
 
-    let result_mode = mode.handle_messages_from_upstream(msg, curr_mode);
+    let mode_action = mode.handle_msg_from_upstream(msg, &mut io_direct);
 
     // Mode should remain unchanged
-    assert_eq!(result_mode, curr_mode);
+    assert_eq!(mode_action, ModeAction::None);
 
     // Verify the track is now assigned to hardware channel 2
     let found_channel = mode.find_hw_channel(track_guid);
@@ -314,38 +296,32 @@ fn test_vol_pan_mode_assigns_tracks_by_reaper_index() {
 
 #[test]
 fn test_vol_pan_mode_volume_updates_sent_to_faders() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 3;
     let test_volume = 0.65;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // First, assign the track to a hardware channel
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::ReaperTrackIndex {
             track_guid,
             track_index: Some(hw_channel + 1), // because reaper's counting starts at 1
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
 
     // Now send a volume update
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: test_volume,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Should receive a fader update on v1m
@@ -374,26 +350,20 @@ fn test_vol_pan_mode_volume_updates_sent_to_faders() {
 
 #[test]
 fn test_vol_pan_mode_fader_sends_volume_upstream() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) = setup_vol_pan_mode();
+    let (mut mode, to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 0;
     let new_volume = 0.85;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::ReaperTrackIndex {
             track_guid,
             track_index: Some(hw_channel + 1), // because reaper's counting starts at 1
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Simulate fader movement
@@ -402,7 +372,7 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
         value: new_volume,
     });
 
-    mode.handle_messages_from_downstream(msg, curr_mode);
+    mode.handle_msg_from_downstream(msg, &mut io_direct);
 
     // Should send volume update to Reaper
     let result = to_reaper_rx.recv_timeout(Duration::from_millis(100));
@@ -426,35 +396,36 @@ fn test_vol_pan_mode_fader_sends_volume_upstream() {
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// Mapping Tests (Tests 1-4)
+// Mapping Tests
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_volume_message_for_mapped_track_forwards_to_hardware() {
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 2;
     let test_volume = 0.75;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
     // Send volume update
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: test_volume,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Assert fader message is sent to hardware
@@ -462,26 +433,20 @@ fn test_01_volume_message_for_mapped_track_forwards_to_hardware() {
 }
 
 #[test]
-fn test_02_volume_message_for_unmapped_track_is_ignored() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_volume_message_for_unmapped_track_is_ignored() {
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let test_volume = 0.85;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Send volume update WITHOUT assigning track to hardware channel
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: test_volume,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Assert no message is sent to hardware
@@ -489,29 +454,30 @@ fn test_02_volume_message_for_unmapped_track_is_ignored() {
 }
 
 #[test]
-fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) = setup_vol_pan_mode();
+fn test_upstream_fader_for_mapped_channel_forwards_to_reaper() {
+    let (mut mode, to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let new_volume = 0.65;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
 
     // Simulate fader movement from hardware
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: hw_channel,
             value: new_volume,
         }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Assert volume message is sent to Reaper
@@ -519,25 +485,19 @@ fn test_03_upstream_fader_for_mapped_channel_forwards_to_reaper() {
 }
 
 #[test]
-fn test_04_upstream_fader_for_unmapped_channel_is_ignored() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) = setup_vol_pan_mode();
+fn test_upstream_fader_for_unmapped_channel_is_ignored() {
+    let (mut mode, to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let hw_channel = 5;
     let new_volume = 0.55;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Simulate fader movement WITHOUT assigning any track to this channel
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: hw_channel,
             value: new_volume,
         }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Assert no message is sent to Reaper
@@ -545,12 +505,12 @@ fn test_04_upstream_fader_for_unmapped_channel_is_ignored() {
 }
 
 // ----------------------------------------------------------------------------
-// State Accumulation Tests (Tests 5-7)
+// State Accumulation Tests
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_05_volume_state_reflects_latest_value_when_remapped() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_volume_state_reflects_latest_value_when_remapped() {
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel_1 = 2;
@@ -558,47 +518,63 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
     let volume_1 = 0.5;
     let volume_2 = 0.8;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to first hardware channel and send volume
-    assign_track_to_channel(&mut mode, track_guid, hw_channel_1, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel_1 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel_1, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel_1, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel_1, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel_1, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel_1, 8);
-    mode.handle_messages_from_upstream(
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        hw_channel_1,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: volume_1,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel_1, volume_1 as f64);
 
     // Update volume
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: volume_2,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel_1, volume_2 as f64);
 
     // Remap to different channel - old mapping should be cleared
-    assign_track_to_channel(&mut mode, track_guid, hw_channel_2, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel_2 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel_2, volume_2 as f64);
     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel_2, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel_2, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel_2, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel_2, 8);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        hw_channel_2,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
 
     // Verify the track can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(track_guid);
@@ -615,13 +591,13 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
 
     // Send another volume update - should go to new channel (hw_channel_2)
     let volume_3 = 0.9;
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: volume_3,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Volume update should go to the new channel (hw_channel_2)
@@ -629,52 +605,53 @@ fn test_05_volume_state_reflects_latest_value_when_remapped() {
 }
 
 #[test]
-fn test_06_multiple_button_state_updates_accumulate_correctly() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_multiple_button_state_updates_accumulate_correctly() {
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 3;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
     // Send mute state
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Muted {
             track_guid,
             muted: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
 
     // Send solo state
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Soloed {
             track_guid,
             soloed: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
 
     // Send armed state
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Armed {
             track_guid,
             armed: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::On);
 }
@@ -685,43 +662,44 @@ fn test_pan_state_accumulates_and_applies_on_mapping() {
     // Ideally, state should accumulate for unmapped tracks and be sent when they're mapped.
     // This test documents current behavior.
 
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let pan_value_1 = 0.3;
     let pan_value_2 = 0.7; // Most recent value
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // First assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
     // Send pan values - they should accumulate
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid,
             pan: pan_value_1,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // First value should be sent
     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel, map_to_0xb(pan_value_1));
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid,
             pan: pan_value_2,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Updated value should be sent
@@ -733,46 +711,47 @@ fn test_pan_state_accumulates_before_mapping() {
     // This test demonstrates IDEAL behavior: state should accumulate for unmapped tracks
     // and be sent downstream when the track is mapped.
 
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
     let pan_value_1 = 0.3;
     let pan_value_2 = 0.7; // Most recent value should be sent
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Send pan values BEFORE mapping - they should be accumulated but not sent downstream yet
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid,
             pan: pan_value_1,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // No message should be sent yet (track not mapped)
     check_no_message!(&to_v1m_rx, 100);
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid,
             pan: pan_value_2,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Still no message (track not mapped)
     check_no_message!(&to_v1m_rx, 100);
 
     // NOW assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
@@ -781,30 +760,31 @@ fn test_pan_state_accumulates_before_mapping() {
 }
 
 // ----------------------------------------------------------------------------
-// Upstream/Downstream Flow Tests (Tests 8-11)
+// Upstream/Downstream Flow Tests
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_mute_button_sends_correct_upstream_and_downstream_messages() {
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 2;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
     // Simulate mute button press
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::MutePress(MutePress { idx: hw_channel }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Should send mute message to Reaper (upstream)
@@ -815,26 +795,27 @@ fn test_08_mute_button_sends_correct_upstream_and_downstream_messages() {
 }
 
 #[test]
-fn test_09_solo_button_sends_correct_messages() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_solo_button_sends_correct_messages() {
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 4;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
     // Simulate solo button press
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::SoloPress(SoloPress { idx: hw_channel }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Should send solo message to Reaper
@@ -845,26 +826,27 @@ fn test_09_solo_button_sends_correct_messages() {
 }
 
 #[test]
-fn test_10_arm_button_sends_correct_messages() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_arm_button_sends_correct_messages() {
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 0;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
     // Simulate arm button press
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ArmPress(ArmPress { idx: hw_channel }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Should send arm message to Reaper
@@ -875,46 +857,47 @@ fn test_10_arm_button_sends_correct_messages() {
 }
 
 #[test]
-fn test_11_pan_encoder_changes_forward_correctly() {
+fn test_pan_encoder_changes_forward_correctly() {
     // Encoder inc/dec messages should adjust pan and send updates to Reaper
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 5;
     let initial_pan = 0.5;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track to hardware channel and set initial pan
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_default_track_mapping(&to_v1m_rx, hw_channel);
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid,
             pan: initial_pan,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     // Clear the initial pan message
     let _ = to_v1m_rx.recv_timeout(Duration::from_millis(100));
 
     // Simulate encoder turn clockwise
-    let result_mode = mode.handle_messages_from_downstream(
+    let mode_action = mode.handle_msg_from_downstream(
         UpstreamMsg::EncoderTurnInc(EncoderTurnCW {
             idx: hw_channel,
             accel: 1,
         }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Mode should remain active and send pan update to Reaper
-    assert_eq!(result_mode.state, State::Active);
+    assert_eq!(mode_action, ModeAction::None);
 
     // Should receive a pan update message sent to Reaper
     let msg = to_reaper_rx.recv_timeout(Duration::from_millis(100));
@@ -926,163 +909,288 @@ fn test_11_pan_encoder_changes_forward_correctly() {
 }
 
 // ----------------------------------------------------------------------------
-// Mode Transition Tests (Tests 12-14)
+// Mode Transition Tests
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_12_state_propagates_correctly_during_mode_entry() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) = setup_vol_pan_mode();
+fn test_transition_to_reapersends_requires_selected_track() {
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
-    let track_guid_1 = uuid::Uuid::new_v4();
-    let track_guid_2 = uuid::Uuid::new_v4();
-    let hw_channel_1 = 0;
-    let hw_channel_2 = 1;
-
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
+    // Assert no transition occurs when no track is selected
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+    assert!(
+        matches!(action, ModeAction::None),
+        "Should not transition if no track is selected",
+    );
+}
+#[test]
+fn test_transition_to_reapersends() {
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
+    // Assert transition to ReaperSends with correct track_guid if a track is selected from upstream
+    let track_guid = uuid::Uuid::new_v4();
+    let track_idx = 0;
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(track_idx + 1), // because reaper's counting starts at 1
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::Selected {
+            track_guid,
+            selected: true,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+    assert!(
+        matches!(
+            action,
+            ModeAction::Transition(TransitionRequest::ToReaperSends {
+                selected_track_guid: _
+            })
+        ),
+        "Should transition to ReaperSends, got {:?}",
+        action
+    );
+    let selected_track_guid = match action {
+        ModeAction::Transition(TransitionRequest::ToReaperSends {
+            selected_track_guid,
+        }) => selected_track_guid,
+        _ => panic!("Expected transition to ReaperSends"),
     };
-
-    // Assign tracks to hardware channels
-    assign_track_to_channel(&mut mode, track_guid_1, hw_channel_1, curr_mode);
-    assign_track_to_channel(&mut mode, track_guid_2, hw_channel_2, curr_mode);
-
-    // Create an unbounded sender that will be used to send the barrier upstream
-    let (upstream_sender, upstream_receiver) = unbounded();
-
-    // Initiate mode transition
-    let _result_mode = mode.initiate_mode_transition(
-        ModeState {
-            mode: Mode::ReaperSends,
-            state: State::RequestingModeTransition,
-            new_selected_track_guid: Some(track_guid_1),
-        },
-        upstream_sender,
+    assert_eq!(
+        selected_track_guid, track_guid,
+        "Selected track GUID should match"
     );
 
-    // Should send TrackQuery for each assigned track
-    let msg1 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
-    assert!(msg1.is_ok(), "Should send TrackQuery for first track");
+    // Assert track deselection from upstream
+    mode.handle_msg_from_upstream(
+        track::Selected {
+            track_guid,
+            selected: false,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+    assert!(
+        matches!(action, ModeAction::None),
+        "Should not transition if no track is selected",
+    );
 
-    let msg2 = to_reaper_rx.recv_timeout(Duration::from_millis(100));
-    assert!(msg2.is_ok(), "Should send TrackQuery for second track");
+    // Assert transition to ReaperSends with correct track_guid if a track is selected from downstream
+    mode.handle_msg_from_downstream(SelectPress { idx: track_idx }.into(), &mut io_direct);
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+    assert!(
+        matches!(
+            action,
+            ModeAction::Transition(TransitionRequest::ToReaperSends {
+                selected_track_guid: _
+            })
+        ),
+        "Should transition to ReaperSends, got {:?}",
+        action
+    );
+    let selected_track_guid = match action {
+        ModeAction::Transition(TransitionRequest::ToReaperSends {
+            selected_track_guid,
+        }) => selected_track_guid,
+        _ => panic!("Expected transition to ReaperSends"),
+    };
+    assert_eq!(
+        selected_track_guid, track_guid,
+        "Selected track GUID should match"
+    );
+}
 
-    // Should send barrier upstream
-    let barrier_msg = upstream_receiver.recv_timeout(Duration::from_millis(100));
-    assert!(barrier_msg.is_ok(), "Should send barrier message upstream");
-    match barrier_msg.unwrap() {
-        TrackMsg::Barrier(_) => {}
-        _ => assert!(false, "Expected Barrier message"),
-    }
+#[test]
+fn test_selection_of_different_track_from_downstream() {
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
+    let track_guid = uuid::Uuid::new_v4();
+    let track_idx = 0;
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(track_idx + 1), // because reaper's counting starts at 1
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::Selected {
+            track_guid,
+            selected: true,
+        }
+        .into(),
+        &mut io_direct,
+    );
+    // Assert selection of a different track from downsteram
+    let track2_guid = uuid::Uuid::new_v4();
+    let track2_idx = 1;
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track2_guid,
+            track_index: Some(track2_idx + 1), // because reaper's counting starts at 1
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_downstream(SelectPress { idx: track2_idx }.into(), &mut io_direct);
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::MIDITracksPress, &mut io_direct);
+    assert!(
+        matches!(
+            action,
+            ModeAction::Transition(TransitionRequest::ToReaperSends {
+                selected_track_guid: _
+            })
+        ),
+        "Should transition to ReaperSends, got {:?}",
+        action
+    );
+    let selected_track_guid = match action {
+        ModeAction::Transition(TransitionRequest::ToReaperSends {
+            selected_track_guid,
+        }) => selected_track_guid,
+        _ => panic!("Expected transition to ReaperSends"),
+    };
+    assert_eq!(
+        selected_track_guid, track2_guid,
+        "Selected track GUID should match"
+    );
+}
+
+#[test]
+fn test_requested_transition_to_self_is_noop() {
+    let (mut mode, _to_reaper_rx, _to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
+
+    // Assert no transition if we send the message to transition to the current state
+    let action = mode.handle_msg_from_downstream(UpstreamMsg::GlobalPress, &mut io_direct);
+    assert!(
+        matches!(action, ModeAction::None),
+        "Message requesting transition to self should be no-op, got {:?}",
+        action
+    );
 }
 
 // ----------------------------------------------------------------------------
-// Message Ordering Tests (Tests 15-16)
+// Message Ordering Tests
 // ----------------------------------------------------------------------------
 
 #[test]
-fn test_15_downstream_messages_sent_in_correct_order() {
-    let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
+fn test_downstream_messages_sent_in_correct_order() {
+    let (mut mode, _to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 1;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel, 8);
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        hw_channel,
+        v1m::ENCODER_CENTER_MODE_CENTER
+    );
 
     // Send multiple messages in order
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid,
             volume: 0.5,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid,
             pan: 0.3,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Muted {
             track_guid,
             muted: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Verify messages received in order
-    let msg1 = to_v1m_rx.recv_timeout(Duration::from_millis(100));
+    let msg = to_v1m_rx.recv_timeout(Duration::from_millis(100));
     assert!(
-        matches!(msg1, Ok(DownstreamMsg::ChannelFader(_))),
-        "First should be fader"
+        matches!(msg, Ok(DownstreamMsg::ChannelFader(_))),
+        " First should be fader, got {:?}",
+        msg
     );
 
-    let msg2 = to_v1m_rx.recv_timeout(Duration::from_millis(100));
+    let msg = to_v1m_rx.recv_timeout(Duration::from_millis(100));
     assert!(
-        matches!(msg2, Ok(DownstreamMsg::EncoderRingLED(_))),
-        "Second should be encoder"
+        matches!(msg, Ok(DownstreamMsg::EncoderRingLED(_))),
+        "Second should be encoder, got {:?}",
+        msg
     );
 
-    let msg3 = to_v1m_rx.recv_timeout(Duration::from_millis(100));
+    let msg = to_v1m_rx.recv_timeout(Duration::from_millis(100));
     assert!(
-        matches!(msg3, Ok(DownstreamMsg::MuteLED(_))),
-        "Third should be mute LED"
+        matches!(msg, Ok(DownstreamMsg::MuteLED(_))),
+        "Third should be mute LED, got {:?}",
+        msg
     );
 }
 
 #[test]
-fn test_16_upstream_messages_processed_in_correct_order() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, _to_v1m_rx) = setup_vol_pan_mode();
+fn test_upstream_messages_processed_in_correct_order() {
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track_guid = uuid::Uuid::new_v4();
     let hw_channel = 3;
 
-    let curr_mode = ModeState {
-        mode: Mode::ReaperVolPan,
-        state: State::Active,
-        new_selected_track_guid: None,
-    };
-
     // Assign track
-    assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
-    assert_downstream_fader_abs_msg!(&_to_v1m_rx, hw_channel, FADER_0DB as f64);
-    assert_downstream_mute_led_msg!(&_to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_solo_led_msg!(&_to_v1m_rx, hw_channel, LEDState::Off);
-    assert_downstream_arm_led_msg!(&_to_v1m_rx, hw_channel, LEDState::Off);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid,
+            track_index: Some(hw_channel + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
+    assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
+    assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+    assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
+    assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
     // assert_downstream_encoder_ring_led_msg!(&_to_v1m_rx, hw_channel, 0.5);
 
     // Send multiple upstream messages in order
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: hw_channel,
             value: 0.6,
         }),
-        curr_mode,
+        &mut io_direct,
     );
 
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::MutePress(MutePress { idx: hw_channel }),
-        curr_mode,
+        &mut io_direct,
     );
 
     // Verify messages processed in order (volume then mute)
@@ -1101,58 +1209,6 @@ fn test_16_upstream_messages_processed_in_correct_order() {
     );
 }
 
-// ----------------------------------------------------------------------------
-// Threshold/EPSILON Tests (Tests 17-18)
-// ----------------------------------------------------------------------------
-
-// #[test]
-// fn test_17_volume_changes_below_epsilon_threshold_ignored() {
-//     // Volume changes smaller than EPSILON should not send updates to hardware
-//     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
-//
-//     let track_guid = uuid::Uuid::new_v4();
-//     let hw_channel = 2;
-//     let initial_volume = 0.5;
-//
-//     let curr_mode = ModeState {
-//         mode: Mode::ReaperVolPan,
-//         state: State::Active,
-//         new_selected_track_guid: None,
-//     };
-//
-//     // Assign track and set initial volume
-//     assign_track_to_channel(&mut mode, track_guid, hw_channel, curr_mode);
-//     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, FADER_0DB as f64);
-//     assert_downstream_mute_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-//     assert_downstream_solo_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-//     assert_downstream_arm_led_msg!(&to_v1m_rx, hw_channel, LEDState::Off);
-//     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, hw_channel, 8);
-//
-//     mode.handle_messages_from_upstream(
-//         track::Volume {
-//             track_guid,
-//             volume: initial_volume,
-//         }
-//         .into(),
-//         curr_mode,
-//     );
-//     assert_downstream_fader_abs_msg!(&to_v1m_rx, hw_channel, initial_volume as f64);
-//
-//     // Send volume change smaller than EPSILON
-//     let small_change = initial_volume + (EPSILON / 2.0);
-//     mode.handle_messages_from_upstream(
-//         track::Volume {
-//             track_guid,
-//             volume: small_change,
-//         }
-//         .into(),
-//         curr_mode,
-//     );
-//
-//     // Should NOT send message for changes smaller than EPSILON
-//     check_no_message!(&to_v1m_rx, 100);
-// }
-
 /// Complex multi-track integration test mixing mapping, remapping, state accumulation,
 /// and messages to unmapped tracks that later get mapped.
 ///
@@ -1164,12 +1220,7 @@ fn test_16_upstream_messages_processed_in_correct_order() {
 /// - Multiple types of state (volume, pan, buttons) are managed simultaneously
 #[test]
 fn test_complex_multi_track_integration() {
-    let (mut mode, _from_reaper_tx, to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
-    let curr_mode = ModeState {
-        state: State::Active,
-        mode: Mode::ReaperVolPan,
-        new_selected_track_guid: None,
-    };
+    let (mut mode, to_reaper_rx, to_v1m_rx, mut io_direct) = setup_vol_pan_mode();
 
     let track1_guid = uuid::Uuid::new_v4();
     let track2_guid = uuid::Uuid::new_v4();
@@ -1178,76 +1229,97 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 1: Send state updates to unmapped tracks ===
     // Track 1: Volume only
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track1_guid,
             volume: 0.75,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     check_no_message!(&to_v1m_rx, 100); // No hardware assigned yet
 
     // Track 2: Multiple updates (pan, mute, volume)
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid: track2_guid,
             pan: 0.3,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Muted {
             track_guid: track2_guid,
             muted: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track2_guid,
             volume: 0.9,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     check_no_message!(&to_v1m_rx, 100); // No hardware assigned yet
 
     // Track 3: Solo and arm
     // NOTE: Current implementation may not properly accumulate solo/arm state before mapping
     // This test documents current behavior
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Soloed {
             track_guid: track3_guid,
             soloed: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Armed {
             track_guid: track3_guid,
             armed: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     check_no_message!(&to_v1m_rx, 100); // No hardware assigned yet
 
     // === PHASE 2: Map tracks to hardware channels ===
     // Map all tracks first, then verify messages were sent in correct order
-    assign_track_to_channel(&mut mode, track1_guid, 1, curr_mode);
-    assign_track_to_channel(&mut mode, track2_guid, 2, curr_mode);
-    assign_track_to_channel(&mut mode, track3_guid, 3, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track1_guid,
+            track_index: Some(1 + 1), // Reaper track index starts at 1
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track2_guid,
+            track_index: Some(2 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track3_guid,
+            track_index: Some(3 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
 
     // Verify track 1 accumulated volume state sent to channel 1
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 1, 0.75);
     assert_downstream_mute_led_msg!(&to_v1m_rx, 1, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, 1, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_v1m_rx, 1, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 1, 8); // Default pan
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 1, v1m::ENCODER_CENTER_MODE_CENTER); // Default pan
 
     // Verify track 2 all accumulated state sent to channel 2
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 2, 0.9);
@@ -1261,22 +1333,22 @@ fn test_complex_multi_track_integration() {
     assert_downstream_mute_led_msg!(&to_v1m_rx, 3, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, 3, LEDState::On); // Solo accumulated!
     assert_downstream_arm_led_msg!(&to_v1m_rx, 3, LEDState::On); // Armed accumulated!
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 3, 8); // Default pan
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 3, v1m::ENCODER_CENTER_MODE_CENTER); // Default pan
 
     // === PHASE 3: Send updates to mapped tracks ===
     // Update track 1 volume (should send to hardware)
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track1_guid,
             volume: 0.6,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 1, 0.6);
 
     // Toggle mute on track 2 via hardware
-    mode.handle_messages_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 2 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 2 }), &mut io_direct);
     // Should send upstream to Reaper (unmute)
     assert_upstream_muted_track_msg!(&to_reaper_rx, &track2_guid, false);
     // Should update LED
@@ -1284,71 +1356,85 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 4: Remap track 1 to a different channel ===
     // Remap track 1 from channel 1 to channel 4
-    assign_track_to_channel(&mut mode, track1_guid, 4, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track1_guid,
+            track_index: Some(4 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     // Should send current state to new channel
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 4, 0.6); // Current volume
     assert_downstream_mute_led_msg!(&to_v1m_rx, 4, LEDState::Off);
     assert_downstream_solo_led_msg!(&to_v1m_rx, 4, LEDState::Off);
     assert_downstream_arm_led_msg!(&to_v1m_rx, 4, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 4, 8);
+    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 4, v1m::ENCODER_CENTER_MODE_CENTER);
 
     // Verify old channel (1) no longer responds to track 1 updates
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track1_guid,
             volume: 0.5,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     // Should only send to new channel (4), not old channel (1)
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 4, 0.5);
     check_no_message!(&to_v1m_rx, 100); // No additional messages
 
     // Verify upstream messages from old channel (1) have no effect
-    mode.handle_messages_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 1 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 1 }), &mut io_direct);
     // Should have no effect since track 1 is no longer mapped to channel 1
     check_no_message!(&to_reaper_rx, 100);
     check_no_message!(&to_v1m_rx, 100);
 
     // === PHASE 5: Send updates to still-unmapped track 4, then map it ===
     // Track 4 gets multiple updates while unmapped
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid: track4_guid,
             pan: 0.2,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid: track4_guid,
             pan: 0.8, // Updated pan value
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track4_guid,
             volume: 0.4,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Muted {
             track_guid: track4_guid,
             muted: true,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     check_no_message!(&to_v1m_rx, 100); // Still unmapped
 
     // Now map track 4 to channel 5
-    assign_track_to_channel(&mut mode, track4_guid, 5, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track4_guid,
+            track_index: Some(5 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     // Should send latest accumulated state (not intermediate values)
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 5, 0.4); // Latest volume
     assert_downstream_mute_led_msg!(&to_v1m_rx, 5, LEDState::On); // Latest mute
@@ -1362,36 +1448,36 @@ fn test_complex_multi_track_integration() {
     // we'll skip detailed EPSILON testing (covered in dedicated tests 17-18)
     // and just verify large changes work correctly.
     // Large volume change on track 4 - should go through
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track4_guid,
             volume: 0.7,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 5, 0.7);
 
     // === PHASE 7: Hardware interaction on multiple channels ===
     // Press arm button on channel 3 (track 3)
-    mode.handle_messages_from_downstream(UpstreamMsg::ArmPress(ArmPress { idx: 3 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::ArmPress(ArmPress { idx: 3 }), &mut io_direct);
     // Should toggle arm state (was on, now off)
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track3_guid, false);
     assert_downstream_arm_led_msg!(&to_v1m_rx, 3, LEDState::Off);
 
     // Press solo button on channel 4 (track 1)
-    mode.handle_messages_from_downstream(UpstreamMsg::SoloPress(SoloPress { idx: 4 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::SoloPress(SoloPress { idx: 4 }), &mut io_direct);
     // Should toggle solo state (was off, now on)
     assert_upstream_soloed_track_msg!(&to_reaper_rx, &track1_guid, true);
     assert_downstream_solo_led_msg!(&to_v1m_rx, 4, LEDState::On);
 
     // Move fader on channel 5 (track 4)
-    mode.handle_messages_from_downstream(
+    mode.handle_msg_from_downstream(
         UpstreamMsg::ChannelFader(ChannelFaderMsg {
             idx: 5,
             value: 0.55,
         }),
-        curr_mode,
+        &mut io_direct,
     );
     // Should send upstream to Reaper
     assert_upstream_volume_track_msg!(&to_reaper_rx, &track4_guid, 0.55);
@@ -1400,7 +1486,14 @@ fn test_complex_multi_track_integration() {
 
     // === PHASE 8: Remap track 2 to channel already mapped (channel 3) ===
     // This should clear track 3's mapping and assign track 2 to channel 3
-    assign_track_to_channel(&mut mode, track2_guid, 3, curr_mode);
+    mode.handle_msg_from_upstream(
+        track::ReaperTrackIndex {
+            track_guid: track2_guid,
+            track_index: Some(3 + 1),
+        }
+        .into(),
+        &mut io_direct,
+    );
     // Should send track 2's current state to channel 3
     assert_downstream_fader_abs_msg!(&to_v1m_rx, 3, 0.9); // Track 2's volume (unchanged from phase 1)
     assert_downstream_mute_led_msg!(&to_v1m_rx, 3, LEDState::Off); // Track 2's mute (was toggled off)
@@ -1409,24 +1502,24 @@ fn test_complex_multi_track_integration() {
     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 3, map_to_0xb(0.3)); // Track 2's pan
 
     // Verify track 3 no longer responds on channel 3
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Volume {
             track_guid: track3_guid,
             volume: 0.1,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     check_no_message!(&to_v1m_rx, 100); // Track 3 is now unmapped
 
     // Verify track 2 responds on new channel 3 but not old channel 2
-    mode.handle_messages_from_upstream(
+    mode.handle_msg_from_upstream(
         track::Pan {
             track_guid: track2_guid,
             pan: 0.65,
         }
         .into(),
-        curr_mode,
+        &mut io_direct,
     );
     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, 3, map_to_0xb(0.65)); // New channel
     check_no_message!(&to_v1m_rx, 100); // No message on old channel 2
@@ -1440,86 +1533,12 @@ fn test_complex_multi_track_integration() {
     // Track 3: Unmapped
 
     // Final state verification via hardware interaction
-    mode.handle_messages_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 4 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::MutePress(MutePress { idx: 4 }), &mut io_direct);
     assert_upstream_muted_track_msg!(&to_reaper_rx, &track1_guid, true); // Track 1 on channel 4
 
-    mode.handle_messages_from_downstream(UpstreamMsg::SoloPress(SoloPress { idx: 3 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::SoloPress(SoloPress { idx: 3 }), &mut io_direct);
     assert_upstream_soloed_track_msg!(&to_reaper_rx, &track2_guid, true); // Track 2 on channel 3
 
-    mode.handle_messages_from_downstream(UpstreamMsg::ArmPress(ArmPress { idx: 5 }), curr_mode);
+    mode.handle_msg_from_downstream(UpstreamMsg::ArmPress(ArmPress { idx: 5 }), &mut io_direct);
     assert_upstream_armed_track_msg!(&to_reaper_rx, &track4_guid, true); // Track 4 on channel 5
 }
-
-// #[test]
-// fn test_epsilon_tracking_reset_on_remapping() {
-//     // When a track is remapped to a different channel, EPSILON tracking should be cleared
-//     // to ensure the full state is sent to the new channel
-//     let (mut mode, _from_reaper_tx, _to_reaper_rx, _from_v1m_tx, to_v1m_rx) = setup_vol_pan_mode();
-//
-//     let track_guid = uuid::Uuid::new_v4();
-//     let channel_1 = 0i32;
-//     let channel_2 = 1i32;
-//
-//     let curr_mode = ModeState {
-//         mode: Mode::ReaperVolPan,
-//         state: State::Active,
-//         new_selected_track_guid: None,
-//     };
-//
-//     // Assign track to channel 1
-//     assign_track_to_channel(&mut mode, track_guid, channel_1, curr_mode);
-//     assert_downstream_default_track_mapping(&to_v1m_rx, channel_1);
-//
-//     // Send volume update (0.8)
-//     mode.handle_messages_from_upstream(
-//         track::Volume {
-//             track_guid,
-//             volume: 0.8,
-//         }
-//         .into(),
-//         curr_mode,
-//     );
-//     assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_1, 0.8);
-//
-//     // Send small volume update (0.805) - should be filtered by EPSILON
-//     mode.handle_messages_from_upstream(
-//         track::Volume {
-//             track_guid,
-//             volume: 0.805,
-//         }
-//         .into(),
-//         curr_mode,
-//     );
-//     check_no_message!(&to_v1m_rx, 100); // Filtered - change is < EPSILON
-//
-//     // Now remap track to channel 2
-//     assign_track_to_channel(&mut mode, track_guid, channel_2, curr_mode);
-//     // Should send full state to channel 2, including current volume of 0.805
-//     assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.805);
-//     assert_downstream_mute_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
-//     assert_downstream_solo_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
-//     assert_downstream_arm_led_msg!(&to_v1m_rx, channel_2, LEDState::Off);
-//     assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, channel_2, map_to_0xb(0.5));
-//
-//     // Send another small volume update (0.81) - should be filtered again
-//     mode.handle_messages_from_upstream(
-//         track::Volume {
-//             track_guid,
-//             volume: 0.81,
-//         }
-//         .into(),
-//         curr_mode,
-//     );
-//     check_no_message!(&to_v1m_rx, 100); // Filtered - change is < EPSILON
-//
-//     // Send larger volume update (0.82) - should not be filtered
-//     mode.handle_messages_from_upstream(
-//         track::Volume {
-//             track_guid,
-//             volume: 0.82,
-//         }
-//         .into(),
-//         curr_mode,
-//     );
-//     assert_downstream_fader_abs_msg!(&to_v1m_rx, channel_2, 0.82);
-// }
