@@ -155,7 +155,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                                 // }),
                                 EncoderRingMsg {
                                     idx: msg.send_index,
-                                    mode: EncoderRingMode::Point,
+                                    mode: EncoderRingMode::FromCenter,
                                     val: map_to_0xb(state.pan),
                                 },
                             ))
@@ -195,7 +195,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                             self.to_v1m
                                 .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                                     idx: msg.send_index,
-                                    mode: EncoderRingMode::Point,
+                                    mode: EncoderRingMode::FromCenter,
                                     val: map_to_0xb(msg.pan),
                                 }))
                                 .unwrap();
