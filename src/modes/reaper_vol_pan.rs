@@ -110,9 +110,7 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                         // and mute/solo/arm on the buttons
                         self.core
                             .handle_message_from_upstream(msg, self.to_v1m.clone(), |data| {
-                                println!("Inside epilogue");
                                 let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
-                                println!("Sending");
                                 self.to_v1m
                                     .send(
                                         v1m::EncoderRingMsg {
@@ -262,54 +260,18 @@ impl VolumePanMode {
         upstream: Sender<TrackMsg>,
     ) -> ModeState {
         println!("Initiating mode transition to ReaperVolPan");
-        println!(
-            "Current track assignments: {:?}",
-            self.core.track_hw_assignments.lock().unwrap()
-        );
-        self.core
-            .track_hw_assignments
-            .lock()
-            .unwrap()
-            .iter()
-            .for_each(|assignment| {
-                if let Some(guid) = assignment {
-                    // Request track data from Reaper for each assigned track
-                    let _ = self
-                        .to_reaper
-                        .send(TrackMsg::Query(TrackQuery { guid: *guid }));
-                }
-            });
+        self.core.reset();
+        for i in 0..self.core.track_hw_assignments.lock().unwrap().len() {
+            self.to_v1m
+                .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                    idx: i as i32,
+                    value: 0.0,
+                }))
+                .unwrap();
+        }
+        upstream.send(TrackMsg::QueryAll);
         let barrier = Barrier::new(from_mode.mode, Mode::ReaperVolPan);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
-        for (i, g) in self
-            .core
-            .track_hw_assignments
-            .lock()
-            .unwrap()
-            .iter()
-            .enumerate()
-        {
-            println!("Checking assignment for channel {}: {:?}", i, g);
-            if let Some(guid) = g {
-                if from_mode.new_selected_track_guid == Some(*guid) {
-                    println!("Setting LED for channel {} to ON", i);
-                    self.to_v1m
-                        .send(DownstreamMsg::SelectLED(SelectLEDMsg {
-                            idx: i as i32,
-                            state: LEDState::On,
-                        }))
-                        .unwrap();
-                } else {
-                    println!("Setting LED for channel {} to OFF", i);
-                    self.to_v1m
-                        .send(DownstreamMsg::SelectLED(SelectLEDMsg {
-                            idx: i as i32,
-                            state: LEDState::Off,
-                        }))
-                        .unwrap();
-                }
-            }
-        }
         ModeState {
             mode: Mode::ReaperVolPan,
             state: State::WaitingBarrierFromUpstream(barrier),

@@ -186,6 +186,14 @@ fn main() {
                                 ctx.track_guid, key_messages
                             );
                             let track_guid = ctx.track_guid;
+                            reaper.track_delete(track_guid).bind({
+                                let a_send = a_send.clone();
+                                move |_| {
+                                    a_send
+                                        .try_send(track::Delete { guid: track_guid }.into())
+                                        .unwrap();
+                                }
+                            });
                             // Track Index
                             //
                             // For now, we aren't doing anything with this

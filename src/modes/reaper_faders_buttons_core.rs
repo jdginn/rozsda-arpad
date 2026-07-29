@@ -83,6 +83,14 @@ impl VolumeFadersCore {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.track_states.clear();
+        let mut assignments = self.track_hw_assignments.lock().unwrap();
+        for slot in assignments.iter_mut() {
+            *slot = None;
+        }
+    }
+
     fn get_track_state(&mut self, guid: Uuid) -> &mut TrackState {
         self.track_states.entry(guid).or_insert(TrackState {
             buttons: MuteSoloArmButtonState {

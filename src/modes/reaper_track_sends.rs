@@ -56,6 +56,14 @@ impl TrackSendsMode {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.track_send_states.lock().unwrap().clear();
+        let mut assignments = self.hw_assignments.lock().unwrap();
+        for slot in assignments.iter_mut() {
+            *slot = None;
+        }
+    }
+
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         let assignments = self.hw_assignments.lock().unwrap();
         assignments[hw_channel]
@@ -98,7 +106,6 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 }
             }
             Ok(msg) => {
-                println!("TrackSendsMode: received message from upstream: {:?}", msg);
                 match msg {
                     // If a new track is selected, we need to initiate a mode transition so that we
                     // are controlling sends for that new track
@@ -272,10 +279,6 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                 }
             }
             UpstreamMsg::ChannelFader(fader_msg) => {
-                println!(
-                    "TrackSendsMode: received fader message from downstream: {:?}",
-                    fader_msg
-                );
                 // FIXME: seems like this is the issuer here V
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
                     println!("Have guid");
@@ -308,44 +311,18 @@ impl TrackSendsMode {
             "TrackSendsMode: initiating mode transition from {:?} to ReaperSends for track {:?}",
             from_mode, selected_track_guid
         );
-        //FIXME: seems like we need to reconfigure hw assignments here?
-        //FIXME: I think we also need to update fader positions, etc.
-        // Use the logic in reaper_vol_pan as a template
-        self.selected_track_guid = Some(selected_track_guid);
-        upstream
-            .send(TrackMsg::Query(TrackQuery {
-                guid: selected_track_guid,
-            }))
-            .unwrap();
+        self.reset();
+        for i in 0..self.hw_assignments.lock().unwrap().len() {
+            self.to_v1m
+                .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                    idx: i as i32,
+                    value: 0.0,
+                }))
+                .unwrap();
+        }
+        upstream.send(TrackMsg::QueryAll);
         let barrier = Barrier::new(from_mode, Mode::ReaperSends);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
-
-        // for (i, g) in self.hw_assignments.lock().unwrap().iter().enumerate() {
-        //     println!("Checking hw assignment for channel {}: {:?}", i, g);
-        //     if let Some(guid) = g {
-        //         println!("Setting fader for track {}'s send {}", guid, i);
-        //         let state = self
-        //             .track_send_states
-        //             .lock()
-        //             .unwrap()
-        //             .entry(*guid)
-        //             .or_default()
-        //             .clone();
-        //         self.to_v1m
-        //             .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
-        //                 idx: i as i32,
-        //                 value: state.level as f64, // TODO: scale appropriately
-        //             }))
-        //             .unwrap();
-        //         self.to_v1m
-        //             .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-        //                 idx: i as i32,
-        //                 mode: EncoderRingMode::FromCenter,
-        //                 val: map_to_0xb(state.pan),
-        //             }))
-        //             .unwrap();
-        //     }
-        // }
 
         ModeState {
             mode: Mode::ReaperSends,
