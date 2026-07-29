@@ -154,14 +154,8 @@ impl ModeManager {
 
         thread::spawn(move || {
             let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
-                println!("Handling mode transition: {:?}", mode);
-                println!(
-                    "Selected track guid: {:?}",
-                    manager.reaper_currently_selected_track_guid
-                );
                 // If the mode has indicated a new track selection, update it with the mode manager
                 if let Some(selected_track_guid) = mode.new_selected_track_guid {
-                    println!("Updating selected track guid to: {:?}", selected_track_guid);
                     // self.to_v1m
                     //     .send(
                     //         SelectLEDMsg {
@@ -249,7 +243,6 @@ impl ModeManager {
                                 // correct.
                             let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
                             if new_mode != curr_mode {
-                                println!("TRANSITION: {:?} -> {:?}", curr_mode, new_mode);
                                 handle_transitions(&mut manager, new_mode)
                             }
                         },
