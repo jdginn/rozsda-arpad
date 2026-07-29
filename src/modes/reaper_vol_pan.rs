@@ -260,7 +260,7 @@ impl VolumePanMode {
         upstream: Sender<TrackMsg>,
     ) -> ModeState {
         println!("Initiating mode transition to ReaperVolPan");
-        self.core.reset();
+        self.core.reset(self.to_v1m.clone());
         for i in 0..self.core.track_hw_assignments.lock().unwrap().len() {
             self.to_v1m
                 .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {

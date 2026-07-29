@@ -83,12 +83,91 @@ impl VolumeFadersCore {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, to_v1m: Sender<v1m::DownstreamMsg>) {
+        println!("Resetting VolumeFadersCore state");
         self.track_states.clear();
         let mut assignments = self.track_hw_assignments.lock().unwrap();
         for slot in assignments.iter_mut() {
             *slot = None;
         }
+        for i in 0..assignments.len() {
+            // Zero faders
+            to_v1m
+                .send(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                    idx: i as i32,
+                    value: 0.0,
+                }))
+                .unwrap();
+            // Zero encoder LEDs
+            to_v1m
+                .send(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
+                    idx: i as i32,
+                    mode: v1m::EncoderRingMode::Point,
+                    val: 0x06,
+                }))
+                .unwrap();
+            // Turn off Mute/Solo/Arm LEDs
+            to_v1m
+                .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
+            // Clear scribble strip text and colors
+            to_v1m
+                .send(v1m::DownstreamMsg::ScribbleStripLine1Text(
+                    v1m::ScribbleStripLine1TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::ScribbleStripLine2Text(
+                    v1m::ScribbleStripLine2TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
+                    v1m::ScribbleStripBackgroundColorMsg {
+                        idx: i as i32,
+                        color: v1m::Color { r: 0, g: 0, b: 0 },
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
+                    v1m::BottomScribbleStripLine1TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
+                    v1m::BottomScribbleStripLine2TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+        }
+        println!("VolumeFadersCore state reset complete");
     }
 
     fn get_track_state(&mut self, guid: Uuid) -> &mut TrackState {

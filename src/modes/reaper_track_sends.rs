@@ -5,6 +5,7 @@ use std::vec::Vec;
 use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
+use crate::midi::v1m;
 use crate::midi::v1m::{
     ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderRingMsg, UpstreamMsg,
 };
@@ -56,11 +57,88 @@ impl TrackSendsMode {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, to_v1m: Sender<DownstreamMsg>) {
         self.track_send_states.lock().unwrap().clear();
         let mut assignments = self.hw_assignments.lock().unwrap();
         for slot in assignments.iter_mut() {
             *slot = None;
+        }
+        for i in 0..assignments.len() {
+            // Zero faders
+            to_v1m
+                .send(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                    idx: i as i32,
+                    value: 0.0,
+                }))
+                .unwrap();
+            // Zero encoder LEDs
+            to_v1m
+                .send(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
+                    idx: i as i32,
+                    mode: v1m::EncoderRingMode::Point,
+                    val: 0x06,
+                }))
+                .unwrap();
+            // Turn off Mute/Solo/Arm LEDs
+            to_v1m
+                .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
+            // Clear scribble strip text and colors
+            to_v1m
+                .send(v1m::DownstreamMsg::ScribbleStripLine1Text(
+                    v1m::ScribbleStripLine1TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::ScribbleStripLine2Text(
+                    v1m::ScribbleStripLine2TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
+                    v1m::ScribbleStripBackgroundColorMsg {
+                        idx: i as i32,
+                        color: v1m::Color { r: 0, g: 0, b: 0 },
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
+                    v1m::BottomScribbleStripLine1TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
+            to_v1m
+                .send(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
+                    v1m::BottomScribbleStripLine2TextMsg {
+                        idx: i as i32,
+                        text: String::new(),
+                    },
+                ))
+                .unwrap();
         }
     }
 
@@ -280,6 +358,7 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
             }
             UpstreamMsg::ChannelFader(fader_msg) => {
                 // FIXME: seems like this is the issuer here V
+                // No?
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
                     self.to_reaper
                         .send(
@@ -310,7 +389,7 @@ impl TrackSendsMode {
             "TrackSendsMode: initiating mode transition from {:?} to ReaperSends for track {:?}",
             from_mode, selected_track_guid
         );
-        self.reset();
+        self.reset(self.to_v1m.clone());
         self.selected_track_guid = Some(selected_track_guid);
         for i in 0..self.hw_assignments.lock().unwrap().len() {
             self.to_v1m
