@@ -1514,25 +1514,19 @@ impl V1mBuilder {
             let upstream_turn = upstream.clone();
             e.bind_turn(move |value| match value {
                 // TODO: 1 means CW slow all the way up to at least 5 is CW fast(er)
-                1..6 => {
-                    println!("ENCODER ACCEL {}", value);
-                    upstream_turn
-                        .send(UpstreamMsg::from(EncoderTurnCW {
-                            idx: i as i32,
-                            accel: value,
-                        }))
-                        .unwrap()
-                }
+                1..6 => upstream_turn
+                    .send(UpstreamMsg::from(EncoderTurnCW {
+                        idx: i as i32,
+                        accel: value,
+                    }))
+                    .unwrap(),
                 // Similarly, 65 seems to mean slow but we can go all the way up to at least 68
-                65..69 => {
-                    println!("ENCODER ACCEL {}", value);
-                    upstream_turn
-                        .send(UpstreamMsg::from(EncoderTurnCCW {
-                            idx: i as i32,
-                            accel: (value - 64),
-                        }))
-                        .unwrap()
-                }
+                65..69 => upstream_turn
+                    .send(UpstreamMsg::from(EncoderTurnCCW {
+                        idx: i as i32,
+                        accel: (value - 64),
+                    }))
+                    .unwrap(),
                 _ => println!("HERE: Unexpected encoder turn value: {}\n", value),
             });
             let upstream_press = upstream.clone();
