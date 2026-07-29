@@ -295,18 +295,18 @@ impl TrackData {
         self.sends.get_mut(index as usize)
     }
 
-    fn set_send_index(&mut self, send_index: SendIndex) {
+    fn set_send_index(&mut self, msg: SendIndex) {
         // Ensure the sends vector is large enough
-        while self.sends.len() <= send_index.send_index as usize {
+        while self.sends.len() <= msg.send_index as usize {
             self.sends.push(SendData {
                 track_guid: self.track_guid,
-                target_guid: Uuid::nil(),
-                send_index: self.sends.len() as i32,
+                target_guid: msg.send_guid,
+                send_index: msg.send_index as i32,
                 level: 0.0,
                 pan: 0.0,
             });
         }
-        self.sends[send_index.send_index as usize].target_guid = send_index.track_guid;
+        self.sends[msg.send_index as usize].target_guid = msg.track_guid;
     }
 
     fn get_fx_data(&mut self, fx_index: i32) -> Option<&mut FXData> {
