@@ -147,8 +147,8 @@ impl TrackSendsMode {
         assignments[hw_channel]
     }
 
-    fn find_hw_channel_for_guid(guid: Uuid, assignments: Vec<Option<Uuid>>) -> Option<usize> {
-        for (hw_channel, &assigned_guid) in assignments.iter().enumerate() {
+    fn find_hw_channel_for_guid(&self, guid: Uuid) -> Option<usize> {
+        for (hw_channel, &assigned_guid) in self.hw_assignments.lock().unwrap().iter().enumerate() {
             if let Some(assigned_guid) = assigned_guid {
                 if assigned_guid == guid {
                     return Some(hw_channel);
@@ -185,6 +185,28 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
             }
             Ok(msg) => {
                 match msg {
+                    track::DataMsg::Name(msg) => {
+                        self.to_v1m
+                            .send(
+                                v1m::ScribbleStripLine1TextMsg {
+                                    idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
+                                        as i32,
+                                    text: msg.name.clone(),
+                                }
+                                .into(),
+                            )
+                            .unwrap();
+                        self.to_v1m
+                            .send(
+                                v1m::BottomScribbleStripLine2TextMsg {
+                                    idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
+                                        as i32,
+                                    text: msg.name,
+                                }
+                                .into(),
+                            )
+                            .unwrap();
+                    }
                     // If a new track is selected, we need to initiate a mode transition so that we
                     // are controlling sends for that new track
                     track::DataMsg::Selected(msg) => {
