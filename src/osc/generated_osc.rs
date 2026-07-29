@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::traits::{Bind, Query, Set};
 
+use crate::osc::route_context::ContextTrait;
 
 #[derive(Debug)]
 pub struct OscError;
@@ -149,6 +150,16 @@ impl Set<TrackDeleteArgs> for TrackDelete {
         let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
         self.socket.send(&buf).map_err(|_| OscError)?;
         Ok(())
+    }
+}
+
+/// /track/{track_guid}/delete
+impl Bind<TrackDeleteArgs> for TrackDelete {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(TrackDeleteArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
     }
 }
 

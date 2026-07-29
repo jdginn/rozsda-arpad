@@ -63,6 +63,7 @@
       description: unique identifier for the track
   arguments: []
   access_tags:
+    - readable
     - writeable
 - osc_address: /track/{track_guid}/name
   params:
