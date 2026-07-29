@@ -34,7 +34,7 @@ use crate::track::track;
 // Threshold for filtering out insignificant volume changes
 const FADER_EPSILON: f32 = 0.01;
 // FIXME: find the real value
-pub const FADER_0DB: f32 = 0.72; // Placeholder value for 0dB on fader reusable
+pub const FADER_0DB: f32 = 0.716; // Placeholder value for 0dB on fader reusable
 
 #[derive(Clone, Copy)]
 struct MuteSoloArmButtonState {
