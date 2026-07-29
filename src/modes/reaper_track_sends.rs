@@ -281,13 +281,12 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
             UpstreamMsg::ChannelFader(fader_msg) => {
                 // FIXME: seems like this is the issuer here V
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
-                    println!("Have guid");
                     self.to_reaper
                         .send(
                             track::SendLevel {
                                 track_guid: guid,
                                 send_index: fader_msg.idx,
-                                level: fader_msg.value as f32, // TODO: scale appropriately
+                                level: fader_msg.value as f32,
                             }
                             .into(),
                         )
@@ -312,6 +311,7 @@ impl TrackSendsMode {
             from_mode, selected_track_guid
         );
         self.reset();
+        self.selected_track_guid = Some(selected_track_guid);
         for i in 0..self.hw_assignments.lock().unwrap().len() {
             self.to_v1m
                 .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
