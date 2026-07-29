@@ -906,7 +906,10 @@ fn test_11_pan_encoder_changes_forward_correctly() {
 
     // Simulate encoder turn clockwise
     let result_mode = mode.handle_messages_from_downstream(
-        UpstreamMsg::EncoderTurnInc(EncoderTurnCW { idx: hw_channel }),
+        UpstreamMsg::EncoderTurnInc(EncoderTurnCW {
+            idx: hw_channel,
+            accel: 1,
+        }),
         curr_mode,
     );
 

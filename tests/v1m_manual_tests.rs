@@ -17,8 +17,8 @@ use arpad_rust::midi::v1m::{
     ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, ChannelFaderMsg,
     ChannelMeterMsg, Color, DawId, DownstreamMsg, EncoderRingMode, EncoderRingMsg, LEDState,
     MasterFaderMsg, MasterMeterMsg, MuteLEDMsg, ScribbleStripBackgroundColorMsg,
-    ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, Slot, SoloLEDMsg, StereoChannel,
-    TouchScreenLayer, TouchScreenSetTextMsg, UpstreamMsg, V1mBuilder,
+    ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, SevenSegmentDisplayMsg, Slot, SoloLEDMsg,
+    StereoChannel, TouchScreenLayer, TouchScreenSetTextMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -1210,6 +1210,60 @@ fn v1m_touchscreen_tests() {
         let result = prompt_user(&format!(
             "Are all buttons layer {} set to show layer-row-column?",
             layer,
+        ));
+    }
+}
+
+#[test]
+#[ignore] // Must be run manually with --ignored flag
+fn v1m_seven_segment_tests() {
+    println!("\n");
+    println!("╔════════════════════════════════════════════════════════════════╗");
+    println!("║          v1m Seven Segment Display Test Suite                      ║");
+    println!("╚════════════════════════════════════════════════════════════════╝");
+    println!("\nNOTE: This test requires v1m hardware to be connected.");
+    println!("Messages will be sent to the hardware for manual verification.\n");
+
+    print!("Is v1m hardware connected and ready? [Y/N]: ");
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    if !input.trim().eq_ignore_ascii_case("y") {
+        println!("Test aborted. Please connect v1m hardware and try again.");
+        return;
+    }
+
+    let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
+        match find_v1m_ports() {
+            Ok(ports) => ports,
+            Err(err) => {
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Test aborted. Please ensure v1m is connected and try again.");
+                return;
+            }
+        };
+    let (upstream_tx, upstream_rx) = bounded::<UpstreamMsg>(128);
+    let (downstream_tx, downstream_rx) = bounded::<DownstreamMsg>(128);
+    V1mBuilder::new(
+        input_port_1,
+        output_connection_1,
+        input_port_4,
+        output_connection_4,
+        8,
+    )
+    .build(downstream_rx, upstream_tx);
+
+    for text in ["Hello", "World", "123456", "abcdef"] {
+        downstream_tx
+            .send(DownstreamMsg::SevenSegmentDisplay(SevenSegmentDisplayMsg {
+                text: text.to_string(),
+            }))
+            .unwrap();
+        let result = prompt_user(&format!(
+            "Does the seven segment display show \"{}\"?",
+            text,
         ));
     }
 }

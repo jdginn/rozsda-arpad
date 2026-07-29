@@ -275,6 +275,11 @@ pub struct ScribbleStripBackgroundColorMsg {
 }
 
 #[derive(Clone, Debug)]
+pub struct SevenSegmentDisplayMsg {
+    pub text: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct TouchScreenSetTextMsg {
     pub slot: Slot,
     pub daw_id: DawId,
@@ -386,6 +391,9 @@ pub enum DownstreamMsg {
     BottomScribbleStripLine2Text(BottomScribbleStripLine2TextMsg),
     #[enum_from]
     ScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
+
+    #[enum_from]
+    SevenSegmentDisplay(SevenSegmentDisplayMsg),
 
     #[enum_from]
     TouchScreenSetText(TouchScreenSetTextMsg),
@@ -1095,6 +1103,38 @@ impl Set<BottomScribbleStripLine2TextMsg> for BottomScribbleStrips {
     }
 }
 
+pub struct SevenSegmentDisplay {
+    base: Arc<Mutex<MidiDevice>>,
+}
+
+impl SevenSegmentDisplay {
+    fn new(base: Arc<Mutex<MidiDevice>>, num_digits: usize) -> Self {
+        Self { base }
+    }
+
+    fn set(&self, text: &str) -> Result<(), String> {
+        let compacted = compact_to_7_bytes(text);
+        println!("SEVEN SEG: sending text: {:?} -> {:?}", text, compacted);
+        for (i, b) in compacted.iter().enumerate() {
+            // if i < self.digits.len() {
+            //     self.digits[i] = *b;
+            // }
+            println!("NEW VAL: {:x}", b - 40);
+            ControlChangeBuilder {
+                device: &mut self.base.lock().unwrap(),
+                spec: ControlChange {
+                    channel: 0,
+                    controller_number: 0x49 - i as u8,
+                },
+            }
+            // .set(*b - 40)
+            .set(0x3d + i as u8)
+            .map_err(|e| format!("Failed to send 7-segment display message"))?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TouchScreenButton {
     text: String,
@@ -1590,6 +1630,7 @@ impl V1mBuilder {
         let master_meters = MasterMeters::new(self.main_midi.clone());
         let top_scribbles = TopScribbleStrips::new(self.main_midi.clone(), self.num_channels);
         let bottom_scribbles = BottomScribbleStrips::new(self.main_midi.clone(), self.num_channels);
+        let seven_segment_display = SevenSegmentDisplay::new(self.main_midi.clone(), 7);
         let touchscreen = TouchScreen::new(self.config_midi.clone());
         // Global view
         let mut b = Button {
@@ -1632,6 +1673,7 @@ impl V1mBuilder {
             master_meters,
             top_scribbles,
             bottom_scribbles,
+            seven_segment_display,
             touchscreen,
         };
 
@@ -1696,6 +1738,11 @@ impl V1mBuilder {
                         DownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
+                        DownstreamMsg::SevenSegmentDisplay(seven_segment_msg) => {
+                            v1m.seven_segment_display
+                                .set(&seven_segment_msg.text)
+                                .unwrap();
+                        }
                         DownstreamMsg::TouchScreenSetText(touch_msg) => {
                             v1m.touchscreen
                                 .write_button_text(vec![TouchScreenSetTextContainer {
@@ -1742,6 +1789,7 @@ pub struct V1m {
     pub master_meters: MasterMeters,
     pub top_scribbles: TopScribbleStrips,
     pub bottom_scribbles: BottomScribbleStrips,
+    pub seven_segment_display: SevenSegmentDisplay,
     pub touchscreen: TouchScreen,
     input: Receiver<DownstreamMsg>,
     upstream: Sender<UpstreamMsg>,
