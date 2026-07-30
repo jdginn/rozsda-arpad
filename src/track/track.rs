@@ -4,6 +4,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
+use coalescible_derive::Coalescible;
 use derive_enum_from::EnumFrom;
 
 use crate::modes::mode_manager::Barrier;
@@ -101,149 +102,173 @@ pub struct TrackQuery {
     pub guid: Uuid,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct Delete {
     pub guid: Uuid,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct Name {
     pub track_guid: Uuid,
+    #[data]
     pub name: String,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct ReaperTrackIndex {
     pub track_guid: Uuid,
+    #[data]
     pub track_index: Option<i32>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct Selected {
     pub track_guid: Uuid,
+    #[data]
     pub selected: bool,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct Muted {
     pub track_guid: Uuid,
+    #[data]
     pub muted: bool,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct Soloed {
     pub track_guid: Uuid,
+    #[data]
     pub soloed: bool,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct Armed {
     pub track_guid: Uuid,
+    #[data]
     pub armed: bool,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct Volume {
     pub track_guid: Uuid,
+    #[data]
     pub volume: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct Pan {
     pub track_guid: Uuid,
+    #[data]
     pub pan: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct SendIndex {
     pub track_guid: Uuid,
     pub send_index: i32,
+    #[data]
     pub send_guid: Uuid,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct SendLevel {
     pub track_guid: Uuid,
     pub send_index: i32,
+    #[data]
     pub level: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct SendPan {
     pub track_guid: Uuid,
     pub send_index: i32,
+    #[data]
     pub pan: f32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct FXName {
     pub track_guid: Uuid,
     pub fx_index: i32,
+    #[data]
     pub name: String,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct FXGuid {
     pub track_guid: Uuid,
     pub fx_index: i32,
+    #[data]
     pub guid: Uuid,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct FXEnabled {
     pub track_guid: Uuid,
     pub fx_index: i32,
+    #[data]
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct FXParamName {
     pub track_guid: Uuid,
     pub fx_index: i32,
     pub param_index: i32,
+    #[data]
     pub name: String,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct FXParamValue {
     pub track_guid: Uuid,
     pub fx_index: i32,
     pub param_index: i32,
+    #[data]
     pub value: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct FXParamMin {
     pub track_guid: Uuid,
     pub fx_index: i32,
     pub param_index: i32,
+    #[data]
     pub min: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct FXParamMax {
     pub track_guid: Uuid,
     pub fx_index: i32,
     pub param_index: i32,
+    #[data]
     pub max: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Coalescible)]
 pub struct SendData {
     pub track_guid: Uuid,
     pub target_guid: Uuid,
     pub send_index: i32,
+    #[data]
     pub level: f32,
+    #[data]
     pub pan: f32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct FXData {
     pub track_guid: Uuid,
     pub fx_index: i32,
+    #[data]
     pub guid: Uuid,
+    #[data]
     pub name: String,
+    #[data]
     pub enabled: bool,
+    #[data]
     pub params: Vec<FXParamData>,
 }
 
