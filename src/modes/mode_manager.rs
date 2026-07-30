@@ -12,6 +12,56 @@ use crate::modes::reaper_track_sends::TrackSendsMode;
 use crate::modes::reaper_vol_pan::VolumePanMode;
 use crate::track::track::TrackMsg;
 
+// High-level rethink of how ModeManager should work:
+//
+// - We want to switch between modes and manage as much of the state change as possible here.
+// - We don't want to cache track state here; that should happen upstream from us in TrackManager.
+// - We want to handle Barrier propagation: when we switch modes, we need to send a Barrier upstream
+//   and wait for ALL the accumulated state from upstream to come back down to us. We don't process ANY messages until that happens.
+// - We also need to wait for the Barrier to be sent downstream and reflected back up before we
+//   forward ANY messages from downstream to upstream. This ensures that all the stimulus we receive
+//   from downstream is based on the latest state from upstream.
+// - Bonus points if we coalesce messages when sending downstream; i.e. avoid duplicate or
+//   superseded messages. This may not be possible, and we may be able to implement the coalescing
+//   at a lower level, but it's worth thinking about.
+// - Ideally, the individual modes DO NOT need to know anything about barriers or mode transition
+//   with these exceptions:
+//   1. Modes need to be able to request a mode transition.
+//   2. Modes may need to do custom initialization when we enter them.
+//
+// How I think it works today:
+// - ModeManager runs a thread that receives messages from both upstream and downstream
+// - ModeManager knows which mode is active and calls specialized message handling logic for that mode
+//      Specialized logic is defined by a method within each mode
+// - ModeManager keeps track of mode change requests including:
+//   1. What mode we came from
+//   2. What mode we are transitioning to
+//   3. Which track, if any, is selected, because selected track dramatically influences how certain modes work
+//   4. ModeManager is responsible for sending barriers upstream and downstream
+// - HOWEVER, processing barriers is handled in each mode. FIXME: this is a problem
+//
+// - The ModeManager thread calls a private function `handle_transitions`, which is a bit clunky and
+//   difficult to reason about
+//
+// How it might work better:
+// - Don't make modes responsible for doing anything with barriers. ModeManager would need to have a
+//   reference to the downstream channel (i.e. `to_v1m`) so it can send barriers downstream.
+// - It should be a hard panic if a mode ever receives a barrier message
+// - When we do not have an active mode (i.e. we are performing a mode transition), we should not
+//   call ANYTHING in the mode implementations. It should all live in mode_manager.
+// - The modes themselves should be as stateless as possible. We should not see any transition struct
+//   types in the mode implementations. In fact, it might be best if these struct types are private to this module?
+// - Perhaps each mode should respond upward with a special RequestTransition message, then all
+//   communication happens over channels and we don't have both function calls and channels communicating state at the same time.
+//   A potential weakness of such an approach is that it woudl be tempting to make each mode run on its own thread, which we don'think
+//   really want either. Two modes shouldn't ever run concurrently, since they are each stateless
+//   views into the same upstream state and downstream stimuli. Modes are mutually exclusive.
+// - It may be better to reconstruct the mode each time we enter it? There could potentially be
+//   initialization cost (allocations), although we are already reseting the modes within their own `initialize_mode_tansition` methods
+// - Ideally, modes shouldn't have to call reset on themselves. If they need to be reset, we should be able to call them from here.
+// - IMPORTANT ModeManager should not need to store things behind Arc<Mutex<>>! If we find ourselves
+//   needing to do this, our implementation is probably wrong!
+
 // Global atomic counter for unique IDs
 static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
