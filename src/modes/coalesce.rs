@@ -4,10 +4,10 @@ use std::hash::Hash;
 /// A message that can be coalesced by "address key".
 /// - `Key` = address fields
 /// - `merge_from` = last-write-wins for data fields
-pub trait Coalescible: Clone {
+pub trait Coalescible: Clone + std::fmt::Debug {
     type Key: Eq + Hash + Clone;
 
-    fn key(&self) -> Self::Key;
+    fn key(&self) -> Option<Self::Key>;
 
     /// Merge newer message into existing buffered one.
     /// For most state messages this is last-write-wins.
@@ -46,13 +46,20 @@ impl<T: Coalescible> OrderedCoalescingBuffer<T> {
 
     /// Insert a message or merge into existing key slot.
     pub fn push(&mut self, msg: T) {
-        let key = msg.key();
-        if let Some(&idx) = self.index_by_key.get(&key) {
-            self.items[idx].merge_from(msg);
-        } else {
-            let idx = self.items.len();
-            self.items.push(msg);
-            self.index_by_key.insert(key, idx);
+        match msg.key() {
+            Some(key) => {
+                if let Some(&idx) = self.index_by_key.get(&key) {
+                    println!("Coalescing message {:?}", msg);
+                    self.items[idx].merge_from(msg);
+                } else {
+                    let idx = self.items.len();
+                    self.items.push(msg);
+                    self.index_by_key.insert(key, idx);
+                }
+            }
+            None => {
+                self.items.push(msg);
+            }
         }
     }
 
