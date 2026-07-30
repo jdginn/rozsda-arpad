@@ -87,11 +87,28 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
             }
             Ok(msg) => {
                 match msg {
-                    track::DataMsg::Selected(msg) => ModeState {
-                        mode: curr_mode.mode,
-                        state: State::RequestingModeTransition,
-                        new_selected_track_guid: Some(msg.track_guid),
-                    },
+                    track::DataMsg::Selected(msg) => {
+                        let state = match msg.selected {
+                            true => v1m::LEDState::On,
+                            false => v1m::LEDState::Off,
+                        };
+                        self.to_v1m
+                            .send(
+                                v1m::SelectLEDMsg {
+                                    idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0)
+                                        as i32,
+                                    state,
+                                }
+                                .into(),
+                            )
+                            .unwrap();
+                        curr_mode
+                        // ModeState {
+                        //     mode: curr_mode.mode,
+                        //     state: curr_mode.state,
+                        //     new_selected_track_guid: Some(msg.track_guid),
+                        // }
+                    }
                     track::DataMsg::Name(msg) => {
                         self.to_v1m
                             .send(
@@ -171,11 +188,28 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                 }
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
+                self.to_v1m
+                    .send(DownstreamMsg::SelectLED(SelectLEDMsg {
+                        idx: select_msg.idx,
+                        state: LEDState::On,
+                    }))
+                    .unwrap();
+                if let Some(guid) = self.core.get_guid_for_hw_channel(select_msg.idx as usize) {
+                    self.to_reaper
+                        .send(
+                            track::Selected {
+                                track_guid: guid,
+                                selected: true,
+                            }
+                            .into(),
+                        )
+                        .unwrap();
+                }
                 let new_selected_track_guid =
                     self.core.get_guid_for_hw_channel(select_msg.idx as usize);
                 ModeState {
                     mode: curr_mode.mode,
-                    state: curr_mode.state,
+                    state: State::RequestingModeTransition,
                     new_selected_track_guid,
                 }
             }
@@ -266,18 +300,10 @@ impl VolumePanMode {
         &mut self,
         from_mode: ModeState,
         upstream: Sender<TrackMsg>,
+        selected_track_guid: Option<Uuid>,
     ) -> ModeState {
-        println!("Initiating mode transition to ReaperVolPan");
         self.core.reset(self.to_v1m.clone());
-        for i in 0..self.core.track_hw_assignments.lock().unwrap().len() {
-            self.to_v1m
-                .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
-                    idx: i as i32,
-                    value: 0.0,
-                }))
-                .unwrap();
-        }
-        upstream.send(TrackMsg::QueryAll);
+        upstream.send(TrackMsg::QueryAll).unwrap();
         let barrier = Barrier::new(from_mode.mode, Mode::ReaperVolPan);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();
         ModeState {

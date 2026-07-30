@@ -106,7 +106,13 @@ impl VolumeFadersCore {
                     val: 0x06,
                 }))
                 .unwrap();
-            // Turn off Mute/Solo/Arm LEDs
+            // Turn off Select/Mute/Solo/Arm LEDs
+            to_v1m
+                .send(v1m::DownstreamMsg::SelectLED(v1m::SelectLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }))
+                .unwrap();
             to_v1m
                 .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                     idx: i as i32,

@@ -471,13 +471,14 @@ impl TrackManager {
                             max: param.max,
                         }))
                         .unwrap();
-                    //FIXME: this causes some kind of eternal loop in the mode transition logic.
-                    // manager.to_downstream.send(TrackMsg::Selected(Selected {
-                    //     track_guid: track.track_guid,
-                    //     selected: track.selected,
-                    // })).unwrap();
                 }
             }
+            self.to_downstream
+                .send(TrackMsg::Selected(Selected {
+                    track_guid: track.track_guid,
+                    selected: track.selected,
+                }))
+                .unwrap();
         }
     }
 

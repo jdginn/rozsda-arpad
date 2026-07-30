@@ -210,13 +210,38 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                     // If a new track is selected, we need to initiate a mode transition so that we
                     // are controlling sends for that new track
                     track::DataMsg::Selected(msg) => {
+                        // FIXME
+                        // - There is some kind of double selection or initiation behavior at least with TrackSendsMode
+                        // - Send naming has an off by one error (should say 2 but says 3)
+                        // - Scribble strip messages are jittery
+                        // - Still some fader jitter to sort through
+
                         if msg.selected {
+                            if self.selected_track_guid != Some(msg.track_guid) {
+                                return ModeState {
+                                    mode: curr_mode.mode,
+                                    state: State::RequestingModeTransition,
+                                    new_selected_track_guid: Some(msg.track_guid),
+                                };
+                            }
                             self.selected_track_guid = Some(msg.track_guid);
-                            return ModeState {
-                                mode: Mode::ReaperSends,
-                                state: State::RequestingModeTransition,
-                                new_selected_track_guid: Some(msg.track_guid),
+                            let state = match msg.selected {
+                                true => v1m::LEDState::On,
+                                false => v1m::LEDState::Off,
                             };
+                            self.to_v1m
+                                .send(
+                                    v1m::SelectLEDMsg {
+                                        idx: self
+                                            .find_hw_channel_for_guid(msg.track_guid)
+                                            .unwrap_or(0)
+                                            as i32,
+                                        state,
+                                    }
+                                    .into(),
+                                )
+                                .unwrap();
+                            return curr_mode;
                         }
                     }
                     track::DataMsg::SendIndex(msg) => {
@@ -372,6 +397,17 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
             // message back from Reaper?
             UpstreamMsg::SelectPress(msg) => {
                 self.selected_track_guid = self.get_guid_for_hw_channel(msg.idx as usize);
+                if let Some(guid) = self.get_guid_for_hw_channel(msg.idx as usize) {
+                    self.to_reaper
+                        .send(
+                            track::Selected {
+                                track_guid: guid,
+                                selected: true,
+                            }
+                            .into(),
+                        )
+                        .unwrap();
+                }
                 ModeState {
                     mode: Mode::ReaperSends,
                     state: State::RequestingModeTransition,
@@ -413,14 +449,6 @@ impl TrackSendsMode {
         );
         self.reset(self.to_v1m.clone());
         self.selected_track_guid = Some(selected_track_guid);
-        for i in 0..self.hw_assignments.lock().unwrap().len() {
-            self.to_v1m
-                .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
-                    idx: i as i32,
-                    value: 0.0,
-                }))
-                .unwrap();
-        }
         upstream.send(TrackMsg::QueryAll);
         let barrier = Barrier::new(from_mode, Mode::ReaperSends);
         upstream.send(TrackMsg::Barrier(barrier)).unwrap();

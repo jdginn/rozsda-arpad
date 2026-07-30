@@ -156,15 +156,6 @@ impl ModeManager {
             let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
                 // If the mode has indicated a new track selection, update it with the mode manager
                 if let Some(selected_track_guid) = mode.new_selected_track_guid {
-                    // self.to_v1m
-                    //     .send(
-                    //         SelectLEDMsg {
-                    //             idx: select_msg.idx,
-                    //             state: LEDState::On,
-                    //         }
-                    //         .into(),
-                    //     )
-                    //     .unwrap();
                     manager.reaper_currently_selected_track_guid = Some(selected_track_guid)
                 }
                 if mode.state == State::RequestingModeTransition {
@@ -180,6 +171,7 @@ impl ModeManager {
                                 .initiate_mode_transition(
                                     manager.curr_mode,
                                     manager.to_reaper.clone(),
+                                    manager.reaper_currently_selected_track_guid,
                                 );
                             println!("New mode state: {:?}", manager.curr_mode);
                         }
