@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crossbeam_channel::Sender;
 use uuid::Uuid;
 
 use crate::midi::v1m;
 use crate::modes::button::Button;
+use crate::modes::mode_manager::{ModeAction, Senders};
 use crate::track::track;
 
 // FIXME:
@@ -83,99 +83,99 @@ impl VolumeFadersCore {
         }
     }
 
-    pub fn reset(&mut self, to_v1m: Sender<v1m::DownstreamMsg>) {
-        println!("Resetting VolumeFadersCore state");
-        self.track_states.clear();
-        let mut assignments = self.track_hw_assignments.lock().unwrap();
-        for slot in assignments.iter_mut() {
-            *slot = None;
-        }
-        for i in 0..assignments.len() {
-            // Zero faders
-            to_v1m
-                .send(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
-                    idx: i as i32,
-                    value: 0.0,
-                }))
-                .unwrap();
-            // Zero encoder LEDs
-            to_v1m
-                .send(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
-                    idx: i as i32,
-                    mode: v1m::EncoderRingMode::Point,
-                    val: 0x06,
-                }))
-                .unwrap();
-            // Turn off Select/Mute/Solo/Arm LEDs
-            to_v1m
-                .send(v1m::DownstreamMsg::SelectLED(v1m::SelectLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            // Clear scribble strip text and colors
-            to_v1m
-                .send(v1m::DownstreamMsg::ScribbleStripLine1Text(
-                    v1m::ScribbleStripLine1TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::ScribbleStripLine2Text(
-                    v1m::ScribbleStripLine2TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
-                    v1m::ScribbleStripBackgroundColorMsg {
-                        idx: i as i32,
-                        color: v1m::Color { r: 0, g: 0, b: 0 },
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
-                    v1m::BottomScribbleStripLine1TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
-                    v1m::BottomScribbleStripLine2TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-        }
-        println!("VolumeFadersCore state reset complete");
-    }
-
+    // pub fn reset(&mut self, to_v1m: Sender<v1m::DownstreamMsg>) {
+    //     println!("Resetting VolumeFadersCore state");
+    //     self.track_states.clear();
+    //     let mut assignments = self.track_hw_assignments.lock().unwrap();
+    //     for slot in assignments.iter_mut() {
+    //         *slot = None;
+    //     }
+    //     for i in 0..assignments.len() {
+    //         // Zero faders
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+    //                 idx: i as i32,
+    //                 value: 0.0,
+    //             }))
+    //             .unwrap();
+    //         // Zero encoder LEDs
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
+    //                 idx: i as i32,
+    //                 mode: v1m::EncoderRingMode::Point,
+    //                 val: 0x06,
+    //             }))
+    //             .unwrap();
+    //         // Turn off Select/Mute/Solo/Arm LEDs
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::SelectLED(v1m::SelectLEDMsg {
+    //                 idx: i as i32,
+    //                 state: v1m::LEDState::Off,
+    //             }))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+    //                 idx: i as i32,
+    //                 state: v1m::LEDState::Off,
+    //             }))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+    //                 idx: i as i32,
+    //                 state: v1m::LEDState::Off,
+    //             }))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+    //                 idx: i as i32,
+    //                 state: v1m::LEDState::Off,
+    //             }))
+    //             .unwrap();
+    //         // Clear scribble strip text and colors
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::ScribbleStripLine1Text(
+    //                 v1m::ScribbleStripLine1TextMsg {
+    //                     idx: i as i32,
+    //                     text: String::new(),
+    //                 },
+    //             ))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::ScribbleStripLine2Text(
+    //                 v1m::ScribbleStripLine2TextMsg {
+    //                     idx: i as i32,
+    //                     text: String::new(),
+    //                 },
+    //             ))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
+    //                 v1m::ScribbleStripBackgroundColorMsg {
+    //                     idx: i as i32,
+    //                     color: v1m::Color { r: 0, g: 0, b: 0 },
+    //                 },
+    //             ))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
+    //                 v1m::BottomScribbleStripLine1TextMsg {
+    //                     idx: i as i32,
+    //                     text: String::new(),
+    //                 },
+    //             ))
+    //             .unwrap();
+    //         to_v1m
+    //             .send(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
+    //                 v1m::BottomScribbleStripLine2TextMsg {
+    //                     idx: i as i32,
+    //                     text: String::new(),
+    //                 },
+    //             ))
+    //             .unwrap();
+    //     }
+    //     println!("VolumeFadersCore state reset complete");
+    // }
+    //
     fn get_track_state(&mut self, guid: Uuid) -> &mut TrackState {
         self.track_states.entry(guid).or_insert(TrackState {
             buttons: MuteSoloArmButtonState {
@@ -206,7 +206,7 @@ impl VolumeFadersCore {
     pub fn handle_message_from_upstream<F>(
         &mut self,
         msg: track::DataMsg,
-        to_downstream: Sender<v1m::DownstreamMsg>,
+        senders: &Senders,
         mut track_index_epilogue: F,
     ) where
         F: FnMut(TrackIndexUpdateEpilogue),
@@ -244,27 +244,26 @@ impl VolumeFadersCore {
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     let track_state = *self.get_track_state(msg.track_guid);
                     // Send volume
-                    let _ = to_downstream.send(v1m::DownstreamMsg::ChannelFader(
-                        v1m::ChannelFaderMsg {
+                    let _ =
+                        senders.to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
                             idx: hw_channel as i32,
                             value: track_state.volume as f64,
-                        },
-                    ));
+                        }));
                     // Update EPSILON tracking for volume since we just sent it
                     self.last_sent_volume[hw_channel] = track_state.volume;
 
                     // Send mute LED
-                    let _ = to_downstream.send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    let _ = senders.to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.mute.is_on()),
                     }));
                     // Send solo LED
-                    let _ = to_downstream.send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    let _ = senders.to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.solo.is_on()),
                     }));
                     // Send arm LED
-                    let _ = to_downstream.send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    let _ = senders.to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
                     }));
@@ -284,7 +283,7 @@ impl VolumeFadersCore {
                     if should_send {
                         // Send volume update to v1m for the corresponding fader
                         let fader_value = msg.volume; // TODO: scale appropriately
-                        let _ = to_downstream.send(v1m::DownstreamMsg::ChannelFader(
+                        let _ = senders.to_v1m(v1m::DownstreamMsg::ChannelFader(
                             v1m::ChannelFaderMsg {
                                 idx: hw_channel as i32,
                                 value: fader_value as f64,
@@ -302,7 +301,7 @@ impl VolumeFadersCore {
                     .set(msg.muted);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send mute LED update to v1m
-                    let _ = to_downstream.send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    let _ = senders.to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.muted),
                     }));
@@ -315,7 +314,7 @@ impl VolumeFadersCore {
                     .set(msg.soloed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send solo LED update to v1m
-                    let _ = to_downstream.send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    let _ = senders.to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.soloed),
                     }));
@@ -328,7 +327,7 @@ impl VolumeFadersCore {
                     .set(msg.armed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send arm LED update to v1m
-                    let _ = to_downstream.send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    let _ = senders.to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.armed),
                     }));
@@ -340,19 +339,14 @@ impl VolumeFadersCore {
         }
     }
 
-    pub fn handle_message_from_downstream(
-        &mut self,
-        msg: v1m::UpstreamMsg,
-        to_upstream: Sender<track::TrackMsg>,
-        to_downstream: Sender<v1m::DownstreamMsg>,
-    ) {
+    pub fn handle_message_from_downstream(&mut self, msg: v1m::UpstreamMsg, senders: &Senders) {
         match msg {
             v1m::UpstreamMsg::ChannelFader(fader_msg) => {
                 if let Some(guid) =
                     &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
                 {
                     // Send volume update to Reaper for the corresponding track
-                    let _ = to_upstream.send(
+                    let _ = senders.to_reaper.send(
                         track::Volume {
                             track_guid: *guid,
                             volume: fader_msg.value as f32, // TODO: Need to scale appropriately
@@ -360,19 +354,19 @@ impl VolumeFadersCore {
                         .into(),
                     );
                     // Convince the v1m to leave its faders where we put them
-                    let _ = to_downstream.send(v1m::DownstreamMsg::ChannelFader(
-                        v1m::ChannelFaderMsg {
+                    let _ =
+                        senders.to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
                             idx: fader_msg.idx,
                             value: fader_msg.value,
-                        },
-                    ));
+                        }));
                 }
             }
             v1m::UpstreamMsg::MutePress(mute_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
-                    to_upstream
+                    senders
+                        .to_reaper
                         .send(
                             track::Muted {
                                 track_guid: guid,
@@ -382,7 +376,8 @@ impl VolumeFadersCore {
                         )
                         .unwrap();
                     // Update the toggle on the hardware
-                    to_downstream
+                    senders
+                        .to_v1m
                         .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                             idx: mute_msg.idx,
                             state: v1m::LEDState::from(new_state),
@@ -394,7 +389,8 @@ impl VolumeFadersCore {
                 if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
-                    to_upstream
+                    senders
+                        .to_reaper
                         .send(
                             track::Soloed {
                                 track_guid: guid,
@@ -403,7 +399,8 @@ impl VolumeFadersCore {
                             .into(),
                         )
                         .unwrap();
-                    to_downstream
+                    senders
+                        .to_v1m
                         .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                             idx: solo_msg.idx,
                             state: v1m::LEDState::from(new_state),
@@ -415,7 +412,8 @@ impl VolumeFadersCore {
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
-                    to_upstream
+                    senders
+                        .to_reaper
                         .send(
                             track::Armed {
                                 track_guid: guid,
@@ -424,7 +422,8 @@ impl VolumeFadersCore {
                             .into(),
                         )
                         .unwrap();
-                    to_downstream
+                    senders
+                        .to_v1m
                         .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                             idx: arm_msg.idx,
                             state: v1m::LEDState::from(new_state),
@@ -432,9 +431,7 @@ impl VolumeFadersCore {
                         .unwrap();
                 }
             }
-            _ => {
-                // Ignore other messages
-            }
+            _ => (),
         }
     }
 }

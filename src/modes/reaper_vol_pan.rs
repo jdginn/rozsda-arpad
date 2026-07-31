@@ -1,16 +1,13 @@
 use std::collections::HashMap;
 
-use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::v1m::{self};
-use crate::midi::v1m::{
-    ChannelFaderMsg, DownstreamMsg, EncoderRingMsg, LEDState, SelectLEDMsg, UpstreamMsg,
-};
-use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
+use crate::midi::v1m::{DownstreamMsg, EncoderRingMsg, LEDState, SelectLEDMsg, UpstreamMsg};
+use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
-use crate::track::track::{TrackMsg, TrackQuery};
+use crate::track::track::TrackMsg;
 
 pub const FADER_0DB: f32 = 0.72; // Placeholder value for 0dB on fader scale
 
@@ -27,64 +24,24 @@ pub fn map_to_0xb(x: f32) -> u8 {
 ///
 /// Button LED toggling is handled here (downstream does not need to worry about managing button
 /// LEDS.)
+///
 pub struct VolumePanMode {
     core: VolumeFadersCore,
-    to_reaper: Sender<TrackMsg>,
-    _from_reaper: Receiver<TrackMsg>,
-    to_v1m: Sender<v1m::DownstreamMsg>,
-    _from_v1m: Receiver<v1m::UpstreamMsg>,
     pan_states: HashMap<Uuid, f32>,
 }
 
 impl VolumePanMode {
-    pub fn new(
-        num_channels: usize,
-        from_reaper: Receiver<TrackMsg>,
-        to_reaper: Sender<TrackMsg>,
-        from_v1m: Receiver<v1m::UpstreamMsg>,
-        to_v1m: Sender<v1m::DownstreamMsg>,
-    ) -> Self {
+    pub fn new(num_channels: usize) -> Self {
         VolumePanMode {
             core: VolumeFadersCore::new(num_channels),
             pan_states: HashMap::new(),
-            to_reaper,
-            _from_reaper: from_reaper,
-            to_v1m,
-            _from_v1m: from_v1m,
         }
-    }
-
-    pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
-        self.core.find_hw_channel(guid)
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for VolumePanMode {
-    fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+impl ModeHandler for VolumePanMode {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &Senders) -> ModeAction {
         match track::DataMsg::try_from(msg) {
-            Err(TrackMsg::Barrier(barrier)) => {
-                // Forward barriers downstream (they need to reflect back upstream for the mode to
-                // transition)
-                self.to_v1m
-                    .send(v1m::DownstreamMsg::Barrier(barrier))
-                    .unwrap();
-                match curr_mode.state {
-                    // If we were already waiting on a barrier from upstream, check if this is the one
-                    // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
-                    State::WaitingBarrierFromUpstream(expected_barrier) => {
-                        if barrier == expected_barrier {
-                            ModeState {
-                                mode: curr_mode.mode,
-                                state: State::WaitingBarrierFromDownstream(barrier),
-                                new_selected_track_guid: None,
-                            }
-                        } else {
-                            curr_mode
-                        }
-                    }
-                    _ => curr_mode,
-                }
-            }
             Ok(msg) => {
                 match msg {
                     track::DataMsg::Selected(msg) => {
@@ -92,126 +49,88 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                             true => v1m::LEDState::On,
                             false => v1m::LEDState::Off,
                         };
-                        self.to_v1m
-                            .send(
-                                v1m::SelectLEDMsg {
-                                    idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0)
-                                        as i32,
-                                    state,
-                                }
-                                .into(),
-                            )
-                            .unwrap();
-                        curr_mode
-                        // ModeState {
-                        //     mode: curr_mode.mode,
-                        //     state: curr_mode.state,
-                        //     new_selected_track_guid: Some(msg.track_guid),
-                        // }
+                        io.to_v1m(
+                            v1m::SelectLEDMsg {
+                                idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
+                                state,
+                            }
+                            .into(),
+                        );
+                        ModeAction::None
                     }
                     track::DataMsg::Name(msg) => {
-                        self.to_v1m
-                            .send(
-                                v1m::ScribbleStripLine1TextMsg {
-                                    idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0)
-                                        as i32,
-                                    text: msg.name.clone(),
-                                }
-                                .into(),
-                            )
-                            .unwrap();
-                        self.to_v1m
-                            .send(
-                                v1m::BottomScribbleStripLine2TextMsg {
-                                    idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0)
-                                        as i32,
-                                    text: msg.name,
-                                }
-                                .into(),
-                            )
-                            .unwrap();
-                        curr_mode
+                        io.to_v1m(
+                            v1m::ScribbleStripLine1TextMsg {
+                                idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
+                                text: msg.name.clone(),
+                            }
+                            .into(),
+                        );
+                        io.to_v1m(
+                            v1m::BottomScribbleStripLine2TextMsg {
+                                idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
+                                text: msg.name,
+                            }
+                            .into(),
+                        );
+                        ModeAction::None
                     }
                     _ => {
                         // Handle common functionality across modes that put volume on the faders
                         // and mute/solo/arm on the buttons
-                        self.core
-                            .handle_message_from_upstream(msg, self.to_v1m.clone(), |data| {
-                                let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
-                                self.to_v1m
-                                    .send(
-                                        v1m::EncoderRingMsg {
-                                            idx: data.hw_channel as i32,
-                                            mode: v1m::EncoderRingMode::Point,
-                                            val: map_to_0xb(*pan_val),
-                                        }
-                                        .into(),
-                                    )
-                                    .unwrap();
-                            });
+                        self.core.handle_message_from_upstream(msg, &io, |data| {
+                            let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
+                            io.to_v1m(
+                                v1m::EncoderRingMsg {
+                                    idx: data.hw_channel as i32,
+                                    mode: v1m::EncoderRingMode::Point,
+                                    val: map_to_0xb(*pan_val),
+                                }
+                                .into(),
+                            )
+                        });
                         // In addition to the common functionality, handle a few edge casess:
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
-                        curr_mode
+                        ModeAction::None
                     }
                 }
             }
             Err(_) => {
-                // Ignore messages that aren't TrackDataMsg or Barrier
-                curr_mode
+                panic!("Code bug: VolumePanMode should only receive TrackDataMsg messages.");
             }
         }
     }
-    fn handle_messages_from_downstream(
-        &mut self,
-        msg: v1m::UpstreamMsg,
-        curr_mode: ModeState,
-    ) -> ModeState {
+    fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, io: &Senders) -> ModeAction {
         match msg {
             // GlobalPress maps to this mode!
-            v1m::UpstreamMsg::GlobalPress => curr_mode,
+            v1m::UpstreamMsg::GlobalPress => ModeAction::None,
             // MIDITracksPress maps to ReaperSends mode
             UpstreamMsg::MIDITracksPress => {
                 println!("Requesting transition to ReaperSends mode");
-                // Request transition to ReaperSends mode
-                ModeState {
-                    mode: Mode::ReaperSends,
-                    state: State::RequestingModeTransition,
-                    new_selected_track_guid: None,
-                }
+                ModeAction::Transition(Mode::ReaperSends)
             }
             v1m::UpstreamMsg::InputsPress => {
-                // Request transition to ReaperChannelStrip mode
-                ModeState {
-                    mode: Mode::ReaperChannelStrip,
-                    state: State::RequestingModeTransition,
-                    new_selected_track_guid: None,
-                }
+                println!("Requesting transition to ReaperChannelStrip mode");
+                ModeAction::Transition(Mode::ReaperChannelStrip)
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
-                self.to_v1m
-                    .send(DownstreamMsg::SelectLED(SelectLEDMsg {
-                        idx: select_msg.idx,
-                        state: LEDState::On,
-                    }))
-                    .unwrap();
+                io.to_v1m(DownstreamMsg::SelectLED(SelectLEDMsg {
+                    idx: select_msg.idx,
+                    state: LEDState::On,
+                }));
                 if let Some(guid) = self.core.get_guid_for_hw_channel(select_msg.idx as usize) {
-                    self.to_reaper
-                        .send(
-                            track::Selected {
-                                track_guid: guid,
-                                selected: true,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
+                    io.send_to_reaper(
+                        track::Selected {
+                            track_guid: guid,
+                            selected: true,
+                        }
+                        .into(),
+                    );
                 }
+                // TODO: what do we do with this?
                 let new_selected_track_guid =
                     self.core.get_guid_for_hw_channel(select_msg.idx as usize);
-                ModeState {
-                    mode: curr_mode.mode,
-                    state: State::RequestingModeTransition,
-                    new_selected_track_guid,
-                }
+                ModeAction::SelectedTrackChanged(new_selected_track_guid)
             }
             v1m::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
@@ -227,26 +146,22 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                     self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
-                    self.to_reaper
-                        .send(
-                            track::Pan {
-                                track_guid: guid,
-                                pan: new_pan,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
+                    io.send_to_reaper(
+                        track::Pan {
+                            track_guid: guid,
+                            pan: new_pan,
+                        }
+                        .into(),
+                    );
 
                     // Send encoder LED update downstream to hardware
-                    self.to_v1m
-                        .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-                            idx: encoder_msg.idx,
-                            mode: v1m::EncoderRingMode::FromCenter,
-                            val: map_to_0xb(new_pan),
-                        }))
-                        .unwrap();
+                    io.to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                        idx: encoder_msg.idx,
+                        mode: v1m::EncoderRingMode::FromCenter,
+                        val: map_to_0xb(new_pan),
+                    }));
                 }
-                curr_mode
+                ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnDec(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
@@ -262,54 +177,27 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for V
                     self.pan_states.insert(guid, new_pan);
 
                     // Send pan update upstream to Reaper
-                    self.to_reaper
-                        .send(
-                            track::Pan {
-                                track_guid: guid,
-                                pan: new_pan,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
+                    io.send_to_reaper(
+                        track::Pan {
+                            track_guid: guid,
+                            pan: new_pan,
+                        }
+                        .into(),
+                    );
 
                     // Send encoder LED update downstream to hardware
-                    self.to_v1m
-                        .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-                            idx: encoder_msg.idx,
-                            mode: v1m::EncoderRingMode::FromCenter,
-                            val: map_to_0xb(new_pan),
-                        }))
-                        .unwrap();
+                    io.to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                        idx: encoder_msg.idx,
+                        mode: v1m::EncoderRingMode::FromCenter,
+                        val: map_to_0xb(new_pan),
+                    }));
                 }
-                curr_mode
+                ModeAction::None
             }
             _ => {
-                self.core.handle_message_from_downstream(
-                    msg,
-                    self.to_reaper.clone(),
-                    self.to_v1m.clone(),
-                );
-                curr_mode
+                self.core.handle_message_from_downstream(msg, &io);
+                ModeAction::None
             }
-        }
-    }
-}
-
-impl VolumePanMode {
-    pub fn initiate_mode_transition(
-        &mut self,
-        from_mode: ModeState,
-        upstream: Sender<TrackMsg>,
-        selected_track_guid: Option<Uuid>,
-    ) -> ModeState {
-        self.core.reset(self.to_v1m.clone());
-        upstream.send(TrackMsg::QueryAll).unwrap();
-        let barrier = Barrier::new(from_mode.mode, Mode::ReaperVolPan);
-        upstream.send(TrackMsg::Barrier(barrier)).unwrap();
-        ModeState {
-            mode: Mode::ReaperVolPan,
-            state: State::WaitingBarrierFromUpstream(barrier),
-            new_selected_track_guid: None,
         }
     }
 }

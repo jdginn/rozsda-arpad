@@ -1,7 +1,5 @@
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
@@ -89,8 +87,6 @@ impl Barrier {
 pub enum State {
     // Normal operation: forward messages in both directions
     Active,
-    // One of the modes has requested the mode manager to transition to a new mode
-    RequestingModeTransition,
     // Waiting from messages from upstream to be passed all the way downstream
     WaitingBarrierFromUpstream(Barrier),
     // All messages from upstream have been passed downward; waiting for downstream to confirm all
@@ -107,29 +103,39 @@ pub enum Mode {
     MotuVolPan,
 }
 
-/// Represents the current mode and state of the mode manager.
+pub struct Senders {
+    pub to_reaper: Sender<TrackMsg>,
+    pub to_v1m: Sender<v1m::DownstreamMsg>,
+}
+
+impl Senders {
+    pub fn new(to_reaper: Sender<TrackMsg>, to_v1m: Sender<v1m::DownstreamMsg>) -> Self {
+        Senders { to_reaper, to_v1m }
+    }
+
+    pub fn send_to_reaper(&self, msg: TrackMsg) {
+        self.to_reaper.send(msg).unwrap();
+    }
+
+    pub fn to_v1m(&self, msg: v1m::DownstreamMsg) {
+        self.to_v1m.send(msg).unwrap();
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ModeState {
-    pub mode: Mode,
-    pub state: State,
-    pub new_selected_track_guid: Option<Uuid>,
+pub enum ModeAction {
+    None,
+    SelectedTrackChanged(Option<Uuid>),
+    Transition(Mode),
 }
 
 /// Each mode implementation struct needs to implement this trait to handle messages
 ///
 /// Each mode implementation should also implement initiate_mode_transition(self, ...) -> ModeState. This implementation
 /// will vary from mode to mode but usually will require sending a barrier to the upstream channel.
-pub trait ModeHandler<ToUpstream, FromUpstream, ToDownstream, FromDownstream> {
-    fn handle_messages_from_downstream(
-        &mut self,
-        msg: FromDownstream,
-        curr_mode: ModeState,
-    ) -> ModeState;
-    fn handle_messages_from_upstream(
-        &mut self,
-        msg: FromUpstream,
-        curr_mode: ModeState,
-    ) -> ModeState;
+pub trait ModeHandler {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &Senders) -> ModeAction;
+    fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, io: &Senders) -> ModeAction;
 }
 
 /// Presents all modes with a uniform interface, (mostly) seamlessly handling switching between modes.
@@ -145,8 +151,10 @@ pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
     to_reaper: Sender<TrackMsg>,
     from_v1m: Receiver<v1m::UpstreamMsg>,
-    _to_v1m: Sender<v1m::DownstreamMsg>,
-    pub curr_mode: ModeState,
+    to_v1m: Sender<v1m::DownstreamMsg>,
+
+    curr_mode: Mode,
+    curr_state: State,
 
     reaper_currently_selected_track_guid: Option<Uuid>,
 }
@@ -161,268 +169,132 @@ impl ModeManager {
         to_v1m: Sender<v1m::DownstreamMsg>,
     ) {
         let mut manager = ModeManager {
-            from_reaper: from_reaper.clone(),
+            from_reaper,
             to_reaper: to_reaper.clone(),
-            from_v1m: from_v1m.clone(),
-            _to_v1m: to_v1m.clone(),
-            curr_mode: ModeState {
-                mode: Mode::ReaperVolPan,
-                state: State::Active,
-                new_selected_track_guid: None,
-            },
+            from_v1m,
+            to_v1m: to_v1m.clone(),
+            curr_mode: Mode::ReaperVolPan,
+            curr_state: State::Active,
+
             reaper_currently_selected_track_guid: None,
         };
 
-        // Each mode's implementation struct needs to be initialized here
-        let reaper_vol_pan = Arc::new(Mutex::new(VolumePanMode::new(
-            8, // For now, assume we have 8 faders on the conroller
-            from_reaper.clone(),
-            to_reaper.clone(),
-            from_v1m.clone(),
-            to_v1m.clone(),
-        )));
+        // TODO: is cloning wise here?
+        let io = Senders {
+            to_reaper: to_reaper.clone(),
+            to_v1m: to_v1m.clone(),
+        };
 
-        let reaper_track_sends = Arc::new(Mutex::new(TrackSendsMode::new(
-            8,
-            from_reaper.clone(),
-            to_reaper.clone(),
-            from_v1m.clone(),
-            to_v1m.clone(),
-        )));
-
-        let reaper_channel_strip = Arc::new(Mutex::new(ChannelStripMode::new(
-            8,
-            from_reaper.clone(),
-            to_reaper.clone(),
-            from_v1m.clone(),
-            to_v1m.clone(),
-        )));
-
-        let reaper_vol_pan_clone = reaper_vol_pan.clone();
-        let reaper_track_sends_clone = reaper_track_sends.clone();
-        let reaper_channel_strip_clone = reaper_channel_strip.clone();
-
-        thread::spawn(move || {
-            let handle_transitions = |manager: &mut ModeManager, mode: ModeState| {
-                // If the mode has indicated a new track selection, update it with the mode manager
-                if let Some(selected_track_guid) = mode.new_selected_track_guid {
-                    manager.reaper_currently_selected_track_guid = Some(selected_track_guid)
-                }
-                if mode.state == State::RequestingModeTransition {
-                    match mode.mode {
-                        Mode::ReaperVolPan => {
-                            println!("Transitioning to ReaperVolPan mode");
-                            if let Err(e) = reaper_vol_pan_clone.try_lock() {
-                                println!("Failed to lock reaper_vol_pane_clone: {:?}", e);
+        loop {
+            match manager.curr_state {
+                State::Active => match manager.curr_mode {
+                    // TODO: what do we do with selected track?
+                    Mode::ReaperVolPan => {
+                        // TODO: flush all coalesced messages downstream
+                        let mut handler = VolumePanMode::new(8);
+                        loop {
+                            select! {
+                            recv(manager.from_reaper) -> msg => {
+                                if let Ok(msg) = msg {
+                                    match handler.handle_msg_from_upstream(msg, &io) {
+                                        ModeAction::None => {},
+                                        ModeAction::SelectedTrackChanged(guid) => {
+                                            manager.reaper_currently_selected_track_guid = guid
+                                        }
+                                        ModeAction::Transition(new_mode) => {
+                                            manager.to_reaper.send(TrackMsg::QueryAll).unwrap();
+                                            let barrier = Barrier::new(manager.curr_mode, new_mode);
+                                            manager.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
+                                            manager.curr_mode = new_mode;
+                                            manager.curr_state = State::WaitingBarrierFromUpstream(barrier);
+                                            break
+                                        }
+                                    }
+                                }
                             }
-                            manager.curr_mode = reaper_vol_pan_clone
-                                .lock()
-                                .unwrap()
-                                .initiate_mode_transition(
-                                    manager.curr_mode,
-                                    manager.to_reaper.clone(),
-                                    manager.reaper_currently_selected_track_guid,
-                                );
-                            println!("New mode state: {:?}", manager.curr_mode);
-                        }
-                        Mode::ReaperSends => {
-                            println!("Transitioning to ReaperSends mode");
-                            // We can only enter this mode if we have a track selected
-                            if let Some(selected_track_guid) =
-                                manager.reaper_currently_selected_track_guid
-                            {
-                                manager.curr_mode = reaper_track_sends_clone
-                                    .lock()
-                                    .unwrap()
-                                    .initiate_mode_transition(
-                                        manager.curr_mode.mode,
-                                        manager.to_reaper.clone(),
-                                        selected_track_guid,
-                                    );
+                            recv(manager.from_v1m) -> msg => {
+                                if let Ok(msg) = msg {
+                                    match handler.handle_msg_from_downstream(msg, &io) {
+                                        ModeAction::None => {},
+                                        ModeAction::SelectedTrackChanged(guid) => {
+                                            manager.reaper_currently_selected_track_guid = guid
+                                        }
+                                        ModeAction::Transition(new_mode) => {
+                                            manager.to_reaper.send(TrackMsg::QueryAll).unwrap();
+                                            let barrier = Barrier::new(manager.curr_mode, new_mode);
+                                            manager.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
+                                            manager.curr_mode = new_mode;
+                                            manager.curr_state = State::WaitingBarrierFromUpstream(barrier);
+                                            break
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        Mode::ReaperChannelStrip => {
-                            println!("Transitioning to ReaperChannelStrip mode");
-                            // We can only enter this mode if we have a track selected
-                            if let Some(selected_track_guid) =
-                                manager.reaper_currently_selected_track_guid
-                            {
-                                manager.curr_mode = reaper_channel_strip_clone
-                                    .lock()
-                                    .unwrap()
-                                    .initiate_mode_transition(
-                                        manager.curr_mode.mode,
-                                        manager.to_reaper.clone(),
-                                        selected_track_guid,
-                                    );
                             }
-                        }
-                        Mode::MotuVolPan => {
-                            panic!("MotuVolPan mode transition not implemented yet!")
                         }
                     }
-                } else {
-                    // Not requesting a transition, just update the mode
-                    manager.curr_mode = mode;
-                }
-            };
-
-            loop {
-                select! {
-                    recv(manager.from_reaper) -> msg => {
-                        if let Ok(track_msg) = msg {
-                        let curr_mode = manager.curr_mode;
-                        match curr_mode.mode {
-                        Mode::ReaperVolPan => {
-                            // TODO: Do we need to gate this during transition? I think probably
-                                // not, since upstream changes are by definition authoritative, and
-                                // if we apply the upstream change early, that should only be
-                                // helping us be more correct.
-                                // The only downside I can think of is if an upstream message gets
-                                // superseded by a future upstream message, which could cause a bit
-                                // of jitter on the hw. But even then, we are not propagating
-                                // hardware settings upstream, so upstream should still always be
-                                // correct.
-                            let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
-                            if new_mode != curr_mode {
-                                handle_transitions(&mut manager, new_mode)
+                    Mode::ReaperSends => {
+                        //TODO:
+                    }
+                    _ => panic!("Unimplemented"),
+                },
+                State::WaitingBarrierFromUpstream(expected_barrier) => {
+                    loop {
+                        select! {
+                            recv(manager.from_reaper) -> msg => {
+                                // Yes, for now we just want to panic on error
+                                match msg.unwrap() {
+                                    TrackMsg::Barrier(barrier) => {
+                                        // Forward barriers downstream (they need to reflect back upstream for the mode to
+                                        // transition)
+                                        manager.to_v1m
+                                            .send(v1m::DownstreamMsg::Barrier(barrier))
+                                            .unwrap();
+                                        if barrier == expected_barrier {
+                                            // If we were already waiting on a barrier from upstream, check if this is the one
+                                            // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
+                                            manager.curr_state = State::WaitingBarrierFromDownstream(barrier);
+                                            break
+                                        }
+                                    },
+                                    _ => {
+                                        //TODO: coalesce
+                                    }
+                                }
                             }
-                        },
-                        Mode::ReaperSends => {
-                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
-                            if new_mode != curr_mode {
-                                handle_transitions(&mut manager, new_mode)
+                            recv(manager.from_v1m) -> msg => {
+                                // Discard all messages from downstream until we have received the barrier from upstream
                             }
-                        },
-                        Mode::ReaperChannelStrip => {
-                            let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_upstream(track_msg, curr_mode);
-                            if new_mode != curr_mode {
-                                handle_transitions(&mut manager, new_mode)
-                            }
-                        },
-                        Mode::MotuVolPan => {
-                            panic!("MotuVolPan currently unsupported")
-                        }
                         }
                     }
                 }
-                    recv(manager.from_v1m) -> msg => {
-                        if let Ok(v1m_msg) = msg {
-                            let curr_mode = manager.curr_mode;
-                            match curr_mode.mode{
-                                Mode::ReaperVolPan => {
-                                    match curr_mode.state {
-                                        State::Active => {
-                                            let new_mode = reaper_vol_pan.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
-                                            if new_mode != curr_mode {
-                                                handle_transitions(&mut manager, new_mode);
-                                            }
-                                        },
-                                        // We don't send any messages up from the hw until the hw
-                                        // is confirmed to reflect the upsream state
-                                        State::WaitingBarrierFromDownstream(expected_barrier) => {
-                                            match v1m_msg {
-                                                v1m::UpstreamMsg::Barrier(barrier) => {
-                                                    if barrier == expected_barrier {
-                                                        manager.curr_mode = ModeState {
-                                                            mode: curr_mode.mode,
-                                                            state: State::Active,
-                                                            new_selected_track_guid: None,
-                                                        };
-                                                    } else {
-                                                        // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
-                                                        // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
-                                                    }
-                                                },
-                                                _ => {
-                                                    // Block all non-barrier messages until the barrier comes through
-                                                }
-                                            }
-                                        },
-                                        State::WaitingBarrierFromUpstream(_) => {
-                                            // Block
-                                        },
-                                        State::RequestingModeTransition => panic!("We should never be handling upstream messages while requesting a mode transition!")
+                State::WaitingBarrierFromDownstream(expected_barrier) => {
+                    loop {
+                        select! {
+                            recv(manager.from_reaper) -> msg => {
+                                // TODO: coalesce all messages
+                                // TODO: what do we do with other barriers?
+                            }
+                            recv(manager.from_v1m) -> msg => {
+                                match msg.unwrap() {
+                                    v1m::UpstreamMsg::Barrier(barrier) => {
+                                        if barrier == expected_barrier {
+                                            manager.curr_state = State::Active;
+                                            break
+                                        } else {
+                                            // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
+                                            // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
+                                        }
+                                    },
+                                    _ => {
+                                        // Discard all messages from downstream until we have received the barrier from downstream
                                     }
-                                },
-                                Mode::ReaperSends => {
-                                    match curr_mode.state {
-                                        State::Active => {
-                                            let new_mode = reaper_track_sends.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
-                                            if new_mode != curr_mode {
-                                                handle_transitions(&mut manager, new_mode);
-                                            }
-                                        },
-                                        // We don't send any messages up from the hw until the hw
-                                        // is confirmed to reflect the upsream state
-                                        State::WaitingBarrierFromDownstream(expected_barrier) => {
-                                            match v1m_msg {
-                                                v1m::UpstreamMsg::Barrier(barrier) => {
-                                                    if barrier == expected_barrier {
-                                                        manager.curr_mode = ModeState {
-                                                            mode: curr_mode.mode,
-                                                            state: State::Active,
-                                                            new_selected_track_guid: None,
-                                                        };
-                                                    } else {
-                                                        // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
-                                                        // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
-                                                    }
-                                                },
-                                                _ => {
-                                                    // Block all non-barrier messages until the barrier comes through
-                                                }
-                                            }
-                                        },
-                                        State::WaitingBarrierFromUpstream(_) => {
-                                            // Block
-                                        },
-                                        State::RequestingModeTransition => panic!("We should never be handling upstream messages while requesting a mode transition!")
-                                    }
-                                },
-                                Mode::ReaperChannelStrip => {
-                                    match curr_mode.state {
-                                        State::Active => {
-                                            let new_mode = reaper_channel_strip.lock().unwrap().handle_messages_from_downstream(v1m_msg, curr_mode);
-                                            if new_mode != curr_mode {
-                                                handle_transitions(&mut manager, new_mode);
-                                            }
-                                        },
-                                        // We don't send any messages up from the hw until the hw
-                                        // is confirmed to reflect the upsream state
-                                        State::WaitingBarrierFromDownstream(expected_barrier) => {
-                                            match v1m_msg {
-                                                v1m::UpstreamMsg::Barrier(barrier) => {
-                                                    if barrier == expected_barrier {
-                                                        manager.curr_mode = ModeState {
-                                                            mode: curr_mode.mode,
-                                                            state: State::Active,
-                                                            new_selected_track_guid: None,
-                                                        };
-                                                    } else {
-                                                        // This is a barrier for a previous mode transition that we have already passed, so we can ignore it
-                                                        // (We should only be receiving barriers for the current mode transition we are in, but just in case...)
-                                                    }
-                                                },
-                                                _ => {
-                                                    // Block all non-barrier messages until the barrier comes through
-                                                }
-                                            }
-                                        },
-                                        State::WaitingBarrierFromUpstream(_) => {
-                                            // Block
-                                        },
-                                        State::RequestingModeTransition => panic!("We should never be handling upstream messages while requesting a mode transition!")
-                                    }
-                                },
-                                Mode::MotuVolPan => {
-                                    panic!("MotuVolPan currently unsupported")
                                 }
                             }
                         }
                     }
                 }
             }
-        });
+        }
     }
 }
