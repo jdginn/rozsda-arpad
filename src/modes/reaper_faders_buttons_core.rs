@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use uuid::Uuid;
 
@@ -64,7 +63,7 @@ pub struct TrackIndexUpdateEpilogue {
 /// LEDS.)
 pub struct VolumeFadersCore {
     // Maps each channel on the hardware controller to a Reaper track
-    pub track_hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
+    pub track_hw_assignments: Vec<Option<Uuid>>,
     // Store state for each track by track GUID
     track_states: HashMap<Uuid, TrackState>,
     // Store last volume sent downstream by track GUID for de-jitter
@@ -73,7 +72,7 @@ pub struct VolumeFadersCore {
 
 impl VolumeFadersCore {
     pub fn new(num_channels: usize) -> Self {
-        let track_hw_assignments = Arc::new(Mutex::new(vec![None; num_channels]));
+        let track_hw_assignments = vec![None; num_channels];
         let track_states = HashMap::new();
 
         VolumeFadersCore {
@@ -189,14 +188,12 @@ impl VolumeFadersCore {
 
     // Return the track_guid associated with the hardware channel
     pub fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
-        let assignments = self.track_hw_assignments.lock().unwrap();
-        assignments[hw_channel]
+        self.track_hw_assignments[hw_channel]
     }
 
     // For a given track GUID, find which hardware channel it's assigned to (if any)
     pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
-        let assignments = self.track_hw_assignments.lock().unwrap();
-        assignments
+        self.track_hw_assignments
             .iter()
             .enumerate()
             .find(|(_, assigned_guid)| **assigned_guid == Some(guid))
@@ -221,16 +218,13 @@ impl VolumeFadersCore {
                         return;
                     }
                     // First, check if the assignment is changing. If not changing, do nothing.
-                    if let Some(current_guid) =
-                        &self.track_hw_assignments.lock().unwrap()[index as usize]
-                    {
+                    if let Some(current_guid) = &self.track_hw_assignments[index as usize] {
                         if current_guid == &msg.track_guid {
                             return; // No change in assignment
                         }
                     }
                     // Clear any existing assignment for this track GUID before setting the new one
-                    let mut assignments = self.track_hw_assignments.lock().unwrap();
-                    for slot in assignments.iter_mut() {
+                    for slot in self.track_hw_assignments.iter_mut() {
                         if let Some(guid) = slot {
                             if guid == &msg.track_guid {
                                 *slot = None; // FIXME: seems sketchy
@@ -238,33 +232,31 @@ impl VolumeFadersCore {
                         }
                     }
                     // Now set the new assignment
-                    assignments[index as usize - 1] = Some(msg.track_guid);
+                    self.track_hw_assignments[index as usize - 1] = Some(msg.track_guid);
                 }
                 // Now, send the current state of the track to the hardware for this channel
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     let track_state = *self.get_track_state(msg.track_guid);
                     // Send volume
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(
-                        v1m::ChannelFaderMsg {
-                            idx: hw_channel as i32,
-                            value: track_state.volume as f64,
-                        },
-                    ));
+                    senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                        idx: hw_channel as i32,
+                        value: track_state.volume as f64,
+                    }));
                     // Update EPSILON tracking for volume since we just sent it
                     self.last_sent_volume[hw_channel] = track_state.volume;
 
                     // Send mute LED
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.mute.is_on()),
                     }));
                     // Send solo LED
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.solo.is_on()),
                     }));
                     // Send arm LED
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
                     }));
@@ -284,7 +276,7 @@ impl VolumeFadersCore {
                     if should_send {
                         // Send volume update to v1m for the corresponding fader
                         let fader_value = msg.volume; // TODO: scale appropriately
-                        let _ = senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(
+                        senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(
                             v1m::ChannelFaderMsg {
                                 idx: hw_channel as i32,
                                 value: fader_value as f64,
@@ -302,7 +294,7 @@ impl VolumeFadersCore {
                     .set(msg.muted);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send mute LED update to v1m
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.muted),
                     }));
@@ -315,7 +307,7 @@ impl VolumeFadersCore {
                     .set(msg.soloed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send solo LED update to v1m
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.soloed),
                     }));
@@ -328,7 +320,7 @@ impl VolumeFadersCore {
                     .set(msg.armed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send arm LED update to v1m
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.armed),
                     }));
@@ -343,11 +335,9 @@ impl VolumeFadersCore {
     pub fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, senders: &Senders) {
         match msg {
             v1m::UpstreamMsg::ChannelFader(fader_msg) => {
-                if let Some(guid) =
-                    &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
-                {
+                if let Some(guid) = &self.track_hw_assignments[fader_msg.idx as usize] {
                     // Send volume update to Reaper for the corresponding track
-                    let _ = senders.send_to_reaper(
+                    senders.send_to_reaper(
                         track::Volume {
                             track_guid: *guid,
                             volume: fader_msg.value as f32, // TODO: Need to scale appropriately
@@ -355,12 +345,10 @@ impl VolumeFadersCore {
                         .into(),
                     );
                     // Convince the v1m to leave its faders where we put them
-                    let _ = senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(
-                        v1m::ChannelFaderMsg {
-                            idx: fader_msg.idx,
-                            value: fader_msg.value,
-                        },
-                    ));
+                    senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                        idx: fader_msg.idx,
+                        value: fader_msg.value,
+                    }));
                 }
             }
             v1m::UpstreamMsg::MutePress(mute_msg) => {
