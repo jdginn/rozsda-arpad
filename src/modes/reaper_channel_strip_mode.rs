@@ -4,11 +4,11 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::v1m;
-use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
+use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders};
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
-use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg, TrackQuery};
+use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg};
 
 struct Widgets {
     hp_filter: widgets::ChannelWidget<widgets::HPWidgetBehavior>,
@@ -188,55 +188,26 @@ impl ChannelStripMode {
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for ChannelStripMode {
-    fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+impl ModeHandler for ChannelStripMode {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, senders: &Senders) -> ModeAction {
         match TrackDataMsg::try_from(msg) {
-            Err(TrackMsg::Barrier(barrier)) => {
-                // Forward barriers downstream (they need to reflect back upstream for the mode to
-                // transition)
-                self.to_v1m
-                    .send(v1m::DownstreamMsg::Barrier(barrier))
-                    .unwrap();
-                match curr_mode.state {
-                    // If we were already waiting on a barrier from upstream, check if this is the one
-                    // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
-                    State::WaitingBarrierFromUpstream(expected_barrier) => {
-                        if barrier == expected_barrier {
-                            ModeState {
-                                mode: curr_mode.mode,
-                                state: State::WaitingBarrierFromDownstream(barrier),
-                                new_selected_track_guid: None,
-                            }
-                        } else {
-                            curr_mode
-                        }
-                    }
-                    _ => curr_mode,
-                }
-            }
             Ok(msg) => {
                 match msg {
                     // If a new track is selected, initiate a mode transition to make widgets now
                     // point to that new track.
                     TrackDataMsg::Selected(msg) => {
                         if msg.selected {
-                            ModeState {
-                                mode: Mode::ReaperChannelStrip,
-                                state: State::RequestingModeTransition,
-                                new_selected_track_guid: Some(msg.track_guid),
-                            }
+                            //FIXME: make a custom transition message that includes the new selected track guid, so we can update the widgets to point to the new track
+                            ModeAction::Transition(Mode::ReaperChannelStrip)
                         } else {
-                            curr_mode
+                            ModeAction::None
                         }
                     }
                     _ => {
                         // First handle the functionality that is not unique to ChannelStripMode
                         // (e.g. volume on faders, mute/arm/solo buttons)
-                        self.core.handle_message_from_upstream(
-                            msg.clone(),
-                            self.to_v1m.clone(),
-                            |_| {},
-                        );
+                        self.core
+                            .handle_msg_from_upstream(msg.clone(), senders, |_| {});
                         if let Some(selected_guid) = self.selected_track_guid {
                             let router = self
                                 .routers
@@ -251,87 +222,38 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for C
                             };
                         };
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
-                        curr_mode
+                        ModeAction::None
                     }
                 }
             }
             Err(_) => {
                 // Ignore messages that fail to parse as TrackDataMsg (e.g., ModeTransition, etc.)
-                curr_mode
+                panic!("Failed to parse TrackMsg as TrackDataMsg:");
             }
         }
     }
-    fn handle_messages_from_downstream(
+    fn handle_msg_from_downstream(
         &mut self,
         msg: v1m::UpstreamMsg,
-        curr_mode: ModeState,
-    ) -> ModeState {
+        senders: &Senders,
+    ) -> ModeAction {
         match msg {
-            // If we were already waiting on a barrier from downstream, check if this is the one
-            // we were waiting for. If yes, the state transition is finished.
-            //
-            // Note, we do not need to forward this barrier onward, since the hardware is not
-            // allowed to reflect barriers back upstream.
-            v1m::UpstreamMsg::Barrier(barrier) => {
-                match curr_mode.state {
-                    State::WaitingBarrierFromDownstream(expected_barrier) => {
-                        if barrier == expected_barrier {
-                            ModeState {
-                                mode: curr_mode.mode,
-                                state: State::Active,
-                                new_selected_track_guid: None,
-                            }
-                        } else {
-                            curr_mode
-                        }
-                    }
-                    _ => {
-                        // TODO: This is a barrier message we don't care about. Do we need to do
-                        // anything with it?
-                        //
-                        // Presumably if a barrier comes back that we weren't looking for, it's for
-                        // some old irrelevant state transition that has already been superseded.
-                        curr_mode
-                    }
-                }
-                // Handle barrier messages if needed
-            }
             // GlobalPress maps to ReaperVolPan mode
-            v1m::UpstreamMsg::GlobalPress => ModeState {
-                mode: Mode::ReaperVolPan,
-                state: State::RequestingModeTransition,
-                new_selected_track_guid: None,
-            },
+            v1m::UpstreamMsg::GlobalPress => ModeAction::Transition(Mode::ReaperVolPan),
             // MIDITracksPress maps to ReaperSends mode
-            v1m::UpstreamMsg::MIDITracksPress => ModeState {
-                mode: Mode::ReaperSends,
-                state: State::RequestingModeTransition,
-                new_selected_track_guid: None,
-            },
-            v1m::UpstreamMsg::InputsPress => curr_mode, // Inputs maps to this mode!
-            // If a new track is selected, we need to initiate a mode transition so that the
-            // widgets are controlling the new track
-            //
-            // TODO: do we need to handle this case separately or do we simply expect a reflected
-            // message back from Reaper?
+            v1m::UpstreamMsg::MIDITracksPress => ModeAction::Transition(Mode::ReaperSends),
+            v1m::UpstreamMsg::InputsPress => ModeAction::None,
             v1m::UpstreamMsg::SelectPress(msg) => {
                 let selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
                 match selected_track_guid {
-                    Some(selected_track_guid) => ModeState {
-                        mode: Mode::ReaperChannelStrip,
-                        state: State::RequestingModeTransition,
-                        new_selected_track_guid: Some(selected_track_guid),
-                    },
-                    None => curr_mode,
+                    //FIXME:
+                    Some(selected_track_guid) => ModeAction::Transition(Mode::ReaperChannelStrip),
+                    None => ModeAction::None,
                 }
             }
             _ => {
                 // Handle messages not specific to ChannelStripMode (e.g. faders, mute/arm/solo)
-                self.core.handle_message_from_downstream(
-                    msg,
-                    self.to_reaper.clone(),
-                    self.to_v1m.clone(),
-                );
+                self.core.handle_msg_from_downstream(msg, senders);
                 if let Some(selected_track_guid) = self.selected_track_guid {
                     let router = self
                         .routers
@@ -352,31 +274,8 @@ impl ModeHandler<TrackMsg, TrackMsg, v1m::DownstreamMsg, v1m::UpstreamMsg> for C
                         }
                     }
                 }
-                curr_mode
+                ModeAction::None
             }
-        }
-    }
-}
-
-impl ChannelStripMode {
-    pub fn initiate_mode_transition(
-        &mut self,
-        from_mode: Mode,
-        upstream: Sender<TrackMsg>,
-        selected_track_guid: Uuid,
-    ) -> ModeState {
-        self.selected_track_guid = Some(selected_track_guid);
-        upstream
-            .send(TrackMsg::Query(TrackQuery {
-                guid: selected_track_guid,
-            }))
-            .unwrap();
-        let barrier = Barrier::new(from_mode, Mode::ReaperSends);
-        upstream.send(TrackMsg::Barrier(barrier)).unwrap();
-        ModeState {
-            mode: Mode::ReaperSends,
-            state: State::WaitingBarrierFromUpstream(barrier),
-            new_selected_track_guid: None,
         }
     }
 }

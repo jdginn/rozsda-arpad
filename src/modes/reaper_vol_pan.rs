@@ -49,7 +49,7 @@ impl ModeHandler for VolumePanMode {
                             true => v1m::LEDState::On,
                             false => v1m::LEDState::Off,
                         };
-                        senders.to_v1m(
+                        senders.send_to_v1m(
                             v1m::SelectLEDMsg {
                                 idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 state,
@@ -59,14 +59,14 @@ impl ModeHandler for VolumePanMode {
                         ModeAction::None
                     }
                     track::DataMsg::Name(msg) => {
-                        senders.to_v1m(
+                        senders.send_to_v1m(
                             v1m::ScribbleStripLine1TextMsg {
                                 idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 text: msg.name.clone(),
                             }
                             .into(),
                         );
-                        senders.to_v1m(
+                        senders.send_to_v1m(
                             v1m::BottomScribbleStripLine2TextMsg {
                                 idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 text: msg.name,
@@ -78,18 +78,17 @@ impl ModeHandler for VolumePanMode {
                     _ => {
                         // Handle common functionality across modes that put volume on the faders
                         // and mute/solo/arm on the buttons
-                        self.core
-                            .handle_message_from_upstream(msg, &senders, |data| {
-                                let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
-                                senders.to_v1m(
-                                    v1m::EncoderRingMsg {
-                                        idx: data.hw_channel as i32,
-                                        mode: v1m::EncoderRingMode::Point,
-                                        val: map_to_0xb(*pan_val),
-                                    }
-                                    .into(),
-                                )
-                            });
+                        self.core.handle_msg_from_upstream(msg, &senders, |data| {
+                            let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
+                            senders.send_to_v1m(
+                                v1m::EncoderRingMsg {
+                                    idx: data.hw_channel as i32,
+                                    mode: v1m::EncoderRingMode::Point,
+                                    val: map_to_0xb(*pan_val),
+                                }
+                                .into(),
+                            )
+                        });
                         // In addition to the common functionality, handle a few edge casess:
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
                         ModeAction::None
@@ -115,7 +114,7 @@ impl ModeHandler for VolumePanMode {
                 ModeAction::Transition(Mode::ReaperChannelStrip)
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
-                io.to_v1m(DownstreamMsg::SelectLED(SelectLEDMsg {
+                io.send_to_v1m(DownstreamMsg::SelectLED(SelectLEDMsg {
                     idx: select_msg.idx,
                     state: LEDState::On,
                 }));
@@ -156,7 +155,7 @@ impl ModeHandler for VolumePanMode {
                     );
 
                     // Send encoder LED update downstream to hardware
-                    io.to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                         idx: encoder_msg.idx,
                         mode: v1m::EncoderRingMode::FromCenter,
                         val: map_to_0xb(new_pan),
@@ -187,7 +186,7 @@ impl ModeHandler for VolumePanMode {
                     );
 
                     // Send encoder LED update downstream to hardware
-                    io.to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                         idx: encoder_msg.idx,
                         mode: v1m::EncoderRingMode::FromCenter,
                         val: map_to_0xb(new_pan),
@@ -196,7 +195,7 @@ impl ModeHandler for VolumePanMode {
                 ModeAction::None
             }
             _ => {
-                self.core.handle_message_from_downstream(msg, &io);
+                self.core.handle_msg_from_downstream(msg, &io);
                 ModeAction::None
             }
         }

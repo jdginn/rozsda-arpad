@@ -2,16 +2,15 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
-use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::v1m;
 use crate::midi::v1m::{
     ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderRingMsg, UpstreamMsg,
 };
-use crate::modes::mode_manager::{Barrier, Mode, ModeHandler, ModeState, State};
+use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders};
 use crate::track::track;
-use crate::track::track::{TrackMsg, TrackQuery};
+use crate::track::track::TrackMsg;
 
 pub fn map_to_0xb(x: f32) -> u8 {
     let clamped = x.clamp(-1.0, 1.0) as f64;
@@ -31,114 +30,14 @@ pub struct TrackSendsMode {
     // Maps guid to info about the send it designates
     track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
     selected_track_guid: Option<Uuid>,
-    //a mode transition!
-    to_reaper: Sender<TrackMsg>,
-    _from_reaper: Receiver<TrackMsg>,
-    to_v1m: Sender<DownstreamMsg>,
-    _from_v1m: Receiver<UpstreamMsg>,
 }
 
 impl TrackSendsMode {
-    pub fn new(
-        num_channels: usize,
-        from_reaper: Receiver<TrackMsg>,
-        to_reaper: Sender<TrackMsg>,
-        from_v1m: Receiver<UpstreamMsg>,
-        to_v1m: Sender<DownstreamMsg>,
-    ) -> Self {
+    pub fn new(num_channels: usize) -> Self {
         TrackSendsMode {
             hw_assignments: Arc::new(Mutex::new(vec![None; num_channels])),
             track_send_states: Arc::new(Mutex::new(BTreeMap::new())),
             selected_track_guid: None,
-            to_reaper,
-            _from_reaper: from_reaper,
-            to_v1m,
-            _from_v1m: from_v1m,
-        }
-    }
-
-    pub fn reset(&mut self, to_v1m: Sender<DownstreamMsg>) {
-        self.track_send_states.lock().unwrap().clear();
-        let mut assignments = self.hw_assignments.lock().unwrap();
-        for slot in assignments.iter_mut() {
-            *slot = None;
-        }
-        for i in 0..assignments.len() {
-            // Zero faders
-            to_v1m
-                .send(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
-                    idx: i as i32,
-                    value: 0.0,
-                }))
-                .unwrap();
-            // Zero encoder LEDs
-            to_v1m
-                .send(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
-                    idx: i as i32,
-                    mode: v1m::EncoderRingMode::Point,
-                    val: 0x06,
-                }))
-                .unwrap();
-            // Turn off Mute/Solo/Arm LEDs
-            to_v1m
-                .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                    idx: i as i32,
-                    state: v1m::LEDState::Off,
-                }))
-                .unwrap();
-            // Clear scribble strip text and colors
-            to_v1m
-                .send(v1m::DownstreamMsg::ScribbleStripLine1Text(
-                    v1m::ScribbleStripLine1TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::ScribbleStripLine2Text(
-                    v1m::ScribbleStripLine2TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
-                    v1m::ScribbleStripBackgroundColorMsg {
-                        idx: i as i32,
-                        color: v1m::Color { r: 0, g: 0, b: 0 },
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
-                    v1m::BottomScribbleStripLine1TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
-            to_v1m
-                .send(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
-                    v1m::BottomScribbleStripLine2TextMsg {
-                        idx: i as i32,
-                        text: String::new(),
-                    },
-                ))
-                .unwrap();
         }
     }
 
@@ -159,53 +58,29 @@ impl TrackSendsMode {
     }
 }
 
-impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsMode {
-    fn handle_messages_from_upstream(&mut self, msg: TrackMsg, curr_mode: ModeState) -> ModeState {
+impl ModeHandler for TrackSendsMode {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, senders: &Senders) -> ModeAction {
         match track::DataMsg::try_from(msg) {
-            Err(TrackMsg::Barrier(barrier)) => {
-                // Forward barriers downstream (they need to reflect back upstream for the mode to
-                // transition)
-                self.to_v1m.send(DownstreamMsg::Barrier(barrier)).unwrap();
-                match curr_mode.state {
-                    // If we were already waiting on a barrier from upstream, check if this is the one
-                    // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
-                    State::WaitingBarrierFromUpstream(expected_barrier) => {
-                        if barrier == expected_barrier {
-                            return ModeState {
-                                mode: curr_mode.mode,
-                                state: State::WaitingBarrierFromDownstream(barrier),
-                                new_selected_track_guid: None,
-                            };
-                        } else {
-                            return curr_mode;
-                        }
-                    }
-                    _ => return curr_mode,
-                }
-            }
             Ok(msg) => {
                 match msg {
                     track::DataMsg::Name(msg) => {
-                        self.to_v1m
-                            .send(
-                                v1m::ScribbleStripLine1TextMsg {
-                                    idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
-                                        as i32,
-                                    text: msg.name.clone(),
-                                }
-                                .into(),
-                            )
-                            .unwrap();
-                        self.to_v1m
-                            .send(
-                                v1m::BottomScribbleStripLine2TextMsg {
-                                    idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
-                                        as i32,
-                                    text: msg.name,
-                                }
-                                .into(),
-                            )
-                            .unwrap();
+                        senders.send_to_v1m(
+                            v1m::ScribbleStripLine1TextMsg {
+                                idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
+                                    as i32,
+                                text: msg.name.clone(),
+                            }
+                            .into(),
+                        );
+                        senders.send_to_v1m(
+                            v1m::BottomScribbleStripLine2TextMsg {
+                                idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
+                                    as i32,
+                                text: msg.name,
+                            }
+                            .into(),
+                        );
+                        ModeAction::None
                     }
                     // If a new track is selected, we need to initiate a mode transition so that we
                     // are controlling sends for that new track
@@ -218,37 +93,29 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
 
                         if msg.selected {
                             if self.selected_track_guid != Some(msg.track_guid) {
-                                return ModeState {
-                                    mode: curr_mode.mode,
-                                    state: State::RequestingModeTransition,
-                                    new_selected_track_guid: Some(msg.track_guid),
-                                };
+                                return ModeAction::SelectedTrackChanged(Some(msg.track_guid));
                             }
                             self.selected_track_guid = Some(msg.track_guid);
                             let state = match msg.selected {
                                 true => v1m::LEDState::On,
                                 false => v1m::LEDState::Off,
                             };
-                            self.to_v1m
-                                .send(
-                                    v1m::SelectLEDMsg {
-                                        idx: self
-                                            .find_hw_channel_for_guid(msg.track_guid)
-                                            .unwrap_or(0)
-                                            as i32,
-                                        state,
-                                    }
-                                    .into(),
-                                )
-                                .unwrap();
-                            return curr_mode;
+                            senders.send_to_v1m(
+                                v1m::SelectLEDMsg {
+                                    idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
+                                        as i32,
+                                    state,
+                                }
+                                .into(),
+                            );
                         }
+                        ModeAction::None
                     }
                     track::DataMsg::SendIndex(msg) => {
                         if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
                             // Only process send index messages for the currently selected track
                         } else {
-                            return curr_mode;
+                            return ModeAction::None;
                         }
                         let mut assignments = self.hw_assignments.lock().unwrap();
 
@@ -281,31 +148,28 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                             .or_default()
                             .clone();
                         // Send current state to hardware for this send index
-                        self.to_v1m
-                            .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                        senders.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                            idx: msg.send_index,
+                            value: state.level as f64, // TODO: scale appropriately
+                        }));
+                        senders.send_to_v1m(DownstreamMsg::EncoderRingLED(
+                            // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
+                            //     idx: msg.send_index,
+                            //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
+                            // }),
+                            EncoderRingMsg {
                                 idx: msg.send_index,
-                                value: state.level as f64, // TODO: scale appropriately
-                            }))
-                            .unwrap();
-                        self.to_v1m
-                            .send(DownstreamMsg::EncoderRingLED(
-                                // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                                //     idx: msg.send_index,
-                                //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
-                                // }),
-                                EncoderRingMsg {
-                                    idx: msg.send_index,
-                                    mode: EncoderRingMode::FromCenter,
-                                    val: map_to_0xb(state.pan),
-                                },
-                            ))
-                            .unwrap();
+                                mode: EncoderRingMode::FromCenter,
+                                val: map_to_0xb(state.pan),
+                            },
+                        ));
+                        ModeAction::None
                     }
                     track::DataMsg::SendLevel(msg) => {
                         if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
                             // Only process send index messages for the currently selected track
                         } else {
-                            return curr_mode;
+                            return ModeAction::None;
                         }
                         // Only send fader update if the send index is mapped to a target
                         let assignments = self.hw_assignments.lock().unwrap();
@@ -318,19 +182,18 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                                 .level = msg.level;
 
                             let fader_value = msg.level; // TODO: scale appropriately
-                            self.to_v1m
-                                .send(DownstreamMsg::ChannelFader(ChannelFaderMsg {
-                                    idx: msg.send_index,
-                                    value: fader_value as f64,
-                                }))
-                                .unwrap();
+                            senders.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                                idx: msg.send_index,
+                                value: fader_value as f64,
+                            }))
                         }
+                        ModeAction::None
                     }
                     track::DataMsg::SendPan(msg) => {
                         if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
                             // Only process send index messages for the currently selected track
                         } else {
-                            return curr_mode;
+                            return ModeAction::None;
                         }
                         // Only send encoder update if the send index is mapped to a target
                         let assignments = self.hw_assignments.lock().unwrap();
@@ -342,54 +205,33 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
                                 .or_default()
                                 .pan = msg.pan;
 
-                            self.to_v1m
-                                .send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-                                    idx: msg.send_index,
-                                    mode: EncoderRingMode::FromCenter,
-                                    val: map_to_0xb(msg.pan),
-                                }))
-                                .unwrap();
+                            senders.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                                idx: msg.send_index,
+                                mode: EncoderRingMode::FromCenter,
+                                val: map_to_0xb(msg.pan),
+                            }))
                         }
+                        ModeAction::None
                     }
                     // TODO: pan
                     _ => {
                         // Ignore unhandled payloads
-                        return curr_mode;
+                        ModeAction::None
                     }
                 }
             }
             Err(_) => {
                 // Ignore unhandled messages
-                return curr_mode;
+                panic!("Code bug: VolumePanMode should only receive TrackDataMsg messages.");
             }
         }
-
-        curr_mode
     }
 
-    fn handle_messages_from_downstream(
-        &mut self,
-        msg: UpstreamMsg,
-        curr_mode: ModeState,
-    ) -> ModeState {
+    fn handle_msg_from_downstream(&mut self, msg: UpstreamMsg, senders: &Senders) -> ModeAction {
         match msg {
-            UpstreamMsg::GlobalPress => {
-                // Request transition to ReaperVolPan mode
-                ModeState {
-                    mode: Mode::ReaperVolPan,
-                    state: State::RequestingModeTransition,
-                    new_selected_track_guid: None,
-                }
-            }
-            UpstreamMsg::MIDITracksPress => curr_mode, //MIDITracksPress maps to this mode!
-            UpstreamMsg::InputsPress => {
-                // Request transition to ReaperChannelStrip mode
-                ModeState {
-                    mode: Mode::ReaperChannelStrip,
-                    state: State::RequestingModeTransition,
-                    new_selected_track_guid: None,
-                }
-            }
+            UpstreamMsg::GlobalPress => ModeAction::Transition(Mode::ReaperVolPan),
+            UpstreamMsg::MIDITracksPress => ModeAction::None,
+            UpstreamMsg::InputsPress => ModeAction::Transition(Mode::ReaperChannelStrip),
             // If a new track is selected, we need to initiate a mode transition so that the
             // widgets are controlling the new track
             //
@@ -398,65 +240,33 @@ impl ModeHandler<TrackMsg, TrackMsg, DownstreamMsg, UpstreamMsg> for TrackSendsM
             UpstreamMsg::SelectPress(msg) => {
                 self.selected_track_guid = self.get_guid_for_hw_channel(msg.idx as usize);
                 if let Some(guid) = self.get_guid_for_hw_channel(msg.idx as usize) {
-                    self.to_reaper
-                        .send(
-                            track::Selected {
-                                track_guid: guid,
-                                selected: true,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
+                    senders.send_to_reaper(
+                        track::Selected {
+                            track_guid: guid,
+                            selected: true,
+                        }
+                        .into(),
+                    );
                 }
-                ModeState {
-                    mode: Mode::ReaperSends,
-                    state: State::RequestingModeTransition,
-                    new_selected_track_guid: self.selected_track_guid,
-                }
+                //FIXME: what if we're transitioning MODE AND SELECTED TRACK AT THE SAME TIME?
+                ModeAction::Transition(Mode::ReaperSends)
             }
             UpstreamMsg::ChannelFader(fader_msg) => {
                 // FIXME: seems like this is the issuer here V
                 // No?
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
-                    self.to_reaper
-                        .send(
-                            track::SendLevel {
-                                track_guid: guid,
-                                send_index: fader_msg.idx,
-                                level: fader_msg.value as f32,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
+                    senders.send_to_reaper(
+                        track::SendLevel {
+                            track_guid: guid,
+                            send_index: fader_msg.idx,
+                            level: fader_msg.value as f32,
+                        }
+                        .into(),
+                    )
                 }
-                curr_mode
+                ModeAction::None
             }
-            _ => curr_mode, // For now, the buttons and encoder do nothing
-        }
-    }
-}
-
-impl TrackSendsMode {
-    pub fn initiate_mode_transition(
-        &mut self,
-        from_mode: Mode,
-        upstream: Sender<TrackMsg>,
-        selected_track_guid: Uuid,
-    ) -> ModeState {
-        println!(
-            "TrackSendsMode: initiating mode transition from {:?} to ReaperSends for track {:?}",
-            from_mode, selected_track_guid
-        );
-        self.reset(self.to_v1m.clone());
-        self.selected_track_guid = Some(selected_track_guid);
-        upstream.send(TrackMsg::QueryAll);
-        let barrier = Barrier::new(from_mode, Mode::ReaperSends);
-        upstream.send(TrackMsg::Barrier(barrier)).unwrap();
-
-        ModeState {
-            mode: Mode::ReaperSends,
-            state: State::WaitingBarrierFromUpstream(barrier),
-            new_selected_track_guid: None,
+            _ => ModeAction::None, // For now, the buttons and encoder do nothing
         }
     }
 }

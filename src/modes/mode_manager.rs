@@ -67,7 +67,7 @@ impl Senders {
         self.to_reaper.send(msg).unwrap();
     }
 
-    pub fn to_v1m(&self, msg: v1m::DownstreamMsg) {
+    pub fn send_to_v1m(&self, msg: v1m::DownstreamMsg) {
         self.to_v1m.send(msg).unwrap();
     }
 }
@@ -190,7 +190,7 @@ impl ModeManager {
                                     TrackMsg::Barrier(barrier) => {
                                         // Forward barriers downstream (they need to reflect back upstream for the mode to
                                         // transition)
-                                        manager.senders.to_v1m
+                                        manager.senders.send_to_v1m
                                             (v1m::DownstreamMsg::Barrier(barrier));
                                         if barrier == expected_barrier {
                                             // If we were already waiting on a barrier from upstream, check if this is the one
