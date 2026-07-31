@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use uuid::Uuid;
@@ -26,28 +25,27 @@ pub struct TrackSendInfo {
 
 pub struct TrackSendsMode {
     // Maps track send index to send guid
-    hw_assignments: Arc<Mutex<Vec<Option<Uuid>>>>,
+    hw_assignments: Vec<Option<Uuid>>,
     // Maps guid to info about the send it designates
-    track_send_states: Arc<Mutex<BTreeMap<Uuid, TrackSendInfo>>>,
+    track_send_states: BTreeMap<Uuid, TrackSendInfo>,
     selected_track_guid: Option<Uuid>,
 }
 
 impl TrackSendsMode {
     pub fn new(num_channels: usize) -> Self {
         TrackSendsMode {
-            hw_assignments: Arc::new(Mutex::new(vec![None; num_channels])),
-            track_send_states: Arc::new(Mutex::new(BTreeMap::new())),
+            hw_assignments: vec![None; num_channels],
+            track_send_states: BTreeMap::new(),
             selected_track_guid: None,
         }
     }
 
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
-        let assignments = self.hw_assignments.lock().unwrap();
-        assignments[hw_channel]
+        self.hw_assignments[hw_channel]
     }
 
     fn find_hw_channel_for_guid(&self, guid: Uuid) -> Option<usize> {
-        for (hw_channel, &assigned_guid) in self.hw_assignments.lock().unwrap().iter().enumerate() {
+        for (hw_channel, &assigned_guid) in self.hw_assignments.iter().enumerate() {
             if let Some(assigned_guid) = assigned_guid {
                 if assigned_guid == guid {
                     return Some(hw_channel);
@@ -117,9 +115,8 @@ impl ModeHandler for TrackSendsMode {
                         } else {
                             return ModeAction::None;
                         }
-                        let mut assignments = self.hw_assignments.lock().unwrap();
 
-                        assignments[msg.send_index as usize] = Some(msg.send_guid);
+                        self.hw_assignments[msg.send_index as usize] = Some(msg.send_guid);
 
                         // if let Some(index) = TrackSendsMode::find_hw_channel_for_guid(
                         //     msg.send_guid,
@@ -136,14 +133,12 @@ impl ModeHandler for TrackSendsMode {
                         // }
                         // Add bounds checking to prevent panic on invalid send_index
                         // If out of bounds, silently ignore (could log error in production)
-                        if (msg.send_index as usize) < assignments.len() {
-                            assignments[msg.send_index as usize] = Some(msg.send_guid);
+                        if (msg.send_index as usize) < self.hw_assignments.len() {
+                            self.hw_assignments[msg.send_index as usize] = Some(msg.send_guid);
                         }
                         // Insert default state into self.track_send_states if not already present
                         let state = self
                             .track_send_states
-                            .lock()
-                            .unwrap()
                             .entry(msg.send_guid)
                             .or_default()
                             .clone();
@@ -172,14 +167,8 @@ impl ModeHandler for TrackSendsMode {
                             return ModeAction::None;
                         }
                         // Only send fader update if the send index is mapped to a target
-                        let assignments = self.hw_assignments.lock().unwrap();
-                        if let Some(Some(guid)) = assignments.get(msg.send_index as usize) {
-                            self.track_send_states
-                                .lock()
-                                .unwrap()
-                                .entry(*guid)
-                                .or_default()
-                                .level = msg.level;
+                        if let Some(Some(guid)) = self.hw_assignments.get(msg.send_index as usize) {
+                            self.track_send_states.entry(*guid).or_default().level = msg.level;
 
                             let fader_value = msg.level; // TODO: scale appropriately
                             senders.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
@@ -196,14 +185,8 @@ impl ModeHandler for TrackSendsMode {
                             return ModeAction::None;
                         }
                         // Only send encoder update if the send index is mapped to a target
-                        let assignments = self.hw_assignments.lock().unwrap();
-                        if let Some(Some(guid)) = assignments.get(msg.send_index as usize) {
-                            self.track_send_states
-                                .lock()
-                                .unwrap()
-                                .entry(*guid)
-                                .or_default()
-                                .pan = msg.pan;
+                        if let Some(Some(guid)) = self.hw_assignments.get(msg.send_index as usize) {
+                            self.track_send_states.entry(*guid).or_default().pan = msg.pan;
 
                             senders.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                                 idx: msg.send_index,
