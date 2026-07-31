@@ -104,8 +104,8 @@ pub enum Mode {
 }
 
 pub struct Senders {
-    pub to_reaper: Sender<TrackMsg>,
-    pub to_v1m: Sender<v1m::DownstreamMsg>,
+    to_reaper: Sender<TrackMsg>,
+    to_v1m: Sender<v1m::DownstreamMsg>,
 }
 
 impl Senders {
@@ -149,9 +149,8 @@ pub trait ModeHandler {
 // TODO: someday turn handler methods into a trait?
 pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
-    to_reaper: Sender<TrackMsg>,
     from_v1m: Receiver<v1m::UpstreamMsg>,
-    to_v1m: Sender<v1m::DownstreamMsg>,
+    senders: Senders,
 
     curr_mode: Mode,
     curr_state: State,
@@ -168,21 +167,17 @@ impl ModeManager {
         from_v1m: Receiver<v1m::UpstreamMsg>,
         to_v1m: Sender<v1m::DownstreamMsg>,
     ) {
+        let senders = Senders { to_reaper, to_v1m };
+
         let mut manager = ModeManager {
             from_reaper,
-            to_reaper: to_reaper.clone(),
             from_v1m,
-            to_v1m: to_v1m.clone(),
+            senders,
+
             curr_mode: Mode::ReaperVolPan,
             curr_state: State::Active,
 
             reaper_currently_selected_track_guid: None,
-        };
-
-        // TODO: is cloning wise here?
-        let io = Senders {
-            to_reaper: to_reaper.clone(),
-            to_v1m: to_v1m.clone(),
         };
 
         loop {
@@ -196,15 +191,15 @@ impl ModeManager {
                             select! {
                             recv(manager.from_reaper) -> msg => {
                                 if let Ok(msg) = msg {
-                                    match handler.handle_msg_from_upstream(msg, &io) {
+                                    match handler.handle_msg_from_upstream(msg, &manager.senders) {
                                         ModeAction::None => {},
                                         ModeAction::SelectedTrackChanged(guid) => {
                                             manager.reaper_currently_selected_track_guid = guid
                                         }
                                         ModeAction::Transition(new_mode) => {
-                                            manager.to_reaper.send(TrackMsg::QueryAll).unwrap();
+                                            manager.senders.send_to_reaper(TrackMsg::QueryAll);
                                             let barrier = Barrier::new(manager.curr_mode, new_mode);
-                                            manager.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
+                                            manager.senders.send_to_reaper(TrackMsg::Barrier(barrier));
                                             manager.curr_mode = new_mode;
                                             manager.curr_state = State::WaitingBarrierFromUpstream(barrier);
                                             break
@@ -214,15 +209,15 @@ impl ModeManager {
                             }
                             recv(manager.from_v1m) -> msg => {
                                 if let Ok(msg) = msg {
-                                    match handler.handle_msg_from_downstream(msg, &io) {
+                                    match handler.handle_msg_from_downstream(msg, &manager.senders) {
                                         ModeAction::None => {},
                                         ModeAction::SelectedTrackChanged(guid) => {
                                             manager.reaper_currently_selected_track_guid = guid
                                         }
                                         ModeAction::Transition(new_mode) => {
-                                            manager.to_reaper.send(TrackMsg::QueryAll).unwrap();
+                                            manager.senders.send_to_reaper(TrackMsg::QueryAll);
                                             let barrier = Barrier::new(manager.curr_mode, new_mode);
-                                            manager.to_reaper.send(TrackMsg::Barrier(barrier)).unwrap();
+                                            manager.senders.send_to_reaper(TrackMsg::Barrier(barrier));
                                             manager.curr_mode = new_mode;
                                             manager.curr_state = State::WaitingBarrierFromUpstream(barrier);
                                             break
@@ -247,9 +242,8 @@ impl ModeManager {
                                     TrackMsg::Barrier(barrier) => {
                                         // Forward barriers downstream (they need to reflect back upstream for the mode to
                                         // transition)
-                                        manager.to_v1m
-                                            .send(v1m::DownstreamMsg::Barrier(barrier))
-                                            .unwrap();
+                                        manager.senders.to_v1m
+                                            (v1m::DownstreamMsg::Barrier(barrier));
                                         if barrier == expected_barrier {
                                             // If we were already waiting on a barrier from upstream, check if this is the one
                                             // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.

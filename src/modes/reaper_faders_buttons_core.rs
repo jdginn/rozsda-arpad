@@ -346,7 +346,7 @@ impl VolumeFadersCore {
                     &self.track_hw_assignments.lock().unwrap()[fader_msg.idx as usize]
                 {
                     // Send volume update to Reaper for the corresponding track
-                    let _ = senders.to_reaper.send(
+                    let _ = senders.send_to_reaper(
                         track::Volume {
                             track_guid: *guid,
                             volume: fader_msg.value as f32, // TODO: Need to scale appropriately
@@ -365,70 +365,52 @@ impl VolumeFadersCore {
                 if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
-                    senders
-                        .to_reaper
-                        .send(
-                            track::Muted {
-                                track_guid: guid,
-                                muted: new_state,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
+                    senders.send_to_reaper(
+                        track::Muted {
+                            track_guid: guid,
+                            muted: new_state,
+                        }
+                        .into(),
+                    );
                     // Update the toggle on the hardware
-                    senders
-                        .to_v1m
-                        .send(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                            idx: mute_msg.idx,
-                            state: v1m::LEDState::from(new_state),
-                        }))
-                        .unwrap();
+                    senders.to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                        idx: mute_msg.idx,
+                        state: v1m::LEDState::from(new_state),
+                    }));
                 }
             }
             v1m::UpstreamMsg::SoloPress(solo_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
-                    senders
-                        .to_reaper
-                        .send(
-                            track::Soloed {
-                                track_guid: guid,
-                                soloed: new_state,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
-                    senders
-                        .to_v1m
-                        .send(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                            idx: solo_msg.idx,
-                            state: v1m::LEDState::from(new_state),
-                        }))
-                        .unwrap();
+                    senders.send_to_reaper(
+                        track::Soloed {
+                            track_guid: guid,
+                            soloed: new_state,
+                        }
+                        .into(),
+                    );
+                    senders.to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                        idx: solo_msg.idx,
+                        state: v1m::LEDState::from(new_state),
+                    }));
                 }
             }
             v1m::UpstreamMsg::ArmPress(arm_msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
-                    senders
-                        .to_reaper
-                        .send(
-                            track::Armed {
-                                track_guid: guid,
-                                armed: new_state,
-                            }
-                            .into(),
-                        )
-                        .unwrap();
-                    senders
-                        .to_v1m
-                        .send(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                            idx: arm_msg.idx,
-                            state: v1m::LEDState::from(new_state),
-                        }))
-                        .unwrap();
+                    senders.send_to_reaper(
+                        track::Armed {
+                            track_guid: guid,
+                            armed: new_state,
+                        }
+                        .into(),
+                    );
+                    senders.to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                        idx: arm_msg.idx,
+                        state: v1m::LEDState::from(new_state),
+                    }))
                 }
             }
             _ => (),
