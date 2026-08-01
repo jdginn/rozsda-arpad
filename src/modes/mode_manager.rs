@@ -38,10 +38,16 @@ pub enum State {
     // Normal operation: forward messages in both directions
     Active,
     // Waiting from messages from upstream to be passed all the way downstream
-    WaitingBarrierFromUpstream(Barrier),
+    WaitingBarrierFromUpstream {
+        barrier: Barrier,
+        pending: TransitionRequest,
+    },
     // All messages from upstream have been passed downward; waiting for downstream to confirm all
     // messages have been applied
-    WaitingBarrierFromDownstream(Barrier),
+    WaitingBarrierFromDownstream {
+        barrier: Barrier,
+        pending: TransitionRequest,
+    },
 }
 
 /// Represents the various control modes supported.
@@ -73,10 +79,15 @@ impl Senders {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TransitionRequest {
+    pub target: Mode,
+    pub reaper_selected_track_guid: Option<Uuid>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ModeAction {
     None,
-    SelectedTrackChanged(Option<Uuid>),
-    Transition(Mode),
+    Transition(TransitionRequest),
 }
 
 /// Each mode implementation struct needs to implement this trait to handle messages
@@ -105,24 +116,22 @@ pub struct ModeManager {
     curr_mode: Mode,
     curr_state: State,
 
-    reaper_currently_selected_track_guid: Option<Uuid>,
+    handler: Box<dyn ModeHandler>,
 }
 
 /// Returns true if we should break the loop
 fn apply_mode_action(manager: &mut ModeManager, action: ModeAction) -> bool {
     match action {
         ModeAction::None => false,
-        ModeAction::SelectedTrackChanged(guid) => {
-            manager.reaper_currently_selected_track_guid = guid;
-            false
-        }
-        ModeAction::Transition(new_mode) => {
+        ModeAction::Transition(transition_request) => {
             manager.senders.send_to_reaper(TrackMsg::QueryAll);
-            let barrier = Barrier::new(manager.curr_mode, new_mode);
+            let barrier = Barrier::new(manager.curr_mode, transition_request.target);
             manager.senders.send_to_reaper(TrackMsg::Barrier(barrier));
-            manager.curr_mode = new_mode;
-            manager.curr_state = State::WaitingBarrierFromUpstream(barrier);
-            false
+            manager.curr_state = State::WaitingBarrierFromUpstream {
+                barrier,
+                pending: transition_request,
+            };
+            true
         }
     }
 }
@@ -146,20 +155,19 @@ impl ModeManager {
             curr_mode: Mode::ReaperVolPan,
             curr_state: State::Active,
 
-            reaper_currently_selected_track_guid: None,
+            handler: Box::new(VolumePanMode::new(8, None)),
         };
 
         loop {
             match manager.curr_state {
                 State::Active => {
                     // TODO: flush all coalesced messages downstream
-                    let mut handler = VolumePanMode::new(8);
                     loop {
                         select! {
                             recv(manager.from_reaper) -> msg => {
                                 if let Ok(msg) = msg {
                                     let action = match manager.curr_mode {
-                                        Mode::ReaperVolPan => handler.handle_msg_from_upstream(msg, &manager.senders),
+                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_upstream(msg, &manager.senders),
                                         _ => panic!("Unimplemented"),
                                     };
                                     if apply_mode_action(&mut manager, action) {
@@ -170,7 +178,7 @@ impl ModeManager {
                             recv(manager.from_v1m) -> msg => {
                                 if let Ok(msg) = msg {
                                     let action = match manager.curr_mode {
-                                        Mode::ReaperVolPan => handler.handle_msg_from_downstream(msg, &manager.senders),
+                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_downstream(msg, &manager.senders),
                                         _ => panic!("Unimplemented"),
                                     };
                                     if apply_mode_action(&mut manager, action) {
@@ -181,7 +189,10 @@ impl ModeManager {
                         }
                     }
                 }
-                State::WaitingBarrierFromUpstream(expected_barrier) => {
+                State::WaitingBarrierFromUpstream {
+                    barrier: expected_barrier,
+                    pending,
+                } => {
                     loop {
                         select! {
                             recv(manager.from_reaper) -> msg => {
@@ -195,7 +206,7 @@ impl ModeManager {
                                         if barrier == expected_barrier {
                                             // If we were already waiting on a barrier from upstream, check if this is the one
                                             // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
-                                            manager.curr_state = State::WaitingBarrierFromDownstream(barrier);
+                                            manager.curr_state = State::WaitingBarrierFromDownstream{barrier, pending};
                                             break
                                         }
                                     },
@@ -210,7 +221,10 @@ impl ModeManager {
                         }
                     }
                 }
-                State::WaitingBarrierFromDownstream(expected_barrier) => {
+                State::WaitingBarrierFromDownstream {
+                    barrier: expected_barrier,
+                    pending,
+                } => {
                     loop {
                         select! {
                             recv(manager.from_reaper) -> msg => {
@@ -221,6 +235,21 @@ impl ModeManager {
                                 match msg.unwrap() {
                                     v1m::UpstreamMsg::Barrier(barrier) => {
                                         if barrier == expected_barrier {
+                                            match pending.target {
+                                                Mode::ReaperVolPan => {
+                                                    manager.handler = Box::new(VolumePanMode::new(8, pending.reaper_selected_track_guid));
+                                                    manager.curr_mode = pending.target;
+                                                },
+                                                Mode::ReaperSends => {
+                                                    if pending.reaper_selected_track_guid.is_none() {
+                                                        panic!("Code bug: ReaperSends mode requires a selected track guid");
+                                                    }
+                                                    manager.handler = Box::new(TrackSendsMode::new(8, pending.reaper_selected_track_guid.unwrap()));
+                                                    manager.curr_mode = pending.target;
+                                                },
+                                                Mode::ReaperChannelStrip => todo!(),
+                                                Mode::MotuVolPan => todo!(),
+                                            }
                                             manager.curr_state = State::Active;
                                             break
                                         } else {

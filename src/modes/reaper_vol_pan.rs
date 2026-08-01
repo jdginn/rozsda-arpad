@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::midi::v1m::{self};
 use crate::midi::v1m::{DownstreamMsg, EncoderRingMsg, LEDState, SelectLEDMsg, UpstreamMsg};
-use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders};
+use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, TransitionRequest};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
 use crate::track::track::TrackMsg;
@@ -28,13 +28,15 @@ pub fn map_to_0xb(x: f32) -> u8 {
 pub struct VolumePanMode {
     core: VolumeFadersCore,
     pan_states: HashMap<Uuid, f32>,
+    selected_track_guid: Option<Uuid>,
 }
 
 impl VolumePanMode {
-    pub fn new(num_channels: usize) -> Self {
+    pub fn new(num_channels: usize, selected_track_guid: Option<Uuid>) -> Self {
         VolumePanMode {
             core: VolumeFadersCore::new(num_channels),
             pan_states: HashMap::new(),
+            selected_track_guid,
         }
     }
 }
@@ -107,11 +109,17 @@ impl ModeHandler for VolumePanMode {
             // MIDITracksPress maps to ReaperSends mode
             UpstreamMsg::MIDITracksPress => {
                 println!("Requesting transition to ReaperSends mode");
-                ModeAction::Transition(Mode::ReaperSends)
+                ModeAction::Transition(TransitionRequest {
+                    target: Mode::ReaperSends,
+                    reaper_selected_track_guid: self.selected_track_guid,
+                })
             }
             v1m::UpstreamMsg::InputsPress => {
                 println!("Requesting transition to ReaperChannelStrip mode");
-                ModeAction::Transition(Mode::ReaperChannelStrip)
+                ModeAction::Transition(TransitionRequest {
+                    target: Mode::ReaperChannelStrip,
+                    reaper_selected_track_guid: self.selected_track_guid,
+                })
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
                 io.send_to_v1m(DownstreamMsg::SelectLED(SelectLEDMsg {
@@ -130,7 +138,8 @@ impl ModeHandler for VolumePanMode {
                 // TODO: what do we do with this?
                 let new_selected_track_guid =
                     self.core.get_guid_for_hw_channel(select_msg.idx as usize);
-                ModeAction::SelectedTrackChanged(new_selected_track_guid)
+                self.selected_track_guid = new_selected_track_guid;
+                ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {

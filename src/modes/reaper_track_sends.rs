@@ -7,7 +7,7 @@ use crate::midi::v1m;
 use crate::midi::v1m::{
     ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderRingMsg, UpstreamMsg,
 };
-use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders};
+use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, TransitionRequest};
 use crate::track::track;
 use crate::track::track::TrackMsg;
 
@@ -28,15 +28,15 @@ pub struct TrackSendsMode {
     hw_assignments: Vec<Option<Uuid>>,
     // Maps guid to info about the send it designates
     track_send_states: BTreeMap<Uuid, TrackSendInfo>,
-    selected_track_guid: Option<Uuid>,
+    selected_track_guid: Uuid,
 }
 
 impl TrackSendsMode {
-    pub fn new(num_channels: usize) -> Self {
+    pub fn new(num_channels: usize, selected_track_guid: Uuid) -> Self {
         TrackSendsMode {
             hw_assignments: vec![None; num_channels],
             track_send_states: BTreeMap::new(),
-            selected_track_guid: None,
+            selected_track_guid,
         }
     }
 
@@ -90,10 +90,7 @@ impl ModeHandler for TrackSendsMode {
                         // - Still some fader jitter to sort through
 
                         if msg.selected {
-                            if self.selected_track_guid != Some(msg.track_guid) {
-                                return ModeAction::SelectedTrackChanged(Some(msg.track_guid));
-                            }
-                            self.selected_track_guid = Some(msg.track_guid);
+                            self.selected_track_guid = msg.track_guid;
                             let state = match msg.selected {
                                 true => v1m::LEDState::On,
                                 false => v1m::LEDState::Off,
@@ -110,7 +107,7 @@ impl ModeHandler for TrackSendsMode {
                         ModeAction::None
                     }
                     track::DataMsg::SendIndex(msg) => {
-                        if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
+                        if msg.track_guid == self.selected_track_guid {
                             // Only process send index messages for the currently selected track
                         } else {
                             return ModeAction::None;
@@ -161,7 +158,7 @@ impl ModeHandler for TrackSendsMode {
                         ModeAction::None
                     }
                     track::DataMsg::SendLevel(msg) => {
-                        if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
+                        if msg.track_guid == self.selected_track_guid {
                             // Only process send index messages for the currently selected track
                         } else {
                             return ModeAction::None;
@@ -179,7 +176,7 @@ impl ModeHandler for TrackSendsMode {
                         ModeAction::None
                     }
                     track::DataMsg::SendPan(msg) => {
-                        if msg.track_guid == self.selected_track_guid.unwrap_or_default() {
+                        if msg.track_guid == self.selected_track_guid {
                             // Only process send index messages for the currently selected track
                         } else {
                             return ModeAction::None;
@@ -212,27 +209,37 @@ impl ModeHandler for TrackSendsMode {
 
     fn handle_msg_from_downstream(&mut self, msg: UpstreamMsg, senders: &Senders) -> ModeAction {
         match msg {
-            UpstreamMsg::GlobalPress => ModeAction::Transition(Mode::ReaperVolPan),
+            UpstreamMsg::GlobalPress => ModeAction::Transition(TransitionRequest {
+                target: Mode::ReaperVolPan,
+                reaper_selected_track_guid: Some(self.selected_track_guid),
+            }),
             UpstreamMsg::MIDITracksPress => ModeAction::None,
-            UpstreamMsg::InputsPress => ModeAction::Transition(Mode::ReaperChannelStrip),
+            UpstreamMsg::InputsPress => ModeAction::Transition(TransitionRequest {
+                target: Mode::ReaperChannelStrip,
+                reaper_selected_track_guid: Some(self.selected_track_guid),
+            }),
             // If a new track is selected, we need to initiate a mode transition so that the
             // widgets are controlling the new track
             //
             // TODO: do we need to handle this case separately or do we simply expect a reflected
             // message back from Reaper?
             UpstreamMsg::SelectPress(msg) => {
-                self.selected_track_guid = self.get_guid_for_hw_channel(msg.idx as usize);
                 if let Some(guid) = self.get_guid_for_hw_channel(msg.idx as usize) {
-                    senders.send_to_reaper(
-                        track::Selected {
-                            track_guid: guid,
-                            selected: true,
-                        }
-                        .into(),
-                    );
+                    if guid != self.selected_track_guid {
+                        senders.send_to_reaper(
+                            track::Selected {
+                                track_guid: guid,
+                                selected: true,
+                            }
+                            .into(),
+                        );
+                        return ModeAction::Transition(TransitionRequest {
+                            target: Mode::ReaperSends,
+                            reaper_selected_track_guid: Some(guid),
+                        });
+                    }
                 }
-                //FIXME: what if we're transitioning MODE AND SELECTED TRACK AT THE SAME TIME?
-                ModeAction::Transition(Mode::ReaperSends)
+                ModeAction::None
             }
             UpstreamMsg::ChannelFader(fader_msg) => {
                 // FIXME: seems like this is the issuer here V

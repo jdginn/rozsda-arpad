@@ -4,7 +4,7 @@ use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::v1m;
-use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders};
+use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, TransitionRequest};
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
@@ -197,8 +197,10 @@ impl ModeHandler for ChannelStripMode {
                     // point to that new track.
                     TrackDataMsg::Selected(msg) => {
                         if msg.selected {
-                            //FIXME: make a custom transition message that includes the new selected track guid, so we can update the widgets to point to the new track
-                            ModeAction::Transition(Mode::ReaperChannelStrip)
+                            ModeAction::Transition(TransitionRequest {
+                                target: Mode::ReaperChannelStrip,
+                                reaper_selected_track_guid: Some(msg.track_guid),
+                            })
                         } else {
                             ModeAction::None
                         }
@@ -239,16 +241,31 @@ impl ModeHandler for ChannelStripMode {
     ) -> ModeAction {
         match msg {
             // GlobalPress maps to ReaperVolPan mode
-            v1m::UpstreamMsg::GlobalPress => ModeAction::Transition(Mode::ReaperVolPan),
+            v1m::UpstreamMsg::GlobalPress => ModeAction::Transition(TransitionRequest {
+                target: Mode::ReaperVolPan,
+                reaper_selected_track_guid: self.selected_track_guid,
+            }),
             // MIDITracksPress maps to ReaperSends mode
-            v1m::UpstreamMsg::MIDITracksPress => ModeAction::Transition(Mode::ReaperSends),
+            v1m::UpstreamMsg::MIDITracksPress => ModeAction::Transition(TransitionRequest {
+                target: Mode::ReaperSends,
+                reaper_selected_track_guid: self.selected_track_guid,
+            }),
             v1m::UpstreamMsg::InputsPress => ModeAction::None,
             v1m::UpstreamMsg::SelectPress(msg) => {
+                // Switch to ReaperChannelStrip mode for the selected track, if any
                 let selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
-                match selected_track_guid {
-                    //FIXME:
-                    Some(selected_track_guid) => ModeAction::Transition(Mode::ReaperChannelStrip),
-                    None => ModeAction::None,
+                if selected_track_guid.is_some()
+                    && (self.selected_track_guid != selected_track_guid)
+                {
+                    match selected_track_guid {
+                        Some(selected_track_guid) => ModeAction::Transition(TransitionRequest {
+                            target: Mode::ReaperChannelStrip,
+                            reaper_selected_track_guid: Some(selected_track_guid),
+                        }),
+                        None => ModeAction::None,
+                    }
+                } else {
+                    ModeAction::None
                 }
             }
             _ => {
