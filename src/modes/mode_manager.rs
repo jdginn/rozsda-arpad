@@ -30,6 +30,12 @@ impl Barrier {
     }
 }
 
+impl Default for Barrier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Represents state of mode manager: mostly whether we are in a mode transition.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum State {
@@ -57,6 +63,19 @@ pub enum Mode {
     MotuVolPan,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TransitionRequest {
+    ToReaperVolumePan { selected_track_guid: Option<Uuid> },
+    ToReaperSends { selected_track_guid: Uuid },
+    ToReaperChannelStrip { selected_track_guid: Uuid },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ModeAction {
+    None,
+    Transition(TransitionRequest),
+}
+
 pub struct Senders {
     to_reaper: Sender<TrackMsg>,
     to_v1m: Sender<v1m::DownstreamMsg>,
@@ -74,19 +93,6 @@ impl Senders {
     pub fn send_to_v1m(&self, msg: v1m::DownstreamMsg) {
         self.to_v1m.send(msg).unwrap();
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TransitionRequest {
-    ToReaperVolumePan { selected_track_guid: Option<Uuid> },
-    ToReaperSends { selected_track_guid: Uuid },
-    ToReaperChannelStrip { selected_track_guid: Uuid },
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ModeAction {
-    None,
-    Transition(TransitionRequest),
 }
 
 /// Each mode implementation struct needs to implement this trait to handle messages
@@ -243,7 +249,10 @@ impl ModeManager {
                                                     manager.handler = Box::new(TrackSendsMode::new(8, selected_track_guid));
                                                     manager.curr_mode = Mode::ReaperSends;
                                                 },
-                                                TransitionRequest::ToReaperChannelStrip { selected_track_guid }=> todo!(),
+                                                TransitionRequest::ToReaperChannelStrip { selected_track_guid } => {
+                                                    manager.handler = Box::new(ChannelStripMode::new(8, selected_track_guid));
+                                                    manager.curr_mode = Mode::ReaperChannelStrip;
+                                                }
                                             }
                                             manager.curr_state = State::Active;
                                             break
