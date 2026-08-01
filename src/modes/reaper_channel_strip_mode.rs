@@ -177,7 +177,7 @@ impl ChannelStripMode {
 }
 
 impl ModeHandler for ChannelStripMode {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match TrackDataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
@@ -195,7 +195,8 @@ impl ModeHandler for ChannelStripMode {
                     _ => {
                         // First handle the functionality that is not unique to ChannelStripMode
                         // (e.g. volume on faders, mute/arm/solo buttons)
-                        self.core.handle_msg_from_upstream(msg.clone(), io, |_| {});
+                        self.core
+                            .handle_msg_from_upstream(msg.clone(), io, |_| None);
                         let router = self
                             .routers
                             .entry(self.selected_track_guid)
@@ -220,7 +221,7 @@ impl ModeHandler for ChannelStripMode {
     fn handle_msg_from_downstream(
         &mut self,
         msg: v1m::UpstreamMsg,
-        io: &dyn DownstreamIo,
+        io: &mut dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
             // GlobalPress maps to ReaperVolPan mode

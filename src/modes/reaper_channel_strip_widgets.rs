@@ -293,7 +293,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         // TODO: send feedback
     }
 
-    fn send_feedback(&mut self, io: &dyn UpstreamIo) {
+    fn send_feedback(&mut self, io: &mut dyn UpstreamIo) {
         // FIXME: depends on actually implementing scribble for v1m...
 
         // TODO: send color, labels, and range info downstream

@@ -44,7 +44,7 @@ impl VolumePanMode {
 }
 
 impl ModeHandler for VolumePanMode {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
@@ -83,15 +83,17 @@ impl ModeHandler for VolumePanMode {
                         // Handle common functionality across modes that put volume on the faders
                         // and mute/solo/arm on the buttons
                         self.core.handle_msg_from_upstream(msg, io, |data| {
+                            // This closure defines what happens when a track's index changes.
+                            // Each mode that builds from VolumeFadersCore may need to define its own behavior here.
                             let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
-                            io.send_to_v1m(
+                            Some(vec![
                                 v1m::EncoderRingMsg {
                                     idx: data.hw_channel as i32,
                                     mode: v1m::EncoderRingMode::Point,
                                     val: map_to_0xb(*pan_val),
                                 }
                                 .into(),
-                            )
+                            ])
                         });
                         // In addition to the common functionality, handle a few edge casess:
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
@@ -107,7 +109,7 @@ impl ModeHandler for VolumePanMode {
     fn handle_msg_from_downstream(
         &mut self,
         msg: v1m::UpstreamMsg,
-        io: &dyn DownstreamIo,
+        io: &mut dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
             // GlobalPress maps to this mode!

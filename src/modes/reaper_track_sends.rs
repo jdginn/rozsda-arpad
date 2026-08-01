@@ -59,7 +59,7 @@ impl TrackSendsMode {
 }
 
 impl ModeHandler for TrackSendsMode {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
@@ -212,7 +212,7 @@ impl ModeHandler for TrackSendsMode {
     fn handle_msg_from_downstream(
         &mut self,
         msg: UpstreamMsg,
-        io: &dyn DownstreamIo,
+        io: &mut dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
             UpstreamMsg::GlobalPress => {

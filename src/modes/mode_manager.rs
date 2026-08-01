@@ -5,6 +5,7 @@ use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
 use crate::midi::v1m;
+use crate::modes::coalesce::OrderedCoalescingBuffer;
 use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends::TrackSendsMode;
 use crate::modes::reaper_vol_pan::VolumePanMode;
@@ -76,51 +77,78 @@ pub enum ModeAction {
     Transition(TransitionRequest),
 }
 
-pub trait ToV1mIo {
-    fn send_to_v1m(&self, msg: v1m::DownstreamMsg);
+pub trait ToV1m {
+    fn send_to_v1m(&mut self, msg: v1m::DownstreamMsg);
 }
 
-pub trait DownstreamIo: ToV1mIo {
+pub trait DownstreamIo: ToV1m {
     fn send_to_reaper(&self, msg: TrackMsg);
 }
 
-pub trait UpstreamIo: ToV1mIo {}
+pub trait UpstreamIo: ToV1m {}
 
-pub struct IoBundle {
+pub struct IoDirect {
     to_reaper: Sender<TrackMsg>,
     to_v1m: Sender<v1m::DownstreamMsg>,
 }
 
-impl IoBundle {
+pub struct IoCoalescing {
+    to_reaper: Sender<TrackMsg>,
+    to_v1m_buffer: OrderedCoalescingBuffer<v1m::DownstreamMsg>,
+}
+
+impl IoDirect {
     fn new(to_reaper: Sender<TrackMsg>, to_v1m: Sender<v1m::DownstreamMsg>) -> Self {
-        IoBundle { to_reaper, to_v1m }
+        IoDirect { to_reaper, to_v1m }
     }
 }
 
-impl ToV1mIo for IoBundle {
-    fn send_to_v1m(&self, msg: v1m::DownstreamMsg) {
+impl ToV1m for IoDirect {
+    fn send_to_v1m(&mut self, msg: v1m::DownstreamMsg) {
         self.to_v1m.send(msg).unwrap();
     }
 }
 
-impl DownstreamIo for IoBundle {
+impl DownstreamIo for IoDirect {
     fn send_to_reaper(&self, msg: TrackMsg) {
         self.to_reaper.send(msg).unwrap();
     }
 }
 
-impl UpstreamIo for IoBundle {}
+impl UpstreamIo for IoDirect {}
+
+impl ToV1m for IoCoalescing {
+    fn send_to_v1m(&mut self, msg: v1m::DownstreamMsg) {
+        self.to_v1m_buffer.push(msg);
+    }
+}
+
+impl DownstreamIo for IoCoalescing {
+    fn send_to_reaper(&self, msg: TrackMsg) {
+        self.to_reaper.send(msg).unwrap();
+    }
+}
+
+impl UpstreamIo for IoCoalescing {}
+
+impl IoCoalescing {
+    pub fn flush_into(&mut self, io: &IoDirect) {
+        for msg in self.to_v1m_buffer.drain() {
+            io.to_v1m.send(msg).unwrap();
+        }
+    }
+}
 
 /// Each mode implementation struct needs to implement this trait to handle messages
 ///
 /// Each mode implementation should also implement initiate_mode_transition(self, ...) -> ModeState. This implementation
 /// will vary from mode to mode but usually will require sending a barrier to the upstream channel.
 pub trait ModeHandler {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction;
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction;
     fn handle_msg_from_downstream(
         &mut self,
         msg: v1m::UpstreamMsg,
-        io: &dyn DownstreamIo,
+        io: &mut dyn DownstreamIo,
     ) -> ModeAction;
 }
 
@@ -133,10 +161,10 @@ pub trait ModeHandler {
 /// Logic for each mode's behavior lives in a separate struct that exposes message handlers
 //
 // TODO: someday turn handler methods into a trait?
-pub struct ModeManager {
+pub struct ModeManager<'a> {
     from_reaper: Receiver<TrackMsg>,
     from_v1m: Receiver<v1m::UpstreamMsg>,
-    io: IoBundle,
+    io: &'a mut IoDirect,
 
     curr_mode: Mode,
     curr_state: State,
@@ -161,7 +189,7 @@ fn apply_mode_action(manager: &mut ModeManager, action: ModeAction) -> bool {
     }
 }
 
-impl ModeManager {
+impl ModeManager<'_> {
     /// Spawns a thread that listens to upstream and downstream channels, forwarding messages as
     /// appropriate and silently handling mode transitions.
     pub fn start(
@@ -170,7 +198,7 @@ impl ModeManager {
         from_v1m: Receiver<v1m::UpstreamMsg>,
         to_v1m: Sender<v1m::DownstreamMsg>,
     ) {
-        let io = IoBundle { to_reaper, to_v1m };
+        let io = &mut IoDirect::new(to_reaper, to_v1m);
 
         let mut manager = ModeManager {
             from_reaper,
@@ -192,7 +220,7 @@ impl ModeManager {
                             recv(manager.from_reaper) -> msg => {
                                 if let Ok(msg) = msg {
                                     let action = match manager.curr_mode {
-                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_upstream(msg, &manager.io),
+                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_upstream(msg, manager.io),
                                         _ => panic!("Unimplemented"),
                                     };
                                     if apply_mode_action(&mut manager, action) {
@@ -203,7 +231,7 @@ impl ModeManager {
                             recv(manager.from_v1m) -> msg => {
                                 if let Ok(msg) = msg {
                                     let action = match manager.curr_mode {
-                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_downstream(msg, &manager.io),
+                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_downstream(msg, manager.io),
                                         _ => panic!("Unimplemented"),
                                     };
                                     if apply_mode_action(&mut manager, action) {

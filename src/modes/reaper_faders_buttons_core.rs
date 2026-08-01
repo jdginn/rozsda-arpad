@@ -203,10 +203,10 @@ impl VolumeFadersCore {
     pub fn handle_msg_from_upstream<F>(
         &mut self,
         msg: track::DataMsg,
-        io: &dyn UpstreamIo,
+        io: &mut dyn UpstreamIo,
         mut track_index_epilogue: F,
     ) where
-        F: FnMut(TrackIndexUpdateEpilogue),
+        F: FnMut(TrackIndexUpdateEpilogue) -> Option<Vec<v1m::DownstreamMsg>>,
     {
         match msg {
             // We use track index according to reaper to assign tracks to hardware channels
@@ -260,10 +260,14 @@ impl VolumeFadersCore {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
                     }));
-                    track_index_epilogue(TrackIndexUpdateEpilogue {
+                    if let Some(messages) = track_index_epilogue(TrackIndexUpdateEpilogue {
                         track_guid: msg.track_guid,
                         hw_channel,
-                    });
+                    }) {
+                        for message in messages {
+                            io.send_to_v1m(message);
+                        }
+                    }
                 }
             }
             track::DataMsg::Volume(msg) => {
@@ -330,7 +334,7 @@ impl VolumeFadersCore {
         }
     }
 
-    pub fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, io: &dyn DownstreamIo) {
+    pub fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, io: &mut dyn DownstreamIo) {
         match msg {
             v1m::UpstreamMsg::ChannelFader(fader_msg) => {
                 if let Some(guid) = &self.track_hw_assignments[fader_msg.idx as usize] {
