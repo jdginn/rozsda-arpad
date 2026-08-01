@@ -209,15 +209,17 @@ impl ModeHandler for TrackSendsMode {
 
     fn handle_msg_from_downstream(&mut self, msg: UpstreamMsg, senders: &Senders) -> ModeAction {
         match msg {
-            UpstreamMsg::GlobalPress => ModeAction::Transition(TransitionRequest {
-                target: Mode::ReaperVolPan,
-                reaper_selected_track_guid: Some(self.selected_track_guid),
-            }),
+            UpstreamMsg::GlobalPress => {
+                ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+                    selected_track_guid: Some(self.selected_track_guid),
+                })
+            }
             UpstreamMsg::MIDITracksPress => ModeAction::None,
-            UpstreamMsg::InputsPress => ModeAction::Transition(TransitionRequest {
-                target: Mode::ReaperChannelStrip,
-                reaper_selected_track_guid: Some(self.selected_track_guid),
-            }),
+            UpstreamMsg::InputsPress => {
+                ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                    selected_track_guid: self.selected_track_guid,
+                })
+            }
             // If a new track is selected, we need to initiate a mode transition so that the
             // widgets are controlling the new track
             //
@@ -233,9 +235,8 @@ impl ModeHandler for TrackSendsMode {
                             }
                             .into(),
                         );
-                        return ModeAction::Transition(TransitionRequest {
-                            target: Mode::ReaperSends,
-                            reaper_selected_track_guid: Some(guid),
+                        return ModeAction::Transition(TransitionRequest::ToReaperSends {
+                            selected_track_guid: guid,
                         });
                     }
                 }

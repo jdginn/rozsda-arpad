@@ -20,15 +20,13 @@ static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Barrier {
     id: u64,
-    pub from: Mode,
-    pub to: Mode,
 }
 
 // Generate a new barrier with a unique ID
 impl Barrier {
-    pub fn new(from: Mode, to: Mode) -> Self {
+    pub fn new() -> Self {
         let id = BARRIER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        Barrier { id, from, to }
+        Barrier { id }
     }
 }
 
@@ -79,9 +77,10 @@ impl Senders {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct TransitionRequest {
-    pub target: Mode,
-    pub reaper_selected_track_guid: Option<Uuid>,
+pub enum TransitionRequest {
+    ToReaperVolumePan { selected_track_guid: Option<Uuid> },
+    ToReaperSends { selected_track_guid: Uuid },
+    ToReaperChannelStrip { selected_track_guid: Uuid },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -125,7 +124,7 @@ fn apply_mode_action(manager: &mut ModeManager, action: ModeAction) -> bool {
         ModeAction::None => false,
         ModeAction::Transition(transition_request) => {
             manager.senders.send_to_reaper(TrackMsg::QueryAll);
-            let barrier = Barrier::new(manager.curr_mode, transition_request.target);
+            let barrier = Barrier::new();
             manager.senders.send_to_reaper(TrackMsg::Barrier(barrier));
             manager.curr_state = State::WaitingBarrierFromUpstream {
                 barrier,
@@ -235,20 +234,16 @@ impl ModeManager {
                                 match msg.unwrap() {
                                     v1m::UpstreamMsg::Barrier(barrier) => {
                                         if barrier == expected_barrier {
-                                            match pending.target {
-                                                Mode::ReaperVolPan => {
-                                                    manager.handler = Box::new(VolumePanMode::new(8, pending.reaper_selected_track_guid));
-                                                    manager.curr_mode = pending.target;
+                                            match pending{
+                                                TransitionRequest::ToReaperVolumePan{selected_track_guid} => {
+                                                    manager.handler = Box::new(VolumePanMode::new(8, selected_track_guid));
+                                                    manager.curr_mode = Mode::ReaperVolPan;
                                                 },
-                                                Mode::ReaperSends => {
-                                                    if pending.reaper_selected_track_guid.is_none() {
-                                                        panic!("Code bug: ReaperSends mode requires a selected track guid");
-                                                    }
-                                                    manager.handler = Box::new(TrackSendsMode::new(8, pending.reaper_selected_track_guid.unwrap()));
-                                                    manager.curr_mode = pending.target;
+                                                TransitionRequest::ToReaperSends { selected_track_guid }=> {
+                                                    manager.handler = Box::new(TrackSendsMode::new(8, selected_track_guid));
+                                                    manager.curr_mode = Mode::ReaperSends;
                                                 },
-                                                Mode::ReaperChannelStrip => todo!(),
-                                                Mode::MotuVolPan => todo!(),
+                                                TransitionRequest::ToReaperChannelStrip { selected_track_guid }=> todo!(),
                                             }
                                             manager.curr_state = State::Active;
                                             break

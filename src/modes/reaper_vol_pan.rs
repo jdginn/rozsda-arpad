@@ -109,17 +109,23 @@ impl ModeHandler for VolumePanMode {
             // MIDITracksPress maps to ReaperSends mode
             UpstreamMsg::MIDITracksPress => {
                 println!("Requesting transition to ReaperSends mode");
-                ModeAction::Transition(TransitionRequest {
-                    target: Mode::ReaperSends,
-                    reaper_selected_track_guid: self.selected_track_guid,
-                })
+                if let Some(guid) = self.selected_track_guid {
+                    ModeAction::Transition(TransitionRequest::ToReaperSends {
+                        selected_track_guid: guid,
+                    })
+                } else {
+                    ModeAction::None
+                }
             }
             v1m::UpstreamMsg::InputsPress => {
                 println!("Requesting transition to ReaperChannelStrip mode");
-                ModeAction::Transition(TransitionRequest {
-                    target: Mode::ReaperChannelStrip,
-                    reaper_selected_track_guid: self.selected_track_guid,
-                })
+                if let Some(guid) = self.selected_track_guid {
+                    ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                        selected_track_guid: guid,
+                    })
+                } else {
+                    ModeAction::None
+                }
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
                 io.send_to_v1m(DownstreamMsg::SelectLED(SelectLEDMsg {

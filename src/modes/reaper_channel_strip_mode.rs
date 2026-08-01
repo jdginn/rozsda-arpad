@@ -8,6 +8,7 @@ use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, Transit
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
+use crate::track::track;
 use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg};
 
 struct Widgets {
@@ -30,24 +31,24 @@ struct Widgets {
 }
 
 impl Widgets {
-    fn new(to_downstream: Sender<v1m::DownstreamMsg>) -> Self {
+    fn new() -> Self {
         Widgets {
-            hp_filter: widgets::ChannelWidget::new(to_downstream.clone()),
-            low_freq: widgets::ChannelWidget::new(to_downstream.clone()),
-            low_gain: widgets::ChannelWidget::new(to_downstream.clone()),
-            lm_freq: widgets::ChannelWidget::new(to_downstream.clone()),
-            lm_gain: widgets::ChannelWidget::new(to_downstream.clone()),
-            hm_freq: widgets::ChannelWidget::new(to_downstream.clone()),
-            hm_gain: widgets::ChannelWidget::new(to_downstream.clone()),
-            high_freq: widgets::ChannelWidget::new(to_downstream.clone()),
-            high_gain: widgets::ChannelWidget::new(to_downstream.clone()),
-            eq_pos: widgets::ChannelWidget::new(to_downstream.clone()),
-            comp_thresh: widgets::ChannelWidget::new(to_downstream.clone()),
-            comp_ratio: widgets::ChannelWidget::new(to_downstream.clone()),
-            comp_makeup: widgets::ChannelWidget::new(to_downstream.clone()),
-            comp_type: widgets::ChannelWidget::new(to_downstream.clone()),
-            saturation: widgets::ChannelWidget::new(to_downstream.clone()),
-            gain: widgets::ChannelWidget::new(to_downstream.clone()),
+            hp_filter: widgets::ChannelWidget::new(),
+            low_freq: widgets::ChannelWidget::new(),
+            low_gain: widgets::ChannelWidget::new(),
+            lm_freq: widgets::ChannelWidget::new(),
+            lm_gain: widgets::ChannelWidget::new(),
+            hm_freq: widgets::ChannelWidget::new(),
+            hm_gain: widgets::ChannelWidget::new(),
+            high_freq: widgets::ChannelWidget::new(),
+            high_gain: widgets::ChannelWidget::new(),
+            eq_pos: widgets::ChannelWidget::new(),
+            comp_thresh: widgets::ChannelWidget::new(),
+            comp_ratio: widgets::ChannelWidget::new(),
+            comp_makeup: widgets::ChannelWidget::new(),
+            comp_type: widgets::ChannelWidget::new(),
+            saturation: widgets::ChannelWidget::new(),
+            gain: widgets::ChannelWidget::new(),
         }
     }
 
@@ -160,30 +161,16 @@ pub struct ChannelStripMode {
     core: VolumeFadersCore,
     routers: HashMap<Uuid, ChannelStripRouter>,
     widgets: Widgets,
-    selected_track_guid: Option<Uuid>,
-    to_reaper: Sender<TrackMsg>,
-    _from_reaper: Receiver<TrackMsg>,
-    to_v1m: Sender<v1m::DownstreamMsg>,
-    _from_v1m: Receiver<v1m::UpstreamMsg>,
+    selected_track_guid: Uuid,
 }
 
 impl ChannelStripMode {
-    pub fn new(
-        num_channels: usize,
-        from_reaper: Receiver<TrackMsg>,
-        to_reaper: Sender<TrackMsg>,
-        from_v1m: Receiver<v1m::UpstreamMsg>,
-        to_v1m: Sender<v1m::DownstreamMsg>,
-    ) -> Self {
+    pub fn new(num_channels: usize, selected_track_guid: Uuid) -> Self {
         ChannelStripMode {
             core: VolumeFadersCore::new(num_channels),
             routers: HashMap::new(),
-            widgets: Widgets::new(to_v1m.clone()),
-            selected_track_guid: None,
-            to_reaper,
-            _from_reaper: from_reaper,
-            to_v1m,
-            _from_v1m: from_v1m,
+            widgets: Widgets::new(),
+            selected_track_guid,
         }
     }
 }
@@ -197,9 +184,8 @@ impl ModeHandler for ChannelStripMode {
                     // point to that new track.
                     TrackDataMsg::Selected(msg) => {
                         if msg.selected {
-                            ModeAction::Transition(TransitionRequest {
-                                target: Mode::ReaperChannelStrip,
-                                reaper_selected_track_guid: Some(msg.track_guid),
+                            ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                                selected_track_guid: msg.track_guid,
                             })
                         } else {
                             ModeAction::None
@@ -210,18 +196,15 @@ impl ModeHandler for ChannelStripMode {
                         // (e.g. volume on faders, mute/arm/solo buttons)
                         self.core
                             .handle_msg_from_upstream(msg.clone(), senders, |_| {});
-                        if let Some(selected_guid) = self.selected_track_guid {
-                            let router = self
-                                .routers
-                                .entry(selected_guid)
-                                .or_insert(ChannelStripRouter::new(selected_guid));
-                            // Each message from upstream may cause one or more ChannelStripMsgs
-                            if let Ok(translated_msgs) = router.translate_message_from_upstream(msg)
-                            {
-                                for translated_msg in translated_msgs {
-                                    self.widgets.handle_message_from_upstream(translated_msg);
-                                }
-                            };
+                        let router = self
+                            .routers
+                            .entry(self.selected_track_guid)
+                            .or_insert(ChannelStripRouter::new(self.selected_track_guid));
+                        // Each message from upstream may cause one or more ChannelStripMsgs
+                        if let Ok(translated_msgs) = router.translate_message_from_upstream(msg) {
+                            for translated_msg in translated_msgs {
+                                self.widgets.handle_message_from_upstream(translated_msg);
+                            }
                         };
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)
                         ModeAction::None
@@ -241,53 +224,53 @@ impl ModeHandler for ChannelStripMode {
     ) -> ModeAction {
         match msg {
             // GlobalPress maps to ReaperVolPan mode
-            v1m::UpstreamMsg::GlobalPress => ModeAction::Transition(TransitionRequest {
-                target: Mode::ReaperVolPan,
-                reaper_selected_track_guid: self.selected_track_guid,
-            }),
+            v1m::UpstreamMsg::GlobalPress => {
+                ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+                    selected_track_guid: Some(self.selected_track_guid),
+                })
+            }
             // MIDITracksPress maps to ReaperSends mode
-            v1m::UpstreamMsg::MIDITracksPress => ModeAction::Transition(TransitionRequest {
-                target: Mode::ReaperSends,
-                reaper_selected_track_guid: self.selected_track_guid,
-            }),
+            v1m::UpstreamMsg::MIDITracksPress => {
+                ModeAction::Transition(TransitionRequest::ToReaperSends {
+                    selected_track_guid: self.selected_track_guid,
+                })
+            }
             v1m::UpstreamMsg::InputsPress => ModeAction::None,
             v1m::UpstreamMsg::SelectPress(msg) => {
-                // Switch to ReaperChannelStrip mode for the selected track, if any
-                let selected_track_guid = self.core.get_guid_for_hw_channel(msg.idx as usize);
-                if selected_track_guid.is_some()
-                    && (self.selected_track_guid != selected_track_guid)
-                {
-                    match selected_track_guid {
-                        Some(selected_track_guid) => ModeAction::Transition(TransitionRequest {
-                            target: Mode::ReaperChannelStrip,
-                            reaper_selected_track_guid: Some(selected_track_guid),
-                        }),
-                        None => ModeAction::None,
+                if let Some(guid) = self.core.get_guid_for_hw_channel(msg.idx as usize) {
+                    if guid != self.selected_track_guid {
+                        senders.send_to_reaper(
+                            track::Selected {
+                                track_guid: guid,
+                                selected: true,
+                            }
+                            .into(),
+                        );
+                        return ModeAction::Transition(TransitionRequest::ToReaperSends {
+                            selected_track_guid: guid,
+                        });
                     }
-                } else {
-                    ModeAction::None
                 }
+                ModeAction::None
             }
             _ => {
                 // Handle messages not specific to ChannelStripMode (e.g. faders, mute/arm/solo)
                 self.core.handle_msg_from_downstream(msg, senders);
-                if let Some(selected_track_guid) = self.selected_track_guid {
-                    let router = self
-                        .routers
-                        .entry(selected_track_guid)
-                        .or_insert(ChannelStripRouter::new(selected_track_guid));
-                    // Handle messages to the widgets
-                    let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
-                    // Each upstream message may generate one or more ChannelStripMsgs
-                    for channel_strip_msg in channel_strip_msgs {
-                        // Each channel_strip_msg may be translated into one or more reaper TrackMsgs
-                        if let Ok(translated_msgs) =
-                            router.translate_message_from_downstream(channel_strip_msg)
-                        {
-                            for translated_msg in translated_msgs {
-                                // FIXME: unwrap
-                                self.to_reaper.send(translated_msg).unwrap();
-                            }
+                let router = self
+                    .routers
+                    .entry(self.selected_track_guid)
+                    .or_insert(ChannelStripRouter::new(self.selected_track_guid));
+                // Handle messages to the widgets
+                let channel_strip_msgs = self.widgets.handle_message_from_downstream(msg);
+                // Each upstream message may generate one or more ChannelStripMsgs
+                for channel_strip_msg in channel_strip_msgs {
+                    // Each channel_strip_msg may be translated into one or more reaper TrackMsgs
+                    if let Ok(translated_msgs) =
+                        router.translate_message_from_downstream(channel_strip_msg)
+                    {
+                        for translated_msg in translated_msgs {
+                            // FIXME: unwrap
+                            senders.send_to_reaper(translated_msg);
                         }
                     }
                 }
