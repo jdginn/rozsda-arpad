@@ -70,3 +70,8 @@ impl<T: Coalescible> OrderedCoalescingBuffer<T> {
         drained
     }
 }
+
+#[cfg(test)]
+mod coalesce_derive_tests;
+#[cfg(test)]
+mod coalesce_tests;
