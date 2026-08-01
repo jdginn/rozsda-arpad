@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::midi::v1m::{self};
 use crate::midi::v1m::{DownstreamMsg, EncoderRingMsg, LEDState, SelectLEDMsg, UpstreamMsg};
-use crate::modes::mode_manager::{ModeAction, ModeHandler, Senders, TransitionRequest};
+use crate::modes::mode_manager::{
+    DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
+};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
 use crate::track::track::TrackMsg;
@@ -42,7 +44,7 @@ impl VolumePanMode {
 }
 
 impl ModeHandler for VolumePanMode {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, senders: &Senders) -> ModeAction {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
@@ -51,7 +53,7 @@ impl ModeHandler for VolumePanMode {
                             true => v1m::LEDState::On,
                             false => v1m::LEDState::Off,
                         };
-                        senders.send_to_v1m(
+                        io.send_to_v1m(
                             v1m::SelectLEDMsg {
                                 idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 state,
@@ -61,14 +63,14 @@ impl ModeHandler for VolumePanMode {
                         ModeAction::None
                     }
                     track::DataMsg::Name(msg) => {
-                        senders.send_to_v1m(
+                        io.send_to_v1m(
                             v1m::ScribbleStripLine1TextMsg {
                                 idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 text: msg.name.clone(),
                             }
                             .into(),
                         );
-                        senders.send_to_v1m(
+                        io.send_to_v1m(
                             v1m::BottomScribbleStripLine2TextMsg {
                                 idx: self.core.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 text: msg.name,
@@ -80,9 +82,9 @@ impl ModeHandler for VolumePanMode {
                     _ => {
                         // Handle common functionality across modes that put volume on the faders
                         // and mute/solo/arm on the buttons
-                        self.core.handle_msg_from_upstream(msg, &senders, |data| {
+                        self.core.handle_msg_from_upstream(msg, io, |data| {
                             let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
-                            senders.send_to_v1m(
+                            io.send_to_v1m(
                                 v1m::EncoderRingMsg {
                                     idx: data.hw_channel as i32,
                                     mode: v1m::EncoderRingMode::Point,
@@ -102,7 +104,11 @@ impl ModeHandler for VolumePanMode {
             }
         }
     }
-    fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, io: &Senders) -> ModeAction {
+    fn handle_msg_from_downstream(
+        &mut self,
+        msg: v1m::UpstreamMsg,
+        io: &dyn DownstreamIo,
+    ) -> ModeAction {
         match msg {
             // GlobalPress maps to this mode!
             v1m::UpstreamMsg::GlobalPress => ModeAction::None,
@@ -210,7 +216,7 @@ impl ModeHandler for VolumePanMode {
                 ModeAction::None
             }
             _ => {
-                self.core.handle_msg_from_downstream(msg, &io);
+                self.core.handle_msg_from_downstream(msg, io);
                 ModeAction::None
             }
         }

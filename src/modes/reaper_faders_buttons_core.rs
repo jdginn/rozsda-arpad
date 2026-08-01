@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::midi::v1m;
 use crate::modes::button::Button;
-use crate::modes::mode_manager::Senders;
+use crate::modes::mode_manager::{DownstreamIo, UpstreamIo};
 use crate::track::track;
 
 // FIXME:
@@ -203,7 +203,7 @@ impl VolumeFadersCore {
     pub fn handle_msg_from_upstream<F>(
         &mut self,
         msg: track::DataMsg,
-        senders: &Senders,
+        io: &dyn UpstreamIo,
         mut track_index_epilogue: F,
     ) where
         F: FnMut(TrackIndexUpdateEpilogue),
@@ -238,7 +238,7 @@ impl VolumeFadersCore {
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     let track_state = *self.get_track_state(msg.track_guid);
                     // Send volume
-                    senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
                         idx: hw_channel as i32,
                         value: track_state.volume as f64,
                     }));
@@ -246,17 +246,17 @@ impl VolumeFadersCore {
                     self.last_sent_volume[hw_channel] = track_state.volume;
 
                     // Send mute LED
-                    senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.mute.is_on()),
                     }));
                     // Send solo LED
-                    senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.solo.is_on()),
                     }));
                     // Send arm LED
-                    senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
                     }));
@@ -276,12 +276,10 @@ impl VolumeFadersCore {
                     if should_send {
                         // Send volume update to v1m for the corresponding fader
                         let fader_value = msg.volume; // TODO: scale appropriately
-                        senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(
-                            v1m::ChannelFaderMsg {
-                                idx: hw_channel as i32,
-                                value: fader_value as f64,
-                            },
-                        ));
+                        io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                            idx: hw_channel as i32,
+                            value: fader_value as f64,
+                        }));
                         // Store the value we just sent
                         self.last_sent_volume[hw_channel] = msg.volume;
                     }
@@ -294,7 +292,7 @@ impl VolumeFadersCore {
                     .set(msg.muted);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send mute LED update to v1m
-                    senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.muted),
                     }));
@@ -307,7 +305,7 @@ impl VolumeFadersCore {
                     .set(msg.soloed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send solo LED update to v1m
-                    senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.soloed),
                     }));
@@ -320,7 +318,7 @@ impl VolumeFadersCore {
                     .set(msg.armed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send arm LED update to v1m
-                    senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: hw_channel as i32,
                         state: v1m::LEDState::from(msg.armed),
                     }));
@@ -332,12 +330,12 @@ impl VolumeFadersCore {
         }
     }
 
-    pub fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, senders: &Senders) {
+    pub fn handle_msg_from_downstream(&mut self, msg: v1m::UpstreamMsg, io: &dyn DownstreamIo) {
         match msg {
             v1m::UpstreamMsg::ChannelFader(fader_msg) => {
                 if let Some(guid) = &self.track_hw_assignments[fader_msg.idx as usize] {
                     // Send volume update to Reaper for the corresponding track
-                    senders.send_to_reaper(
+                    io.send_to_reaper(
                         track::Volume {
                             track_guid: *guid,
                             volume: fader_msg.value as f32, // TODO: Need to scale appropriately
@@ -345,7 +343,7 @@ impl VolumeFadersCore {
                         .into(),
                     );
                     // Convince the v1m to leave its faders where we put them
-                    senders.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
                         idx: fader_msg.idx,
                         value: fader_msg.value,
                     }));
@@ -355,7 +353,7 @@ impl VolumeFadersCore {
                 if let Some(guid) = self.get_guid_for_hw_channel(mute_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.mute.toggle();
                     // Send mute toggle to Reaper for the corresponding track
-                    senders.send_to_reaper(
+                    io.send_to_reaper(
                         track::Muted {
                             track_guid: guid,
                             muted: new_state,
@@ -363,7 +361,7 @@ impl VolumeFadersCore {
                         .into(),
                     );
                     // Update the toggle on the hardware
-                    senders.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
                         idx: mute_msg.idx,
                         state: v1m::LEDState::from(new_state),
                     }));
@@ -373,14 +371,14 @@ impl VolumeFadersCore {
                 if let Some(guid) = self.get_guid_for_hw_channel(solo_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.solo.toggle();
                     // Send solo toggle to Reaper for the corresponding track
-                    senders.send_to_reaper(
+                    io.send_to_reaper(
                         track::Soloed {
                             track_guid: guid,
                             soloed: new_state,
                         }
                         .into(),
                     );
-                    senders.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
                         idx: solo_msg.idx,
                         state: v1m::LEDState::from(new_state),
                     }));
@@ -390,14 +388,14 @@ impl VolumeFadersCore {
                 if let Some(guid) = self.get_guid_for_hw_channel(arm_msg.idx as usize) {
                     let new_state = self.get_track_state(guid).buttons.arm.toggle();
                     // Send arm toggle to Reaper for the corresponding track
-                    senders.send_to_reaper(
+                    io.send_to_reaper(
                         track::Armed {
                             track_guid: guid,
                             armed: new_state,
                         }
                         .into(),
                     );
-                    senders.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                    io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
                         idx: arm_msg.idx,
                         state: v1m::LEDState::from(new_state),
                     }))

@@ -7,7 +7,9 @@ use crate::midi::v1m;
 use crate::midi::v1m::{
     ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderRingMsg, UpstreamMsg,
 };
-use crate::modes::mode_manager::{ModeAction, ModeHandler, Senders, TransitionRequest};
+use crate::modes::mode_manager::{
+    DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
+};
 use crate::track::track;
 use crate::track::track::TrackMsg;
 
@@ -57,12 +59,12 @@ impl TrackSendsMode {
 }
 
 impl ModeHandler for TrackSendsMode {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, senders: &Senders) -> ModeAction {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
                     track::DataMsg::Name(msg) => {
-                        senders.send_to_v1m(
+                        io.send_to_v1m(
                             v1m::ScribbleStripLine1TextMsg {
                                 idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
                                     as i32,
@@ -70,7 +72,7 @@ impl ModeHandler for TrackSendsMode {
                             }
                             .into(),
                         );
-                        senders.send_to_v1m(
+                        io.send_to_v1m(
                             v1m::BottomScribbleStripLine2TextMsg {
                                 idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
                                     as i32,
@@ -95,7 +97,7 @@ impl ModeHandler for TrackSendsMode {
                                 true => v1m::LEDState::On,
                                 false => v1m::LEDState::Off,
                             };
-                            senders.send_to_v1m(
+                            io.send_to_v1m(
                                 v1m::SelectLEDMsg {
                                     idx: self.find_hw_channel_for_guid(msg.track_guid).unwrap_or(0)
                                         as i32,
@@ -140,11 +142,11 @@ impl ModeHandler for TrackSendsMode {
                             .or_default()
                             .clone();
                         // Send current state to hardware for this send index
-                        senders.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                        io.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
                             idx: msg.send_index,
                             value: state.level as f64, // TODO: scale appropriately
                         }));
-                        senders.send_to_v1m(DownstreamMsg::EncoderRingLED(
+                        io.send_to_v1m(DownstreamMsg::EncoderRingLED(
                             // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
                             //     idx: msg.send_index,
                             //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
@@ -168,7 +170,7 @@ impl ModeHandler for TrackSendsMode {
                             self.track_send_states.entry(*guid).or_default().level = msg.level;
 
                             let fader_value = msg.level; // TODO: scale appropriately
-                            senders.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
+                            io.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
                                 idx: msg.send_index,
                                 value: fader_value as f64,
                             }))
@@ -185,7 +187,7 @@ impl ModeHandler for TrackSendsMode {
                         if let Some(Some(guid)) = self.hw_assignments.get(msg.send_index as usize) {
                             self.track_send_states.entry(*guid).or_default().pan = msg.pan;
 
-                            senders.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
+                            io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
                                 idx: msg.send_index,
                                 mode: EncoderRingMode::FromCenter,
                                 val: map_to_0xb(msg.pan),
@@ -207,7 +209,11 @@ impl ModeHandler for TrackSendsMode {
         }
     }
 
-    fn handle_msg_from_downstream(&mut self, msg: UpstreamMsg, senders: &Senders) -> ModeAction {
+    fn handle_msg_from_downstream(
+        &mut self,
+        msg: UpstreamMsg,
+        io: &dyn DownstreamIo,
+    ) -> ModeAction {
         match msg {
             UpstreamMsg::GlobalPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
@@ -228,7 +234,7 @@ impl ModeHandler for TrackSendsMode {
             UpstreamMsg::SelectPress(msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(msg.idx as usize) {
                     if guid != self.selected_track_guid {
-                        senders.send_to_reaper(
+                        io.send_to_reaper(
                             track::Selected {
                                 track_guid: guid,
                                 selected: true,
@@ -246,7 +252,7 @@ impl ModeHandler for TrackSendsMode {
                 // FIXME: seems like this is the issuer here V
                 // No?
                 if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
-                    senders.send_to_reaper(
+                    io.send_to_reaper(
                         track::SendLevel {
                             track_guid: guid,
                             send_index: fader_msg.idx,

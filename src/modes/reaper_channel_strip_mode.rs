@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::midi::v1m;
-use crate::modes::mode_manager::{ModeAction, ModeHandler, Senders, TransitionRequest};
+use crate::modes::mode_manager::{
+    DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
+};
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
@@ -175,7 +177,7 @@ impl ChannelStripMode {
 }
 
 impl ModeHandler for ChannelStripMode {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, senders: &Senders) -> ModeAction {
+    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &dyn UpstreamIo) -> ModeAction {
         match TrackDataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
@@ -193,8 +195,7 @@ impl ModeHandler for ChannelStripMode {
                     _ => {
                         // First handle the functionality that is not unique to ChannelStripMode
                         // (e.g. volume on faders, mute/arm/solo buttons)
-                        self.core
-                            .handle_msg_from_upstream(msg.clone(), senders, |_| {});
+                        self.core.handle_msg_from_upstream(msg.clone(), io, |_| {});
                         let router = self
                             .routers
                             .entry(self.selected_track_guid)
@@ -219,7 +220,7 @@ impl ModeHandler for ChannelStripMode {
     fn handle_msg_from_downstream(
         &mut self,
         msg: v1m::UpstreamMsg,
-        senders: &Senders,
+        io: &dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
             // GlobalPress maps to ReaperVolPan mode
@@ -238,7 +239,7 @@ impl ModeHandler for ChannelStripMode {
             v1m::UpstreamMsg::SelectPress(msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(msg.idx as usize) {
                     if guid != self.selected_track_guid {
-                        senders.send_to_reaper(
+                        io.send_to_reaper(
                             track::Selected {
                                 track_guid: guid,
                                 selected: true,
@@ -254,7 +255,7 @@ impl ModeHandler for ChannelStripMode {
             }
             _ => {
                 // Handle messages not specific to ChannelStripMode (e.g. faders, mute/arm/solo)
-                self.core.handle_msg_from_downstream(msg, senders);
+                self.core.handle_msg_from_downstream(msg, io);
                 let router = self
                     .routers
                     .entry(self.selected_track_guid)
@@ -269,7 +270,7 @@ impl ModeHandler for ChannelStripMode {
                     {
                         for translated_msg in translated_msgs {
                             // FIXME: unwrap
-                            senders.send_to_reaper(translated_msg);
+                            io.send_to_reaper(translated_msg);
                         }
                     }
                 }

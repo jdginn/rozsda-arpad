@@ -1,5 +1,5 @@
 use crate::midi::v1m;
-use crate::modes::mode_manager::Senders;
+use crate::modes::mode_manager::{DownstreamIo, UpstreamIo};
 use crate::modes::reaper_channel_strip_router::{
     BandMode, BypassMode, ChannelStripMsg, CompOrder, CompType, EqPosition, EqType, SaturationType,
 };
@@ -293,7 +293,7 @@ impl<B: ChannelWidgetBehavior> ChannelWidget<B> {
         // TODO: send feedback
     }
 
-    fn send_feedback(&mut self, io: &Senders) {
+    fn send_feedback(&mut self, io: &dyn UpstreamIo) {
         // FIXME: depends on actually implementing scribble for v1m...
 
         // TODO: send color, labels, and range info downstream
