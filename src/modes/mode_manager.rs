@@ -43,16 +43,10 @@ pub enum State {
     // Normal operation: forward messages in both directions
     Active,
     // Waiting from messages from upstream to be passed all the way downstream
-    WaitingBarrierFromUpstream {
-        barrier: Barrier,
-        pending: TransitionRequest,
-    },
+    WaitingBarrierFromUpstream { barrier: Barrier },
     // All messages from upstream have been passed downward; waiting for downstream to confirm all
     // messages have been applied
-    WaitingBarrierFromDownstream {
-        barrier: Barrier,
-        pending: TransitionRequest,
-    },
+    WaitingBarrierFromDownstream { barrier: Barrier },
 }
 
 /// Represents the various control modes supported.
@@ -92,11 +86,6 @@ pub struct IoDirect {
     to_v1m: Sender<v1m::DownstreamMsg>,
 }
 
-pub struct IoCoalescing {
-    to_reaper: Sender<TrackMsg>,
-    to_v1m_buffer: OrderedCoalescingBuffer<v1m::DownstreamMsg>,
-}
-
 impl IoDirect {
     fn new(to_reaper: Sender<TrackMsg>, to_v1m: Sender<v1m::DownstreamMsg>) -> Self {
         IoDirect { to_reaper, to_v1m }
@@ -116,6 +105,20 @@ impl DownstreamIo for IoDirect {
 }
 
 impl UpstreamIo for IoDirect {}
+
+pub struct IoCoalescing {
+    to_reaper: Sender<TrackMsg>,
+    to_v1m_buffer: OrderedCoalescingBuffer<v1m::DownstreamMsg>,
+}
+
+impl IoCoalescing {
+    fn new(to_reaper: Sender<TrackMsg>) -> Self {
+        IoCoalescing {
+            to_reaper,
+            to_v1m_buffer: OrderedCoalescingBuffer::new(),
+        }
+    }
+}
 
 impl ToV1m for IoCoalescing {
     fn send_to_v1m(&mut self, msg: v1m::DownstreamMsg) {
@@ -161,12 +164,12 @@ pub trait ModeHandler {
 /// Logic for each mode's behavior lives in a separate struct that exposes message handlers
 //
 // TODO: someday turn handler methods into a trait?
-pub struct ModeManager<'a> {
+pub struct ModeManager {
     from_reaper: Receiver<TrackMsg>,
     from_v1m: Receiver<v1m::UpstreamMsg>,
-    io: &'a mut IoDirect,
+    io_direct: IoDirect,
+    io_coalescing: IoCoalescing,
 
-    curr_mode: Mode,
     curr_state: State,
 
     handler: Box<dyn ModeHandler>,
@@ -177,19 +180,28 @@ fn apply_mode_action(manager: &mut ModeManager, action: ModeAction) -> bool {
     match action {
         ModeAction::None => false,
         ModeAction::Transition(transition_request) => {
-            manager.io.send_to_reaper(TrackMsg::QueryAll);
-            let barrier = Barrier::new();
-            manager.io.send_to_reaper(TrackMsg::Barrier(barrier));
-            manager.curr_state = State::WaitingBarrierFromUpstream {
-                barrier,
-                pending: transition_request,
+            manager.handler = match transition_request {
+                //TODO: pass io_coalescing
+                TransitionRequest::ToReaperVolumePan {
+                    selected_track_guid,
+                } => Box::new(VolumePanMode::new(8, selected_track_guid)),
+                TransitionRequest::ToReaperSends {
+                    selected_track_guid,
+                } => Box::new(TrackSendsMode::new(8, selected_track_guid)),
+                TransitionRequest::ToReaperChannelStrip {
+                    selected_track_guid,
+                } => Box::new(ChannelStripMode::new(8, selected_track_guid)),
             };
+            manager.io_direct.send_to_reaper(TrackMsg::QueryAll);
+            let barrier = Barrier::new();
+            manager.io_direct.send_to_reaper(TrackMsg::Barrier(barrier));
+            manager.curr_state = State::WaitingBarrierFromUpstream { barrier };
             true
         }
     }
 }
 
-impl ModeManager<'_> {
+impl ModeManager {
     /// Spawns a thread that listens to upstream and downstream channels, forwarding messages as
     /// appropriate and silently handling mode transitions.
     pub fn start(
@@ -198,14 +210,12 @@ impl ModeManager<'_> {
         from_v1m: Receiver<v1m::UpstreamMsg>,
         to_v1m: Sender<v1m::DownstreamMsg>,
     ) {
-        let io = &mut IoDirect::new(to_reaper, to_v1m);
-
         let mut manager = ModeManager {
             from_reaper,
             from_v1m,
-            io,
+            io_direct: IoDirect::new(to_reaper.clone(), to_v1m),
+            io_coalescing: IoCoalescing::new(to_reaper),
 
-            curr_mode: Mode::ReaperVolPan,
             curr_state: State::Active,
 
             handler: Box::new(VolumePanMode::new(8, None)),
@@ -219,10 +229,7 @@ impl ModeManager<'_> {
                         select! {
                             recv(manager.from_reaper) -> msg => {
                                 if let Ok(msg) = msg {
-                                    let action = match manager.curr_mode {
-                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_upstream(msg, manager.io),
-                                        _ => panic!("Unimplemented"),
-                                    };
+                                    let action = manager.handler.handle_msg_from_upstream(msg, &mut manager.io_direct);
                                     if apply_mode_action(&mut manager, action) {
                                         break
                                     }
@@ -230,10 +237,7 @@ impl ModeManager<'_> {
                             }
                             recv(manager.from_v1m) -> msg => {
                                 if let Ok(msg) = msg {
-                                    let action = match manager.curr_mode {
-                                        Mode::ReaperVolPan => manager.handler.handle_msg_from_downstream(msg, manager.io),
-                                        _ => panic!("Unimplemented"),
-                                    };
+                                    let action = manager.handler.handle_msg_from_downstream(msg, &mut manager.io_direct);
                                     if apply_mode_action(&mut manager, action) {
                                         break
                                     }
@@ -244,31 +248,36 @@ impl ModeManager<'_> {
                 }
                 State::WaitingBarrierFromUpstream {
                     barrier: expected_barrier,
-                    pending,
                 } => {
                     loop {
                         select! {
                             recv(manager.from_reaper) -> msg => {
-                                // Yes, for now we just want to panic on error
-                                match msg.unwrap() {
-                                    TrackMsg::Barrier(barrier) => {
-                                        // Forward barriers downstream (they need to reflect back upstream for the mode to
-                                        // transition)
-                                        manager.io.send_to_v1m
-                                            (v1m::DownstreamMsg::Barrier(barrier));
-                                        if barrier == expected_barrier {
-                                            // If we were already waiting on a barrier from upstream, check if this is the one
-                                            // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
-                                            manager.curr_state = State::WaitingBarrierFromDownstream{barrier, pending};
-                                            break
+                                if let Ok(msg) = msg {
+                                    match msg {
+                                        TrackMsg::Barrier(barrier) => {
+                                            if barrier == expected_barrier {
+                                                // If this is the barrier we were waiting for, flush all coalesced messages downstream and transition to
+                                                // waiting for the barrier to reflect back up from downstream.
+                                                manager.io_coalescing.flush_into(&manager.io_direct);
+                                                manager.io_direct.send_to_v1m
+                                                    (v1m::DownstreamMsg::Barrier(barrier));
+                                                // If we were already waiting on a barrier from upstream, check if this is the one
+                                                // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
+                                                manager.curr_state = State::WaitingBarrierFromDownstream{barrier};
+                                                break
+                                            }
+                                            // Forward all barriers downstream
+                                            manager.io_direct.send_to_v1m
+                                                (v1m::DownstreamMsg::Barrier(barrier));
+                                        },
+                                        _ => {
+                                            // Coalesce all messages from upstream
+                                            manager.handler.handle_msg_from_upstream(msg, &mut manager.io_coalescing);
                                         }
-                                    },
-                                    _ => {
-                                        //TODO: coalesce
                                     }
-                                }
+                                } else {panic!("Error receiving from reaper channel")}
                             }
-                            recv(manager.from_v1m) -> msg => {
+                            recv(manager.from_v1m) -> _ => {
                                 // Discard all messages from downstream until we have received the barrier from upstream
                             }
                         }
@@ -276,32 +285,13 @@ impl ModeManager<'_> {
                 }
                 State::WaitingBarrierFromDownstream {
                     barrier: expected_barrier,
-                    pending,
                 } => {
                     loop {
                         select! {
-                            recv(manager.from_reaper) -> msg => {
-                                // TODO: coalesce all messages
-                                // TODO: what do we do with other barriers?
-                            }
                             recv(manager.from_v1m) -> msg => {
                                 match msg.unwrap() {
                                     v1m::UpstreamMsg::Barrier(barrier) => {
                                         if barrier == expected_barrier {
-                                            match pending{
-                                                TransitionRequest::ToReaperVolumePan{selected_track_guid} => {
-                                                    manager.handler = Box::new(VolumePanMode::new(8, selected_track_guid));
-                                                    manager.curr_mode = Mode::ReaperVolPan;
-                                                },
-                                                TransitionRequest::ToReaperSends { selected_track_guid }=> {
-                                                    manager.handler = Box::new(TrackSendsMode::new(8, selected_track_guid));
-                                                    manager.curr_mode = Mode::ReaperSends;
-                                                },
-                                                TransitionRequest::ToReaperChannelStrip { selected_track_guid } => {
-                                                    manager.handler = Box::new(ChannelStripMode::new(8, selected_track_guid));
-                                                    manager.curr_mode = Mode::ReaperChannelStrip;
-                                                }
-                                            }
                                             manager.curr_state = State::Active;
                                             break
                                         } else {
