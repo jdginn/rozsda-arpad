@@ -7,7 +7,7 @@ use crate::midi::v1m;
 use crate::midi::v1m::{
     ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderRingMsg, UpstreamMsg,
 };
-use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, TransitionRequest};
+use crate::modes::mode_manager::{ModeAction, ModeHandler, Senders, TransitionRequest};
 use crate::track::track;
 use crate::track::track::TrackMsg;
 

@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::midi::v1m::{self};
 use crate::midi::v1m::{DownstreamMsg, EncoderRingMsg, LEDState, SelectLEDMsg, UpstreamMsg};
-use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, TransitionRequest};
+use crate::modes::mode_manager::{ModeAction, ModeHandler, Senders, TransitionRequest};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
 use crate::track::track::TrackMsg;

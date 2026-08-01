@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use crossbeam_channel::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::midi::v1m;
-use crate::modes::mode_manager::{Mode, ModeAction, ModeHandler, Senders, TransitionRequest};
+use crate::modes::mode_manager::{ModeAction, ModeHandler, Senders, TransitionRequest};
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
