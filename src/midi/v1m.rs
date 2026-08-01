@@ -5,6 +5,7 @@ use crossbeam_channel::{Receiver, Sender};
 use helgoboss_midi::Channel;
 use midir::{MidiInputPort, MidiOutputConnection};
 
+use coalescible_derive::{Coalescible, CoalescibleEnum};
 use derive_enum_from::EnumFrom;
 
 use crate::midi::base::{
@@ -16,7 +17,7 @@ use crate::midi::{MidiDevice, MidiError};
 use crate::modes::mode_manager::Barrier;
 use crate::traits::{Bind, Set};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, std::hash::Hash)]
 pub enum StereoChannel {
     Left,
     Right,
@@ -31,14 +32,14 @@ impl std::fmt::Display for StereoChannel {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, std::hash::Hash)]
 pub enum Slot {
     DAW1,
     DAW2,
     DAW3,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, std::hash::Hash)]
 pub enum DawId {
     Bitwig,
     Cubase,
@@ -60,7 +61,7 @@ pub enum DawId {
     Luna,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, std::hash::Hash)]
 pub enum TouchScreenLayer {
     Blue,
     Green,
@@ -81,14 +82,16 @@ impl std::fmt::Display for TouchScreenLayer {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct ChannelFaderMsg {
     pub idx: i32,
+    #[data]
     pub value: f64, // Probably too much precision?
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct MasterFaderMsg {
+    #[data]
     pub value: f64, // Probably too much precision?
 }
 
@@ -114,10 +117,12 @@ pub struct EncoderReleaseMsg {
     pub idx: i32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Coalescible)]
 pub struct EncoderRingMsg {
     pub idx: i32,
+    #[data]
     pub mode: EncoderRingMode,
+    #[data]
     pub val: u8,
 }
 
@@ -145,7 +150,7 @@ pub struct EncoderRingLEDBlankMsg {
     pub idx: i32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CoalescibleEnum)]
 pub enum LEDState {
     Off,
     On,
@@ -171,9 +176,10 @@ pub struct MuteRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct MuteLEDMsg {
     pub idx: i32,
+    #[data]
     pub state: LEDState,
 }
 
@@ -187,9 +193,10 @@ pub struct SoloRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct SoloLEDMsg {
     pub idx: i32,
+    #[data]
     pub state: LEDState,
 }
 
@@ -203,9 +210,10 @@ pub struct ArmRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct ArmLEDMsg {
     pub idx: i32,
+    #[data]
     pub state: LEDState,
 }
 
@@ -219,21 +227,24 @@ pub struct SelectRelease {
     pub idx: i32,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct SelectLEDMsg {
     pub idx: i32,
+    #[data]
     pub state: LEDState,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct ChannelMeterMsg {
     pub idx: i32,
+    #[data]
     pub db: f64,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Coalescible)]
 pub struct MasterMeterMsg {
     pub channel: StereoChannel,
+    #[data]
     pub db: f64,
 }
 
@@ -244,59 +255,68 @@ pub struct Color {
     pub b: u8,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct ScribbleStripLine1TextMsg {
     pub idx: i32,
+    #[data]
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct ScribbleStripLine2TextMsg {
     pub idx: i32,
+    #[data]
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct BottomScribbleStripLine1TextMsg {
     pub idx: i32,
+    #[data]
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct BottomScribbleStripLine2TextMsg {
     pub idx: i32,
+    #[data]
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct ScribbleStripBackgroundColorMsg {
     pub idx: i32,
+    #[data]
     pub color: Color,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct SevenSegmentDisplayMsg {
+    #[data]
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct TouchScreenSetTextMsg {
     pub slot: Slot,
     pub daw_id: DawId,
     pub row: usize,
     pub column: usize,
     pub layer: TouchScreenLayer,
+    #[data]
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Coalescible)]
 pub struct TouchScreenSetButtonBehaviorMsg {
     pub slot: Slot,
     pub daw_id: DawId,
     pub row: usize,
     pub column: usize,
     pub layer: TouchScreenLayer,
+    #[data]
     pub midi_channel: u8,
+    #[data]
     pub note: u8,
 }
 
@@ -355,9 +375,10 @@ pub enum UpstreamMsg {
     UserRelease,
 }
 
-#[derive(Debug, EnumFrom)]
+#[derive(Clone, Debug, EnumFrom, CoalescibleEnum)]
 pub enum DownstreamMsg {
     #[enum_from]
+    #[nocoalesce]
     Barrier(Barrier),
 
     // Channel strip messages
@@ -398,10 +419,12 @@ pub enum DownstreamMsg {
     #[enum_from]
     TouchScreenSetText(TouchScreenSetTextMsg),
     #[enum_from]
+    #[nocoalesce]
     TouchScreenBatchSetText(Vec<TouchScreenSetTextMsg>),
     #[enum_from]
     TouchScreenSetButtonBehavior(TouchScreenSetButtonBehaviorMsg),
     #[enum_from]
+    #[nocoalesce]
     TouchScreenBatchSetButtonBehavior(Vec<TouchScreenSetButtonBehaviorMsg>),
 
     // Encoder assign messages
