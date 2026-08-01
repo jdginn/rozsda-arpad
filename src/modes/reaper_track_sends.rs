@@ -25,7 +25,7 @@ pub struct TrackSendInfo {
     pub pan: f32,
 }
 
-pub struct TrackSendsMode {
+pub struct TrackSendsMode<const N: usize> {
     // Maps track send index to send guid
     hw_assignments: Vec<Option<Uuid>>,
     // Maps guid to info about the send it designates
@@ -33,10 +33,10 @@ pub struct TrackSendsMode {
     selected_track_guid: Uuid,
 }
 
-impl TrackSendsMode {
-    pub fn new(num_channels: usize, selected_track_guid: Uuid) -> Self {
+impl<const N: usize> TrackSendsMode<N> {
+    pub fn new(selected_track_guid: Uuid) -> Self {
         TrackSendsMode {
-            hw_assignments: vec![None; num_channels],
+            hw_assignments: vec![None; N],
             track_send_states: BTreeMap::new(),
             selected_track_guid,
         }
@@ -58,7 +58,7 @@ impl TrackSendsMode {
     }
 }
 
-impl ModeHandler for TrackSendsMode {
+impl<const N: usize> ModeHandler for TrackSendsMode<N> {
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {

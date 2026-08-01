@@ -184,13 +184,13 @@ fn apply_mode_action(manager: &mut ModeManager, action: ModeAction) -> bool {
                 //TODO: pass io_coalescing
                 TransitionRequest::ToReaperVolumePan {
                     selected_track_guid,
-                } => Box::new(VolumePanMode::new(8, selected_track_guid)),
+                } => Box::new(VolumePanMode::<8>::new(selected_track_guid)),
                 TransitionRequest::ToReaperSends {
                     selected_track_guid,
-                } => Box::new(TrackSendsMode::new(8, selected_track_guid)),
+                } => Box::new(TrackSendsMode::<8>::new(selected_track_guid)),
                 TransitionRequest::ToReaperChannelStrip {
                     selected_track_guid,
-                } => Box::new(ChannelStripMode::new(8, selected_track_guid)),
+                } => Box::new(ChannelStripMode::<8>::new(selected_track_guid)),
             };
             manager.io_direct.send_to_reaper(TrackMsg::QueryAll);
             let barrier = Barrier::new();
@@ -218,7 +218,7 @@ impl ModeManager {
 
             curr_state: State::Active,
 
-            handler: Box::new(VolumePanMode::new(8, None)),
+            handler: Box::new(VolumePanMode::<8>::new(None)),
         };
 
         loop {

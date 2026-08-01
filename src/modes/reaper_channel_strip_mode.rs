@@ -158,17 +158,17 @@ impl Widgets {
 /// - Gain adjusts level entering the channel strip, before any processing.
 /// - Trim adjust level leaving the channel strip.
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
-pub struct ChannelStripMode {
-    core: VolumeFadersCore,
+pub struct ChannelStripMode<const N: usize> {
+    core: VolumeFadersCore<N>,
     routers: HashMap<Uuid, ChannelStripRouter>,
     widgets: Widgets,
     selected_track_guid: Uuid,
 }
 
-impl ChannelStripMode {
-    pub fn new(num_channels: usize, selected_track_guid: Uuid) -> Self {
+impl<const N: usize> ChannelStripMode<N> {
+    pub fn new(selected_track_guid: Uuid) -> Self {
         ChannelStripMode {
-            core: VolumeFadersCore::new(num_channels),
+            core: VolumeFadersCore::new(),
             routers: HashMap::new(),
             widgets: Widgets::new(),
             selected_track_guid,
@@ -176,7 +176,7 @@ impl ChannelStripMode {
     }
 }
 
-impl ModeHandler for ChannelStripMode {
+impl<const N: usize> ModeHandler for ChannelStripMode<N> {
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match TrackDataMsg::try_from(msg) {
             Ok(msg) => {

@@ -30,10 +30,7 @@ use crate::track::track;
 // Note that in all situations, this functionality will be extended to connect additional controls.
 // As such, this does not implement the ModeHandler interface, and cannot be used on its own.
 
-// Threshold for filtering out insignificant volume changes
-const FADER_EPSILON: f32 = 0.01;
-// FIXME: find the real value
-pub const FADER_0DB: f32 = 0.716; // Placeholder value for 0dB on fader reusable
+pub const FADER_0DB: f32 = 0.716; // 0dB on fader
 
 #[derive(Clone, Copy)]
 struct MuteSoloArmButtonState {
@@ -61,7 +58,7 @@ pub struct TrackIndexUpdateEpilogue {
 ///
 /// Button LED toggling is handled here (downstream does not need to worry about managing button
 /// LEDS.)
-pub struct VolumeFadersCore {
+pub struct VolumeFadersCore<const N: usize> {
     // Maps each channel on the hardware controller to a Reaper track
     pub track_hw_assignments: Vec<Option<Uuid>>,
     // Store state for each track by track GUID
@@ -70,15 +67,15 @@ pub struct VolumeFadersCore {
     last_sent_volume: Vec<f32>,
 }
 
-impl VolumeFadersCore {
-    pub fn new(num_channels: usize) -> Self {
-        let track_hw_assignments = vec![None; num_channels];
+impl<const N: usize> VolumeFadersCore<N> {
+    pub fn new() -> Self {
+        let track_hw_assignments = vec![None; N];
         let track_states = HashMap::new();
 
         VolumeFadersCore {
             track_hw_assignments,
             track_states,
-            last_sent_volume: vec![0.0; num_channels], // Initialize with default volume values
+            last_sent_volume: vec![0.0; N], // Initialize with default volume values
         }
     }
 

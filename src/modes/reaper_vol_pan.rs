@@ -27,23 +27,23 @@ pub fn map_to_0xb(x: f32) -> u8 {
 /// Button LED toggling is handled here (downstream does not need to worry about managing button
 /// LEDS.)
 ///
-pub struct VolumePanMode {
-    core: VolumeFadersCore,
+pub struct VolumePanMode<const N: usize> {
+    core: VolumeFadersCore<N>,
     pan_states: HashMap<Uuid, f32>,
     selected_track_guid: Option<Uuid>,
 }
 
-impl VolumePanMode {
-    pub fn new(num_channels: usize, selected_track_guid: Option<Uuid>) -> Self {
+impl<const N: usize> VolumePanMode<N> {
+    pub fn new(selected_track_guid: Option<Uuid>) -> Self {
         VolumePanMode {
-            core: VolumeFadersCore::new(num_channels),
+            core: VolumeFadersCore::new(),
             pan_states: HashMap::new(),
             selected_track_guid,
         }
     }
 }
 
-impl ModeHandler for VolumePanMode {
+impl<const N: usize> ModeHandler for VolumePanMode<N> {
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
