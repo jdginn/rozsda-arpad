@@ -42,6 +42,63 @@ impl<const N: usize> TrackSendsMode<N> {
         }
     }
 
+    pub fn init(self, io: &mut dyn DownstreamIo) -> Self {
+        for i in 0..N {
+            io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
+                idx: i as i32,
+                value: 0.0,
+            }));
+            io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
+                idx: i as i32,
+                state: v1m::LEDState::Off,
+            }));
+            io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
+                idx: i as i32,
+                state: v1m::LEDState::Off,
+            }));
+            io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
+                idx: i as i32,
+                state: v1m::LEDState::Off,
+            }));
+            io.send_to_v1m(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
+                idx: i as i32,
+                mode: v1m::EncoderRingMode::Point,
+                val: 0x06, // Center position
+            }));
+            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripLine1Text(
+                v1m::ScribbleStripLine1TextMsg {
+                    idx: i as i32,
+                    text: String::new(),
+                },
+            ));
+            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripLine2Text(
+                v1m::ScribbleStripLine2TextMsg {
+                    idx: i as i32,
+                    text: String::new(),
+                },
+            ));
+            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
+                v1m::ScribbleStripBackgroundColorMsg {
+                    idx: i as i32,
+                    color: v1m::Color { r: 0, g: 0, b: 0 },
+                },
+            ));
+            io.send_to_v1m(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
+                v1m::BottomScribbleStripLine1TextMsg {
+                    idx: i as i32,
+                    text: String::new(),
+                },
+            ));
+            io.send_to_v1m(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
+                v1m::BottomScribbleStripLine2TextMsg {
+                    idx: i as i32,
+                    text: String::new(),
+                },
+            ));
+        }
+        self
+    }
+
     fn get_guid_for_hw_channel(&self, hw_channel: usize) -> Option<Uuid> {
         self.hw_assignments[hw_channel]
     }

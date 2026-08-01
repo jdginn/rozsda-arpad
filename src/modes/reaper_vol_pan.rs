@@ -41,6 +41,11 @@ impl<const N: usize> VolumePanMode<N> {
             selected_track_guid,
         }
     }
+
+    pub fn init(mut self, io: &mut dyn UpstreamIo) -> Self {
+        self.core = self.core.init(io);
+        self
+    }
 }
 
 impl<const N: usize> ModeHandler for VolumePanMode<N> {
