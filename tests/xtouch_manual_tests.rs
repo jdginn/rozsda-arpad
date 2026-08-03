@@ -169,10 +169,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_max", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
-            idx: channel,
-            value: 1.0,
-        }))
+        tx.send(
+            FaderAbsMsg {
+                idx: channel,
+                value: 1.0,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -186,10 +189,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_min", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
-            idx: channel,
-            value: 0.0,
-        }))
+        tx.send(
+            FaderAbsMsg {
+                idx: channel,
+                value: 0.0,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -203,10 +209,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("fader_channel_{}_to_unity", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::FaderAbs(FaderAbsMsg {
-            idx: channel,
-            value: 0.75, // Approximate unity gain position
-        }))
+        tx.send(
+            FaderAbsMsg {
+                idx: channel,
+                value: 0.75, // Approximate unity gain position
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -221,10 +230,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("mute_led_channel_{}_on", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::MuteLED(MuteLEDMsg {
-            idx: channel,
-            state: LEDState::On,
-        }))
+        tx.send(
+            MuteLEDMsg {
+                idx: channel,
+                state: LEDState::On,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -238,10 +250,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("mute_led_channel_{}_off", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::MuteLED(MuteLEDMsg {
-            idx: channel,
-            state: LEDState::Off,
-        }))
+        tx.send(
+            MuteLEDMsg {
+                idx: channel,
+                state: LEDState::Off,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -256,10 +271,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("solo_led_channel_{}_on", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::SoloLED(SoloLEDMsg {
-            idx: channel,
-            state: LEDState::On,
-        }))
+        tx.send(
+            SoloLEDMsg {
+                idx: channel,
+                state: LEDState::On,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -273,10 +291,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("solo_led_channel_{}_off", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::SoloLED(SoloLEDMsg {
-            idx: channel,
-            state: LEDState::Off,
-        }))
+        tx.send(
+            SoloLEDMsg {
+                idx: channel,
+                state: LEDState::Off,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -291,10 +312,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("arm_led_channel_{}_on", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::ArmLED(ArmLEDMsg {
-            idx: channel,
-            state: LEDState::On,
-        }))
+        tx.send(
+            ArmLEDMsg {
+                idx: channel,
+                state: LEDState::On,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -308,10 +332,13 @@ fn run_output_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("arm_led_channel_{}_off", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::ArmLED(ArmLEDMsg {
-            idx: channel,
-            state: LEDState::Off,
-        }))
+        tx.send(
+            ArmLEDMsg {
+                idx: channel,
+                state: LEDState::Off,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -774,12 +801,13 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     for channel in 0..8 {
         let test_name = format!("scribble_channel_{}_line1", channel);
         println!("\nTest: {}", test_name);
-        tx.send(DownstreamMsg::ScribbleStripLine1Text(
+        tx.send(
             ScribbleStripLine1TextMsg {
                 idx: channel,
                 text: format!("Fader{}", channel),
-            },
-        ))
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -793,12 +821,13 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     for channel in 0..8 {
         let test_name = format!("scribble_channel_{}_line2", channel);
         println!("\nTest: {}", test_name);
-        tx.send(DownstreamMsg::ScribbleStripLine2Text(
+        tx.send(
             ScribbleStripLine2TextMsg {
                 idx: channel,
                 text: format!("Displ{}", channel),
-            },
-        ))
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
@@ -822,12 +851,13 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("scribble_channel_{}_light_light_color", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::ScribbleStripBackgroundColor(
+        tx.send(
             ScribbleStripBackgroundColorMsg {
                 idx: channel,
                 color: colors[channel as usize % colors.len()],
-            },
-        ))
+            }
+            .into(),
+        )
         .unwrap();
 
         let expected_color = colors[channel as usize % colors.len()];
@@ -899,11 +929,14 @@ fn run_encoder_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     for channel in 0..8 {
         let test_name = format!("encoder_channel_{}_all_segments", channel);
         println!("\nTest: {}", test_name);
-        tx.send(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-            idx: channel,
-            mode: EncoderRingMode::FromLeft,
-            val: 0xb,
-        }))
+        tx.send(
+            EncoderRingMsg {
+                idx: channel,
+                mode: EncoderRingMode::FromLeft,
+                val: 0xb,
+            }
+            .into(),
+        )
         .unwrap();
 
         let result = prompt_user(&format!(
