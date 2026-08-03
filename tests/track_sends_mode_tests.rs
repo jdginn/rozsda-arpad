@@ -56,11 +56,6 @@ fn setup_track_sends_mode(
 
 const FLOAT_EPSILON: f64 = 0.0001;
 
-pub fn map_to_0xb(x: f32) -> u8 {
-    let clamped = x.clamp(-1.0, 1.0) as f64;
-    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
-}
-
 pub fn drain<T>(rx: &Receiver<T>) {
     // Drops (flushes) all messages currently buffered at the time we start draining,
     // plus any that arrive before we hit Empty.
@@ -541,7 +536,11 @@ fn test_send_state_reflects_latest_value_when_moved() {
         .into(),
         &mut io_direct,
     );
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_1, map_to_0xb(pan_1));
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::map_to_encoder_ring(pan_1)
+    );
 
     // Remap to different channel - old mapping should be cleared
     mode.handle_msg_from_upstream(
@@ -568,7 +567,11 @@ fn test_send_state_reflects_latest_value_when_moved() {
     // assert_downstream_mute_led_msg!(&to_v1m_rx, send_idx_2, LEDState::Off);
     // assert_downstream_solo_led_msg!(&to_v1m_rx, send_idx_2, LEDState::Off);
     // assert_downstream_arm_led_msg!(&to_v1m_rx, send_idx_2, LEDState::Off);
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_2, map_to_0xb(pan_1));
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_2,
+        v1m::map_to_encoder_ring(pan_1)
+    );
 
     // Verify the send can be found via find_hw_channel
     let found_channel = mode.find_hw_channel(send_guid_1);
@@ -607,7 +610,11 @@ fn test_send_state_reflects_latest_value_when_moved() {
         .into(),
         &mut io_direct,
     );
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_2, map_to_0xb(pan_2));
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_2,
+        v1m::map_to_encoder_ring(pan_2)
+    );
 }
 
 #[test]
@@ -663,7 +670,11 @@ fn test_send_state_reflects_latest_value_new_send_replaces_old_send_at_index() {
         .into(),
         &mut io_direct,
     );
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_1, map_to_0xb(pan_1));
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::map_to_encoder_ring(pan_1)
+    );
 
     // Map new send to this index
     mode.handle_msg_from_upstream(
@@ -728,7 +739,11 @@ fn test_send_state_reflects_latest_value_new_send_replaces_old_send_at_index() {
         .into(),
         &mut io_direct,
     );
-    assert_downstream_encoder_ring_led_msg!(&to_v1m_rx, send_idx_1, map_to_0xb(pan_2));
+    assert_downstream_encoder_ring_led_msg!(
+        &to_v1m_rx,
+        send_idx_1,
+        v1m::map_to_encoder_ring(pan_2)
+    );
 }
 
 // TODO: might need this once we decide what buttons do in this mode

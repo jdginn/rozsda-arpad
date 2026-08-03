@@ -13,13 +13,6 @@ use crate::modes::mode_manager::{
 use crate::track::track;
 use crate::track::track::TrackMsg;
 
-//FIXME: move this to v1m
-//FIXME: is pan center supposed to be 0.5 or 0.0?
-pub fn map_to_0xb(x: f32) -> u8 {
-    let clamped = x.clamp(-1.0, 1.0) as f64;
-    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
-}
-
 #[derive(Clone, Default)]
 pub struct TrackSendInfo {
     pub guid: String,
@@ -236,18 +229,13 @@ impl<const N: usize> ModeHandler for TrackSendsMode<N> {
                             idx: msg.send_index,
                             value: state.level as f64, // TODO: scale appropriately
                         }));
-                        println!("state.pan: {}", state.pan);
-                        println!("map_o_to_0xb(state.pan): {}", map_to_0xb(state.pan));
                         io.send_to_v1m(DownstreamMsg::EncoderRingLED(
-                            // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
-                            //     idx: msg.send_index,
-                            //     pos: (state.pan + 1.0) / 2.0, // Scale -1.0 to 1.0 into 0.0 to 1.0
-                            // }),
-                            EncoderRingMsg {
-                                idx: msg.send_index,
-                                mode: EncoderRingMode::FromCenter,
-                                val: map_to_0xb(state.pan),
-                            },
+                            EncoderRingMsg::new(
+                                msg.send_index,
+                                EncoderRingMode::FromCenter,
+                                state.pan,
+                            )
+                            .into(),
                         ));
                         ModeAction::None
                     }
@@ -279,11 +267,11 @@ impl<const N: usize> ModeHandler for TrackSendsMode<N> {
                         if let Some(Some(guid)) = self.hw_assignments.get(msg.send_index as usize) {
                             self.track_send_states.entry(*guid).or_default().pan = msg.pan;
 
-                            io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-                                idx: msg.send_index,
-                                mode: EncoderRingMode::FromCenter,
-                                val: map_to_0xb(msg.pan),
-                            }))
+                            io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg::new(
+                                msg.send_index,
+                                EncoderRingMode::FromCenter,
+                                msg.pan,
+                            )))
                         }
                         ModeAction::None
                     }
