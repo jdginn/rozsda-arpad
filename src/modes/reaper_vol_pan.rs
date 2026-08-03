@@ -116,7 +116,7 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                         self.core.handle_msg_from_upstream(msg, io, |data| {
                             // This closure defines what happens when a track's index changes.
                             // Each mode that builds from VolumeFadersCore may need to define its own behavior here.
-                            let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.5); // Default center pan
+                            let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.0); // Default center pan
                             Some(vec![
                                 v1m::EncoderRingMsg {
                                     idx: data.hw_channel as i32,
@@ -187,7 +187,7 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
             v1m::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and increment it
-                    let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
+                    let current_pan = self.pan_states.entry(guid).or_insert(0.0); // Default center pan
                     let new_pan = match encoder_msg.accel {
                         1 => (*current_pan + 0.05).min(1.0), // Increment by 0.05, clamp to max 1.0
                         2 => (*current_pan + 0.1).min(1.0),  // Increment by 0.07, clamp to max 1.0
@@ -218,7 +218,7 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
             v1m::UpstreamMsg::EncoderTurnDec(encoder_msg) => {
                 if let Some(guid) = self.core.get_guid_for_hw_channel(encoder_msg.idx as usize) {
                     // Get current pan value and decrement it
-                    let current_pan = self.pan_states.entry(guid).or_insert(0.5); // Default center pan
+                    let current_pan = self.pan_states.entry(guid).or_insert(0.0); // Default center pan
                     let new_pan = match encoder_msg.accel {
                         1 => (*current_pan - 0.05).max(-1.0), // Decrement by 0.05, clamp to min -1.0
                         2 => (*current_pan - 0.1).max(-1.0), // Decrement by 0.05, clamp to min -1.0
@@ -251,5 +251,15 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                 ModeAction::None
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encoder_center_mode_center_const() {
+        assert_eq!(map_to_0xb(0.0), v1m::ENCODER_CENTER_MODE_CENTER);
     }
 }
