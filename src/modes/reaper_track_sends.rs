@@ -13,6 +13,8 @@ use crate::modes::mode_manager::{
 use crate::track::track;
 use crate::track::track::TrackMsg;
 
+//FIXME: move this to v1m
+//FIXME: is pan center supposed to be 0.5 or 0.0?
 pub fn map_to_0xb(x: f32) -> u8 {
     let clamped = x.clamp(-1.0, 1.0) as f64;
     ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
@@ -183,6 +185,11 @@ impl<const N: usize> ModeHandler for TrackSendsMode<N> {
                             return ModeAction::None;
                         }
 
+                        println!(
+                            "ENCODER_CENTER_MODE_CENTER: {}",
+                            v1m::ENCODER_CENTER_MODE_CENTER
+                        );
+
                         // If the send was previously mapped to a hw_channel, zero that channel
                         if let Some(index) = self.find_hw_channel(msg.send_guid) {
                             if index as i32 == msg.send_index {
@@ -229,6 +236,8 @@ impl<const N: usize> ModeHandler for TrackSendsMode<N> {
                             idx: msg.send_index,
                             value: state.level as f64, // TODO: scale appropriately
                         }));
+                        println!("state.pan: {}", state.pan);
+                        println!("map_o_to_0xb(state.pan): {}", map_to_0xb(state.pan));
                         io.send_to_v1m(DownstreamMsg::EncoderRingLED(
                             // EncoderRingMsg::RangePoint(EncoderRingLEDRangePointMsg {
                             //     idx: msg.send_index,

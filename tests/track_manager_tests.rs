@@ -41,7 +41,7 @@ fn setup_track_manager() -> (
 fn test_track_manager_forwards_barriers() {
     let (upstream_tx, _upstream_rx, _downstream_tx, downstream_rx) = setup_track_manager();
 
-    let barrier = Barrier::new(Mode::ReaperVolPan, Mode::ReaperSends);
+    let barrier = Barrier::new();
     upstream_tx.send(TrackMsg::Barrier(barrier)).unwrap();
 
     // Barrier should be forwarded downstream
