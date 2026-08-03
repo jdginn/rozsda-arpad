@@ -18,7 +18,7 @@ use arpad_rust::midi::v1m::{
     SelectPress, SoloPress, UpstreamMsg,
 };
 use arpad_rust::modes::mode_manager::{IoDirect, ModeAction, ModeHandler, TransitionRequest};
-use arpad_rust::modes::reaper_vol_pan::VolumePanMode;
+use arpad_rust::modes::reaper_volume_pan_mode::ReaperVolumePanMode;
 use arpad_rust::track::track::{self as track, TrackMsg};
 
 // EPSILON constant for floating-point threshold testing
@@ -36,7 +36,7 @@ const EPSILON: f32 = 0.01;
 
 /// Helper to create a VolumePanMode instance for testing
 fn setup_vol_pan_mode() -> (
-    VolumePanMode<8>,
+    ReaperVolumePanMode<8>,
     Receiver<TrackMsg>,
     Receiver<DownstreamMsg>,
     IoDirect,
@@ -44,7 +44,7 @@ fn setup_vol_pan_mode() -> (
     let (to_reaper_tx, to_reaper_rx) = unbounded();
     let (to_v1m_tx, to_v1m_rx) = unbounded();
 
-    let mode = VolumePanMode::new(None);
+    let mode = ReaperVolumePanMode::new(None);
 
     let io_direct = IoDirect::new(to_reaper_tx, to_v1m_tx);
 

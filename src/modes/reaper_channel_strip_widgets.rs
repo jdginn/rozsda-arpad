@@ -20,7 +20,7 @@ use crate::modes::reaper_channel_strip_router::{
 
 // Architecture ideas:
 //
-// In this mode, faders do the same thing as VolPanMode. Faders are the surfaces where being out
+// In this mode, faders do the same thing as ReaperVolumePanMode. Faders are the surfaces where being out
 // of step with Reaper can cause us problems, so for the unique channel strip stuff here, we have
 // less stringent requirements around state synchronization.
 //

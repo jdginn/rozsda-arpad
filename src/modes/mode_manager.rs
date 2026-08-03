@@ -7,8 +7,8 @@ use uuid::Uuid;
 use crate::midi::v1m;
 use crate::modes::coalesce::OrderedCoalescingBuffer;
 use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
-use crate::modes::reaper_track_sends::TrackSendsMode;
-use crate::modes::reaper_vol_pan::VolumePanMode;
+use crate::modes::reaper_track_sends_mode::ReaperTrackSendsMode;
+use crate::modes::reaper_volume_pan_mode::ReaperVolumePanMode;
 use crate::track::track::TrackMsg;
 
 // Global atomic counter for unique IDs
@@ -52,10 +52,10 @@ pub enum State {
 /// Represents the various control modes supported.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
-    ReaperVolPan,
-    ReaperSends,
+    ReaperVolumePan,
+    ReaperTrackSends,
     ReaperChannelStrip,
-    MotuVolPan,
+    MotuVolumePan,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -183,10 +183,10 @@ fn default_handler_factory(
     match transition_request {
         TransitionRequest::ToReaperVolumePan {
             selected_track_guid,
-        } => Box::new(VolumePanMode::<8>::new(selected_track_guid).init(io)),
+        } => Box::new(ReaperVolumePanMode::<8>::new(selected_track_guid).init(io)),
         TransitionRequest::ToReaperSends {
             selected_track_guid,
-        } => Box::new(TrackSendsMode::<8>::new(selected_track_guid).init(io)),
+        } => Box::new(ReaperTrackSendsMode::<8>::new(selected_track_guid).init(io)),
         TransitionRequest::ToReaperChannelStrip {
             selected_track_guid,
         } => Box::new(ChannelStripMode::<8>::new(selected_track_guid).init(io)),
@@ -208,7 +208,7 @@ impl ModeManager<HandlerFactoryFn> {
 
             curr_state: State::Active,
 
-            handler: Box::new(VolumePanMode::<8>::new(None)),
+            handler: Box::new(ReaperVolumePanMode::<8>::new(None)),
             handler_factory: default_handler_factory,
         }
     }
