@@ -10,7 +10,6 @@ use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRou
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
-use crate::track::track::{DataMsg as TrackDataMsg, TrackMsg};
 
 struct Widgets {
     hp_filter: widgets::ChannelWidget<widgets::HPWidgetBehavior>,
@@ -182,13 +181,17 @@ impl<const N: usize> ChannelStripMode<N> {
 }
 
 impl<const N: usize> ModeHandler for ChannelStripMode<N> {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
-        match TrackDataMsg::try_from(msg) {
+    fn handle_msg_from_upstream(
+        &mut self,
+        msg: track::TrackMsg,
+        io: &mut dyn UpstreamIo,
+    ) -> ModeAction {
+        match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
                     // If a new track is selected, initiate a mode transition to make widgets now
                     // point to that new track.
-                    TrackDataMsg::Selected(msg) => {
+                    track::DataMsg::Selected(msg) => {
                         if msg.selected {
                             ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
                                 selected_track_guid: msg.track_guid,
@@ -218,8 +221,8 @@ impl<const N: usize> ModeHandler for ChannelStripMode<N> {
                 }
             }
             Err(_) => {
-                // Ignore messages that fail to parse as TrackDataMsg (e.g., ModeTransition, etc.)
-                panic!("Failed to parse TrackMsg as TrackDataMsg:");
+                // Ignore messages that fail to parse as track::DataMsg (e.g., ModeTransition, etc.)
+                panic!("Failed to parse TrackMsg as track::DataMsg:");
             }
         }
     }
