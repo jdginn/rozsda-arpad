@@ -2,14 +2,12 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use crate::midi::v1m::{self};
-use crate::midi::v1m::{DownstreamMsg, EncoderRingMsg, LEDState, SelectLEDMsg, UpstreamMsg};
+use crate::midi::v1m;
 use crate::modes::mode_manager::{
     DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
 };
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
-use crate::track::track::TrackMsg;
 
 /// Implements a mode where that "basic" reaper functionality is mapped to the channel strips on
 /// the control surface, namely:
@@ -46,7 +44,11 @@ impl<const N: usize> ReaperVolumePanMode<N> {
 }
 
 impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
-    fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
+    fn handle_msg_from_upstream(
+        &mut self,
+        msg: track::TrackMsg,
+        io: &mut dyn UpstreamIo,
+    ) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
@@ -141,7 +143,7 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
             // GlobalPress maps to this mode!
             v1m::UpstreamMsg::GlobalPress => ModeAction::None,
             // MIDITracksPress maps to ReaperSends mode
-            UpstreamMsg::MIDITracksPress => {
+            v1m::UpstreamMsg::MIDITracksPress => {
                 if let Some(guid) = self.selected_track_guid {
                     ModeAction::Transition(TransitionRequest::ToReaperSends {
                         selected_track_guid: guid,
@@ -160,10 +162,13 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
                 }
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
-                io.send_to_v1m(DownstreamMsg::SelectLED(SelectLEDMsg {
-                    idx: select_msg.idx,
-                    state: LEDState::On,
-                }));
+                io.send_to_v1m(
+                    v1m::SelectLEDMsg {
+                        idx: select_msg.idx,
+                        state: v1m::LEDState::On,
+                    }
+                    .into(),
+                );
                 if let Some(guid) = self.core.get_guid_for_hw_channel(select_msg.idx as usize) {
                     io.send_to_reaper(
                         track::Selected {
@@ -202,11 +207,14 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
                     );
 
                     // Send encoder LED update downstream to hardware
-                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg::new(
-                        encoder_msg.idx,
-                        v1m::EncoderRingMode::FromCenter,
-                        new_pan,
-                    )));
+                    io.send_to_v1m(
+                        v1m::EncoderRingMsg::new(
+                            encoder_msg.idx,
+                            v1m::EncoderRingMode::FromCenter,
+                            new_pan,
+                        )
+                        .into(),
+                    );
                 }
                 ModeAction::None
             }
@@ -233,11 +241,14 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
                     );
 
                     // Send encoder LED update downstream to hardware
-                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg::new(
-                        encoder_msg.idx,
-                        v1m::EncoderRingMode::FromCenter,
-                        new_pan,
-                    )));
+                    io.send_to_v1m(
+                        v1m::EncoderRingMsg::new(
+                            encoder_msg.idx,
+                            v1m::EncoderRingMode::FromCenter,
+                            new_pan,
+                        )
+                        .into(),
+                    );
                 }
                 ModeAction::None
             }

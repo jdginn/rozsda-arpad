@@ -4,7 +4,6 @@ use uuid::Uuid;
 
 use crate::modes::generated_fx_param as fx;
 use crate::track::track;
-use crate::track::track::TrackMsg;
 
 // | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
 // |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
@@ -331,7 +330,7 @@ impl ChannelStripRouter {
     pub fn translate_message_from_downstream(
         &self,
         msg: ChannelStripMsg,
-    ) -> Result<Vec<TrackMsg>, TranslationErr> {
+    ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
         match msg {
             ChannelStripMsg::LowFreq(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(

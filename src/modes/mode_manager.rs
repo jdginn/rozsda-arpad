@@ -285,11 +285,6 @@ impl ModeManager<HandlerFactoryFn> {
                                         // If this is the barrier we were waiting for, flush all coalesced messages downstream and transition to
                                         // waiting for the barrier to reflect back up from downstream.
                                         self.io_coalescing.flush_into(&self.io_direct);
-                                        // BUG: bug was here vvv
-                                        // self.io_direct.send_to_v1m
-                                        //     (v1m::DownstreamMsg::Barrier(barrier));
-                                        //
-                                        //
                                         // If we were already waiting on a barrier from upstream, check if this is the one
                                         // we were waiting for. If yes, transition to waiting for the barrier to reflect back up from downstream.
                                         self.curr_state = State::WaitingBarrierFromDownstream{barrier};

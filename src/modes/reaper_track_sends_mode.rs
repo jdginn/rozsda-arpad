@@ -4,9 +4,6 @@ use std::vec::Vec;
 use uuid::Uuid;
 
 use crate::midi::v1m;
-use crate::midi::v1m::{
-    ChannelFaderMsg, DownstreamMsg, EncoderRingMode, EncoderRingMsg, UpstreamMsg,
-};
 use crate::modes::mode_manager::{
     DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
 };
@@ -177,16 +174,16 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
                             }
                             self.hw_assignments[index] = None;
                             io.send_to_v1m(
-                                ChannelFaderMsg {
+                                v1m::ChannelFaderMsg {
                                     idx: index as i32,
                                     value: 0.0,
                                 }
                                 .into(),
                             );
                             io.send_to_v1m(
-                                EncoderRingMsg {
+                                v1m::EncoderRingMsg {
                                     idx: index as i32,
-                                    mode: EncoderRingMode::Point,
+                                    mode: v1m::EncoderRingMode::Point,
                                     val: v1m::ENCODER_CENTER_MODE_CENTER,
                                 }
                                 .into(),
@@ -206,18 +203,21 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
                             .or_default()
                             .clone();
                         // Send current state to hardware for this send index
-                        io.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
-                            idx: msg.send_index,
-                            value: state.level as f64, // TODO: scale appropriately
-                        }));
-                        io.send_to_v1m(DownstreamMsg::EncoderRingLED(
-                            EncoderRingMsg::new(
+                        io.send_to_v1m(
+                            v1m::ChannelFaderMsg {
+                                idx: msg.send_index,
+                                value: state.level as f64, // TODO: scale appropriately
+                            }
+                            .into(),
+                        );
+                        io.send_to_v1m(
+                            v1m::EncoderRingMsg::new(
                                 msg.send_index,
-                                EncoderRingMode::FromCenter,
+                                v1m::EncoderRingMode::FromCenter,
                                 state.pan,
                             )
                             .into(),
-                        ));
+                        );
                         ModeAction::None
                     }
                     track::DataMsg::SendLevel(msg) => {
@@ -231,10 +231,13 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
                             self.track_send_states.entry(*guid).or_default().level = msg.level;
 
                             let fader_value = msg.level; // TODO: scale appropriately
-                            io.send_to_v1m(DownstreamMsg::ChannelFader(ChannelFaderMsg {
-                                idx: msg.send_index,
-                                value: fader_value as f64,
-                            }))
+                            io.send_to_v1m(
+                                v1m::ChannelFaderMsg {
+                                    idx: msg.send_index,
+                                    value: fader_value as f64,
+                                }
+                                .into(),
+                            )
                         }
                         ModeAction::None
                     }
@@ -248,11 +251,14 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
                         if let Some(Some(guid)) = self.hw_assignments.get(msg.send_index as usize) {
                             self.track_send_states.entry(*guid).or_default().pan = msg.pan;
 
-                            io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg::new(
-                                msg.send_index,
-                                EncoderRingMode::FromCenter,
-                                msg.pan,
-                            )))
+                            io.send_to_v1m(
+                                v1m::EncoderRingMsg::new(
+                                    msg.send_index,
+                                    v1m::EncoderRingMode::FromCenter,
+                                    msg.pan,
+                                )
+                                .into(),
+                            )
                         }
                         ModeAction::None
                     }
@@ -272,17 +278,17 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
 
     fn handle_msg_from_downstream(
         &mut self,
-        msg: UpstreamMsg,
+        msg: v1m::UpstreamMsg,
         io: &mut dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
-            UpstreamMsg::GlobalPress => {
+            v1m::UpstreamMsg::GlobalPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
                     selected_track_guid: Some(self.selected_track_guid),
                 })
             }
-            UpstreamMsg::MIDITracksPress => ModeAction::None,
-            UpstreamMsg::InputsPress => {
+            v1m::UpstreamMsg::MIDITracksPress => ModeAction::None,
+            v1m::UpstreamMsg::InputsPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
                     selected_track_guid: self.selected_track_guid,
                 })
@@ -292,7 +298,7 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
             //
             // TODO: do we need to handle this case separately or do we simply expect a reflected
             // message back from Reaper?
-            UpstreamMsg::SelectPress(msg) => {
+            v1m::UpstreamMsg::SelectPress(msg) => {
                 if let Some(guid) = self.get_guid_for_hw_channel(msg.idx as usize) {
                     if guid != self.selected_track_guid {
                         io.send_to_reaper(
@@ -309,10 +315,11 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
                 }
                 ModeAction::None
             }
-            UpstreamMsg::ChannelFader(fader_msg) => {
-                // FIXME: seems like this is the issuer here V
-                // No?
-                if let Some(guid) = self.get_guid_for_hw_channel(fader_msg.idx as usize) {
+            v1m::UpstreamMsg::ChannelFader(fader_msg) => {
+                if self
+                    .get_guid_for_hw_channel(fader_msg.idx as usize)
+                    .is_some()
+                {
                     io.send_to_reaper(
                         track::SendLevel {
                             track_guid: self.selected_track_guid,

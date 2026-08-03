@@ -79,57 +79,77 @@ impl<const N: usize> VolumeFadersCore<N> {
 
     pub fn init(self, io: &mut dyn UpstreamIo) -> Self {
         for i in 0..N {
-            io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
-                idx: i as i32,
-                value: 0.0,
-            }));
-            io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                idx: i as i32,
-                state: v1m::LEDState::Off,
-            }));
-            io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                idx: i as i32,
-                state: v1m::LEDState::Off,
-            }));
-            io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                idx: i as i32,
-                state: v1m::LEDState::Off,
-            }));
-            io.send_to_v1m(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
-                idx: i as i32,
-                mode: v1m::EncoderRingMode::Point,
-                val: v1m::ENCODER_CENTER_MODE_CENTER, // Center position
-            }));
-            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripLine1Text(
+            io.send_to_v1m(
+                v1m::ChannelFaderMsg {
+                    idx: i as i32,
+                    value: 0.0,
+                }
+                .into(),
+            );
+            io.send_to_v1m(
+                v1m::MuteLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }
+                .into(),
+            );
+            io.send_to_v1m(
+                v1m::SoloLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }
+                .into(),
+            );
+            io.send_to_v1m(
+                v1m::ArmLEDMsg {
+                    idx: i as i32,
+                    state: v1m::LEDState::Off,
+                }
+                .into(),
+            );
+            io.send_to_v1m(
+                v1m::EncoderRingMsg {
+                    idx: i as i32,
+                    mode: v1m::EncoderRingMode::Point,
+                    val: v1m::ENCODER_CENTER_MODE_CENTER, // Center position
+                }
+                .into(),
+            );
+            io.send_to_v1m(
                 v1m::ScribbleStripLine1TextMsg {
                     idx: i as i32,
                     text: String::new(),
-                },
-            ));
-            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripLine2Text(
+                }
+                .into(),
+            );
+            io.send_to_v1m(
                 v1m::ScribbleStripLine2TextMsg {
                     idx: i as i32,
                     text: String::new(),
-                },
-            ));
-            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
+                }
+                .into(),
+            );
+            io.send_to_v1m(
                 v1m::ScribbleStripBackgroundColorMsg {
                     idx: i as i32,
                     color: v1m::Color { r: 0, g: 0, b: 0 },
-                },
-            ));
-            io.send_to_v1m(v1m::DownstreamMsg::BottomScribbleStripLine1Text(
+                }
+                .into(),
+            );
+            io.send_to_v1m(
                 v1m::BottomScribbleStripLine1TextMsg {
                     idx: i as i32,
                     text: String::new(),
-                },
-            ));
-            io.send_to_v1m(v1m::DownstreamMsg::BottomScribbleStripLine2Text(
+                }
+                .into(),
+            );
+            io.send_to_v1m(
                 v1m::BottomScribbleStripLine2TextMsg {
                     idx: i as i32,
                     text: String::new(),
-                },
-            ));
+                }
+                .into(),
+            );
         }
         self
     }
@@ -197,28 +217,40 @@ impl<const N: usize> VolumeFadersCore<N> {
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     let track_state = *self.get_track_state(msg.track_guid);
                     // Send volume
-                    io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
-                        idx: hw_channel as i32,
-                        value: track_state.volume as f64,
-                    }));
+                    io.send_to_v1m(
+                        v1m::ChannelFaderMsg {
+                            idx: hw_channel as i32,
+                            value: track_state.volume as f64,
+                        }
+                        .into(),
+                    );
                     // Update EPSILON tracking for volume since we just sent it
                     self.last_sent_volume[hw_channel] = track_state.volume;
 
                     // Send mute LED
-                    io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                        idx: hw_channel as i32,
-                        state: v1m::LEDState::from(track_state.buttons.mute.is_on()),
-                    }));
+                    io.send_to_v1m(
+                        v1m::MuteLEDMsg {
+                            idx: hw_channel as i32,
+                            state: v1m::LEDState::from(track_state.buttons.mute.is_on()),
+                        }
+                        .into(),
+                    );
                     // Send solo LED
-                    io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                        idx: hw_channel as i32,
-                        state: v1m::LEDState::from(track_state.buttons.solo.is_on()),
-                    }));
+                    io.send_to_v1m(
+                        v1m::SoloLEDMsg {
+                            idx: hw_channel as i32,
+                            state: v1m::LEDState::from(track_state.buttons.solo.is_on()),
+                        }
+                        .into(),
+                    );
                     // Send arm LED
-                    io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                        idx: hw_channel as i32,
-                        state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
-                    }));
+                    io.send_to_v1m(
+                        v1m::ArmLEDMsg {
+                            idx: hw_channel as i32,
+                            state: v1m::LEDState::from(track_state.buttons.arm.is_on()),
+                        }
+                        .into(),
+                    );
                     if let Some(messages) = track_index_epilogue(TrackIndexUpdateEpilogue {
                         track_guid: msg.track_guid,
                         hw_channel,
@@ -239,10 +271,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                     if should_send {
                         // Send volume update to v1m for the corresponding fader
                         let fader_value = msg.volume; // TODO: scale appropriately
-                        io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
-                            idx: hw_channel as i32,
-                            value: fader_value as f64,
-                        }));
+                        io.send_to_v1m(
+                            v1m::ChannelFaderMsg {
+                                idx: hw_channel as i32,
+                                value: fader_value as f64,
+                            }
+                            .into(),
+                        );
                         // Store the value we just sent
                         self.last_sent_volume[hw_channel] = msg.volume;
                     }
@@ -255,10 +290,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                     .set(msg.muted);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send mute LED update to v1m
-                    io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                        idx: hw_channel as i32,
-                        state: v1m::LEDState::from(msg.muted),
-                    }));
+                    io.send_to_v1m(
+                        v1m::MuteLEDMsg {
+                            idx: hw_channel as i32,
+                            state: v1m::LEDState::from(msg.muted),
+                        }
+                        .into(),
+                    );
                 }
             }
             track::DataMsg::Soloed(msg) => {
@@ -268,10 +306,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                     .set(msg.soloed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send solo LED update to v1m
-                    io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                        idx: hw_channel as i32,
-                        state: v1m::LEDState::from(msg.soloed),
-                    }));
+                    io.send_to_v1m(
+                        v1m::SoloLEDMsg {
+                            idx: hw_channel as i32,
+                            state: v1m::LEDState::from(msg.soloed),
+                        }
+                        .into(),
+                    );
                 }
             }
             track::DataMsg::Armed(msg) => {
@@ -281,10 +322,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                     .set(msg.armed);
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
                     // Send arm LED update to v1m
-                    io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                        idx: hw_channel as i32,
-                        state: v1m::LEDState::from(msg.armed),
-                    }));
+                    io.send_to_v1m(
+                        v1m::ArmLEDMsg {
+                            idx: hw_channel as i32,
+                            state: v1m::LEDState::from(msg.armed),
+                        }
+                        .into(),
+                    );
                 }
             }
             _ => {
@@ -306,10 +350,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                         .into(),
                     );
                     // Convince the v1m to leave its faders where we put them
-                    io.send_to_v1m(v1m::DownstreamMsg::ChannelFader(v1m::ChannelFaderMsg {
-                        idx: fader_msg.idx,
-                        value: fader_msg.value,
-                    }));
+                    io.send_to_v1m(
+                        v1m::ChannelFaderMsg {
+                            idx: fader_msg.idx,
+                            value: fader_msg.value,
+                        }
+                        .into(),
+                    );
                 }
             }
             v1m::UpstreamMsg::MutePress(mute_msg) => {
@@ -324,10 +371,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                         .into(),
                     );
                     // Update the toggle on the hardware
-                    io.send_to_v1m(v1m::DownstreamMsg::MuteLED(v1m::MuteLEDMsg {
-                        idx: mute_msg.idx,
-                        state: v1m::LEDState::from(new_state),
-                    }));
+                    io.send_to_v1m(
+                        v1m::MuteLEDMsg {
+                            idx: mute_msg.idx,
+                            state: v1m::LEDState::from(new_state),
+                        }
+                        .into(),
+                    );
                 }
             }
             v1m::UpstreamMsg::SoloPress(solo_msg) => {
@@ -341,10 +391,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                         }
                         .into(),
                     );
-                    io.send_to_v1m(v1m::DownstreamMsg::SoloLED(v1m::SoloLEDMsg {
-                        idx: solo_msg.idx,
-                        state: v1m::LEDState::from(new_state),
-                    }));
+                    io.send_to_v1m(
+                        v1m::SoloLEDMsg {
+                            idx: solo_msg.idx,
+                            state: v1m::LEDState::from(new_state),
+                        }
+                        .into(),
+                    );
                 }
             }
             v1m::UpstreamMsg::ArmPress(arm_msg) => {
@@ -358,10 +411,13 @@ impl<const N: usize> VolumeFadersCore<N> {
                         }
                         .into(),
                     );
-                    io.send_to_v1m(v1m::DownstreamMsg::ArmLED(v1m::ArmLEDMsg {
-                        idx: arm_msg.idx,
-                        state: v1m::LEDState::from(new_state),
-                    }))
+                    io.send_to_v1m(
+                        v1m::ArmLEDMsg {
+                            idx: arm_msg.idx,
+                            state: v1m::LEDState::from(new_state),
+                        }
+                        .into(),
+                    )
                 }
             }
             _ => (),
