@@ -128,6 +128,25 @@ pub struct EncoderRingMsg {
     pub val: u8,
 }
 
+// Maps a float to an encoder u8
+//
+// u8 encodes setps from to one of 12 values representing positions along the encoder
+pub fn map_to_encoder_ring(x: f32) -> u8 {
+    let clamped = x.clamp(-1.0, 1.0) as f64;
+    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
+
+/// Val between -1.0 and 1.0
+impl EncoderRingMsg {
+    pub fn new(idx: i32, mode: EncoderRingMode, val: f32) -> Self {
+        Self {
+            idx,
+            mode,
+            val: map_to_encoder_ring(val),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, EnumFrom)]
 pub enum EncoderRingMode {
     Point,
@@ -1575,4 +1594,14 @@ pub struct V1m {
     pub touchscreen: TouchScreen,
     input: Receiver<DownstreamMsg>,
     upstream: Sender<UpstreamMsg>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encoder_center_mode_center_const() {
+        assert_eq!(map_to_encoder_ring(0.0), ENCODER_CENTER_MODE_CENTER);
+    }
 }

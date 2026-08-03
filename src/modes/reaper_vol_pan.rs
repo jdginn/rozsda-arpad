@@ -11,11 +11,6 @@ use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
 use crate::track::track::TrackMsg;
 
-pub fn map_to_0xb(x: f32) -> u8 {
-    let clamped = x.clamp(-1.0, 1.0) as f64;
-    ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
-}
-
 /// Implements a mode where that "basic" reaper functionality is mapped to the channel strips on
 /// the control surface, namely:
 /// - Volume on faders
@@ -100,11 +95,11 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                         self.pan_states.insert(msg.track_guid, pan_val);
                         if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
                             io.send_to_v1m(
-                                v1m::EncoderRingMsg {
-                                    idx: hw_channel as i32,
-                                    mode: v1m::EncoderRingMode::Point,
-                                    val: map_to_0xb(pan_val),
-                                }
+                                v1m::EncoderRingMsg::new(
+                                    hw_channel as i32,
+                                    v1m::EncoderRingMode::Point,
+                                    pan_val,
+                                )
                                 .into(),
                             );
                         }
@@ -118,11 +113,11 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                             // Each mode that builds from VolumeFadersCore may need to define its own behavior here.
                             let pan_val = self.pan_states.entry(data.track_guid).or_insert(0.0); // Default center pan
                             Some(vec![
-                                v1m::EncoderRingMsg {
-                                    idx: data.hw_channel as i32,
-                                    mode: v1m::EncoderRingMode::Point,
-                                    val: map_to_0xb(*pan_val),
-                                }
+                                v1m::EncoderRingMsg::new(
+                                    data.hw_channel as i32,
+                                    v1m::EncoderRingMode::Point,
+                                    *pan_val,
+                                )
                                 .into(),
                             ])
                         });
@@ -207,11 +202,11 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                     );
 
                     // Send encoder LED update downstream to hardware
-                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-                        idx: encoder_msg.idx,
-                        mode: v1m::EncoderRingMode::FromCenter,
-                        val: map_to_0xb(new_pan),
-                    }));
+                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg::new(
+                        encoder_msg.idx,
+                        v1m::EncoderRingMode::FromCenter,
+                        new_pan,
+                    )));
                 }
                 ModeAction::None
             }
@@ -238,11 +233,11 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                     );
 
                     // Send encoder LED update downstream to hardware
-                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg {
-                        idx: encoder_msg.idx,
-                        mode: v1m::EncoderRingMode::FromCenter,
-                        val: map_to_0xb(new_pan),
-                    }));
+                    io.send_to_v1m(DownstreamMsg::EncoderRingLED(EncoderRingMsg::new(
+                        encoder_msg.idx,
+                        v1m::EncoderRingMode::FromCenter,
+                        new_pan,
+                    )));
                 }
                 ModeAction::None
             }
@@ -251,15 +246,5 @@ impl<const N: usize> ModeHandler for VolumePanMode<N> {
                 ModeAction::None
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_encoder_center_mode_center_const() {
-        assert_eq!(map_to_0xb(0.0), v1m::ENCODER_CENTER_MODE_CENTER);
     }
 }
