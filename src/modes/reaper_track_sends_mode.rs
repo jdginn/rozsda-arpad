@@ -20,7 +20,7 @@ pub struct TrackSendInfo {
     pub pan: f32,
 }
 
-pub struct TrackSendsMode<const N: usize> {
+pub struct ReaperTrackSendsMode<const N: usize> {
     // Maps track send index to send guid
     hw_assignments: Vec<Option<Uuid>>,
     // Maps guid to info about the send it designates
@@ -28,9 +28,9 @@ pub struct TrackSendsMode<const N: usize> {
     selected_track_guid: Uuid,
 }
 
-impl<const N: usize> TrackSendsMode<N> {
+impl<const N: usize> ReaperTrackSendsMode<N> {
     pub fn new(selected_track_guid: Uuid) -> Self {
-        TrackSendsMode {
+        ReaperTrackSendsMode {
             hw_assignments: vec![None; N],
             track_send_states: BTreeMap::new(),
             selected_track_guid,
@@ -99,13 +99,8 @@ impl<const N: usize> TrackSendsMode<N> {
     }
 
     pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
-        println!("Finding hw channel for guid: {}", guid);
         for (hw_channel, &assigned_guid) in self.hw_assignments.iter().enumerate() {
             if let Some(assigned_guid) = assigned_guid {
-                println!(
-                    "Checking hw channel {}: assigned_guid = {}",
-                    hw_channel, assigned_guid
-                );
                 if assigned_guid == guid {
                     return Some(hw_channel);
                 }
@@ -115,7 +110,7 @@ impl<const N: usize> TrackSendsMode<N> {
     }
 }
 
-impl<const N: usize> ModeHandler for TrackSendsMode<N> {
+impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
@@ -167,21 +162,11 @@ impl<const N: usize> ModeHandler for TrackSendsMode<N> {
                         ModeAction::None
                     }
                     track::DataMsg::SendIndex(msg) => {
-                        println!("TrackSendsMode: Received SendIndex msg: {:?}", msg);
                         if msg.track_guid == self.selected_track_guid {
                             // Only process send index messages for the currently selected track
                         } else {
-                            println!(
-                                "TrackSendsMode: Ignoring SendIndex msg for non-selected track: {:?}",
-                                msg
-                            );
                             return ModeAction::None;
                         }
-
-                        println!(
-                            "ENCODER_CENTER_MODE_CENTER: {}",
-                            v1m::ENCODER_CENTER_MODE_CENTER
-                        );
 
                         // If the send was previously mapped to a hw_channel, zero that channel
                         if let Some(index) = self.find_hw_channel(msg.send_guid) {
@@ -212,10 +197,6 @@ impl<const N: usize> ModeHandler for TrackSendsMode<N> {
                         // Add bounds checking to prevent panic on invalid send_index
                         // If out of bounds, silently ignore (could log error in production)
                         if (msg.send_index as usize) < self.hw_assignments.len() {
-                            println!(
-                                "Assigning send_guid {} to hw_assignments[{}]",
-                                msg.send_guid, msg.send_index
-                            );
                             self.hw_assignments[msg.send_index as usize] = Some(msg.send_guid);
                         }
                         // Insert default state into self.track_send_states if not already present

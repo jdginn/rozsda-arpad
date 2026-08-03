@@ -229,7 +229,7 @@ impl<const N: usize> ModeHandler for ChannelStripMode<N> {
         io: &mut dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
-            // GlobalPress maps to ReaperVolPan mode
+            // GlobalPress maps to ReaperVolumePanMode
             v1m::UpstreamMsg::GlobalPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
                     selected_track_guid: Some(self.selected_track_guid),

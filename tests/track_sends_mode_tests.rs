@@ -1,11 +1,3 @@
-// Integration tests for TrackSendsMode
-//
-// These tests verify the behavior of the TrackSendsMode, which manages the mapping
-// between Reaper tracks and v1m controller hardware (faders, buttons, LEDs).
-//
-// This comprehensive test suite implements all 21 test cases from the test plan,
-// covering mapping, state accumulation, message flow, mode transitions, ordering,
-// and threshold testing.
 use std::time::Duration;
 
 use assert2::{assert, check};
@@ -15,7 +7,7 @@ use float_cmp::approx_eq;
 use arpad_rust::midi::v1m;
 use arpad_rust::midi::v1m::{ChannelFaderMsg, DownstreamMsg, UpstreamMsg};
 use arpad_rust::modes::mode_manager::{IoDirect, ModeAction, ModeHandler, TransitionRequest};
-use arpad_rust::modes::reaper_track_sends::TrackSendsMode;
+use arpad_rust::modes::reaper_track_sends_mode::ReaperTrackSendsMode;
 use arpad_rust::track::track::{self as track, TrackMsg};
 
 // EPSILON constant for floating-point threshold testing
@@ -31,11 +23,11 @@ const EPSILON: f32 = 0.01;
 //         .expect("expected v1m::DownstreamMsg")
 // }
 
-/// Helper to create a TrackSendsMode instance for testing
+/// Helper to create a ReaperTrackSendsMode instance for testing
 fn setup_track_sends_mode(
     selected_track_guid: uuid::Uuid,
 ) -> (
-    TrackSendsMode<8>,
+    ReaperTrackSendsMode<8>,
     Receiver<TrackMsg>,
     Receiver<DownstreamMsg>,
     IoDirect,
@@ -43,7 +35,7 @@ fn setup_track_sends_mode(
     let (to_reaper_tx, to_reaper_rx) = unbounded();
     let (to_v1m_tx, to_v1m_rx) = unbounded();
 
-    let mode = TrackSendsMode::new(selected_track_guid);
+    let mode = ReaperTrackSendsMode::new(selected_track_guid);
 
     let io_direct = IoDirect::new(to_reaper_tx, to_v1m_tx);
 

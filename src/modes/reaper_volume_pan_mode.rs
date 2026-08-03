@@ -20,15 +20,15 @@ use crate::track::track::TrackMsg;
 /// Button LED toggling is handled here (downstream does not need to worry about managing button
 /// LEDS.)
 ///
-pub struct VolumePanMode<const N: usize> {
+pub struct ReaperVolumePanMode<const N: usize> {
     core: VolumeFadersCore<N>,
     pan_states: HashMap<Uuid, f32>,
     selected_track_guid: Option<Uuid>,
 }
 
-impl<const N: usize> VolumePanMode<N> {
+impl<const N: usize> ReaperVolumePanMode<N> {
     pub fn new(selected_track_guid: Option<Uuid>) -> Self {
-        VolumePanMode {
+        ReaperVolumePanMode {
             core: VolumeFadersCore::new(),
             pan_states: HashMap::new(),
             selected_track_guid,
@@ -45,7 +45,7 @@ impl<const N: usize> VolumePanMode<N> {
     }
 }
 
-impl<const N: usize> ModeHandler for VolumePanMode<N> {
+impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
