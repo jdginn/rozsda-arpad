@@ -21,3 +21,9 @@ impl Button {
         self.state
     }
 }
+
+impl Default for Button {
+    fn default() -> Self {
+        Self::new()
+    }
+}
