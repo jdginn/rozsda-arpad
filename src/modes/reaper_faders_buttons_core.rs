@@ -116,21 +116,21 @@ impl<const N: usize> VolumeFadersCore<N> {
                 .into(),
             );
             io.send_to_v1m(
-                v1m::ScribbleStripLine1TextMsg {
+                v1m::TopScribbleStripLine1TextMsg {
                     idx: i as i32,
                     text: String::new(),
                 }
                 .into(),
             );
             io.send_to_v1m(
-                v1m::ScribbleStripLine2TextMsg {
+                v1m::TopScribbleStripLine2TextMsg {
                     idx: i as i32,
                     text: String::new(),
                 }
                 .into(),
             );
             io.send_to_v1m(
-                v1m::ScribbleStripBackgroundColorMsg {
+                v1m::TopScribbleStripColorMsg {
                     idx: i as i32,
                     color: v1m::Color { r: 0, g: 0, b: 0 },
                 }

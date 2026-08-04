@@ -58,19 +58,19 @@ impl<const N: usize> ReaperTrackSendsMode<N> {
                 val: v1m::ENCODER_CENTER_MODE_CENTER,
             }));
             io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripLine1Text(
-                v1m::ScribbleStripLine1TextMsg {
+                v1m::TopScribbleStripLine1TextMsg {
                     idx: i as i32,
                     text: String::new(),
                 },
             ));
             io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripLine2Text(
-                v1m::ScribbleStripLine2TextMsg {
+                v1m::TopScribbleStripLine2TextMsg {
                     idx: i as i32,
                     text: String::new(),
                 },
             ));
             io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripBackgroundColor(
-                v1m::ScribbleStripBackgroundColorMsg {
+                v1m::TopScribbleStripColorMsg {
                     idx: i as i32,
                     color: v1m::Color { r: 0, g: 0, b: 0 },
                 },
@@ -114,7 +114,7 @@ impl<const N: usize> ModeHandler for ReaperTrackSendsMode<N> {
                 match msg {
                     track::DataMsg::Name(msg) => {
                         io.send_to_v1m(
-                            v1m::ScribbleStripLine1TextMsg {
+                            v1m::TopScribbleStripLine1TextMsg {
                                 idx: self.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
                                 text: msg.name.clone(),
                             }

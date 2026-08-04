@@ -16,9 +16,9 @@ use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
 use arpad_rust::midi::v1m::{
     ArmLEDMsg, BottomScribbleStripLine1TextMsg, BottomScribbleStripLine2TextMsg, ChannelFaderMsg,
     ChannelMeterMsg, Color, DawId, DownstreamMsg, EncoderRingMode, EncoderRingMsg, LEDState,
-    MasterFaderMsg, MasterMeterMsg, MuteLEDMsg, ScribbleStripBackgroundColorMsg,
-    ScribbleStripLine1TextMsg, ScribbleStripLine2TextMsg, SevenSegmentDisplayMsg, Slot, SoloLEDMsg,
-    StereoChannel, TouchScreenLayer, TouchScreenSetTextMsg, UpstreamMsg, V1mBuilder,
+    MasterFaderMsg, MasterMeterMsg, MuteLEDMsg, SevenSegmentDisplayMsg, Slot, SoloLEDMsg,
+    StereoChannel, TopScribbleStripColorMsg, TopScribbleStripLine1TextMsg,
+    TopScribbleStripLine2TextMsg, TouchScreenLayer, TouchScreenSetTextMsg, UpstreamMsg, V1mBuilder,
 };
 
 // ============================================================================
@@ -958,7 +958,7 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("scribble_channel_{}_line1", channel);
         println!("\nTest: {}", test_name);
         tx.send(DownstreamMsg::TopScribbleStripLine1Text(
-            ScribbleStripLine1TextMsg {
+            TopScribbleStripLine1TextMsg {
                 idx: channel,
                 text: format!("Fader{}", channel),
             },
@@ -977,7 +977,7 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("scribble_channel_{}_line2", channel);
         println!("\nTest: {}", test_name);
         tx.send(DownstreamMsg::TopScribbleStripLine2Text(
-            ScribbleStripLine2TextMsg {
+            TopScribbleStripLine2TextMsg {
                 idx: channel,
                 text: format!("Displ{}", channel),
             },
@@ -1042,7 +1042,7 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         println!("\nTest: {}", test_name);
 
         tx.send(DownstreamMsg::TopScribbleStripBackgroundColor(
-            ScribbleStripBackgroundColorMsg {
+            TopScribbleStripColorMsg {
                 idx: channel,
                 color: colors[channel as usize % colors.len()].1,
             },
@@ -1205,7 +1205,7 @@ fn v1m_touchscreen_tests() {
             }
         }
         downstream_tx
-            .send(DownstreamMsg::TouchScreenBatchSetText(messages))
+            .send(DownstreamMsg::TouchScreenTextBatch(messages))
             .unwrap();
         let result = prompt_user(&format!(
             "Are all buttons layer {} set to show layer-row-column?",
