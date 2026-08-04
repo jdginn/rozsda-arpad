@@ -4,10 +4,10 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
-use coalescible_derive::{Coalescible, CoalescibleEnum};
+use coalescible_derive::Coalescible;
 use derive_enum_from::EnumFrom;
 
-use crate::{modes::mode_manager::Barrier, track};
+use crate::modes::mode_manager::Barrier;
 
 /// Set of messages that TrackManager can handle
 #[derive(Clone, Debug, EnumFrom)]
@@ -338,7 +338,7 @@ impl TrackData {
             self.sends.push(SendData {
                 track_guid: self.track_guid,
                 target_guid: msg.send_guid,
-                send_index: msg.send_index as i32,
+                send_index: msg.send_index,
                 level: 0.0,
                 pan: 0.0,
             });
