@@ -398,6 +398,19 @@ pub enum UpstreamMsg {
     UserRelease,
 }
 
+#[derive(Clone, Debug, EnumFrom)]
+pub enum TopScribbleStripMsg {
+    Line1Text(ScribbleStripLine1TextMsg),
+    Line2Text(ScribbleStripLine2TextMsg),
+    BackgroundColor(ScribbleStripBackgroundColorMsg),
+}
+
+#[derive(Clone, Debug, EnumFrom)]
+pub enum BottomScribbleStripMsg {
+    Line1Text(BottomScribbleStripLine1TextMsg),
+    Line2Text(BottomScribbleStripLine2TextMsg),
+}
+
 #[derive(Clone, Debug, EnumFrom, CoalescibleEnum)]
 pub enum DownstreamMsg {
     #[enum_from]
@@ -426,15 +439,22 @@ pub enum DownstreamMsg {
 
     // Scribble strip messages
     #[enum_from]
-    ScribbleStripLine1Text(ScribbleStripLine1TextMsg),
+    TopScribbleStripLine1Text(ScribbleStripLine1TextMsg),
     #[enum_from]
-    ScribbleStripLine2Text(ScribbleStripLine2TextMsg),
+    TopScribbleStripLine2Text(ScribbleStripLine2TextMsg),
+    #[enum_from]
+    TopScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
+    #[enum_from]
+    #[nocoalesce]
+    TopScribbleStripBatch(Vec<TopScribbleStripMsg>),
+
     #[enum_from]
     BottomScribbleStripLine1Text(BottomScribbleStripLine1TextMsg),
     #[enum_from]
     BottomScribbleStripLine2Text(BottomScribbleStripLine2TextMsg),
     #[enum_from]
-    ScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
+    #[nocoalesce]
+    BottomScribbleStripBatch(Vec<BottomScribbleStripMsg>),
 
     #[enum_from]
     SevenSegmentDisplay(SevenSegmentDisplayMsg),
@@ -444,6 +464,7 @@ pub enum DownstreamMsg {
     #[enum_from]
     #[nocoalesce]
     TouchScreenBatchSetText(Vec<TouchScreenSetTextMsg>),
+
     #[enum_from]
     TouchScreenSetButtonBehavior(TouchScreenSetButtonBehaviorMsg),
     #[enum_from]
@@ -848,6 +869,26 @@ impl Set<ScribbleStripBackgroundColorMsg> for TopScribbleStrips {
     }
 }
 
+impl Set<Vec<TopScribbleStripMsg>> for TopScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: Vec<TopScribbleStripMsg>) -> Result<(), Self::Error> {
+        for msg in value {
+            match msg {
+                TopScribbleStripMsg::Line1Text(msg) => {
+                    self.line_1[msg.idx as usize] = msg.text;
+                }
+                TopScribbleStripMsg::Line2Text(msg) => {
+                    self.line_2[msg.idx as usize] = msg.text;
+                }
+                TopScribbleStripMsg::BackgroundColor(msg) => {
+                    self.background_color[msg.idx as usize] = msg.color;
+                }
+            }
+        }
+        self.write()
+    }
+}
+
 pub struct BottomScribbleStrips {
     base: Arc<Mutex<MidiDevice>>,
     line_1: Vec<String>,
@@ -906,6 +947,23 @@ impl Set<BottomScribbleStripLine2TextMsg> for BottomScribbleStrips {
     type Error = ScribbleStripError;
     fn set(&mut self, value: BottomScribbleStripLine2TextMsg) -> Result<(), Self::Error> {
         self.line_2[value.idx as usize] = value.text;
+        self.write()
+    }
+}
+
+impl Set<Vec<BottomScribbleStripMsg>> for BottomScribbleStrips {
+    type Error = ScribbleStripError;
+    fn set(&mut self, value: Vec<BottomScribbleStripMsg>) -> Result<(), Self::Error> {
+        for msg in value {
+            match msg {
+                BottomScribbleStripMsg::Line1Text(msg) => {
+                    self.line_1[msg.idx as usize] = msg.text;
+                }
+                BottomScribbleStripMsg::Line2Text(msg) => {
+                    self.line_2[msg.idx as usize] = msg.text;
+                }
+            }
+        }
         self.write()
     }
 }
@@ -1524,11 +1582,17 @@ impl V1mBuilder {
                         DownstreamMsg::MasterMeter(meter_msg) => {
                             v1m.master_meters.set(meter_msg).unwrap();
                         }
-                        DownstreamMsg::ScribbleStripLine1Text(scribble_msg) => {
+                        DownstreamMsg::TopScribbleStripLine1Text(scribble_msg) => {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
                         }
-                        DownstreamMsg::ScribbleStripLine2Text(scribble_msg) => {
+                        DownstreamMsg::TopScribbleStripLine2Text(scribble_msg) => {
                             v1m.top_scribbles.set(scribble_msg).unwrap();
+                        }
+                        DownstreamMsg::TopScribbleStripBackgroundColor(scribble_msg) => {
+                            v1m.top_scribbles.set(scribble_msg).unwrap();
+                        }
+                        DownstreamMsg::TopScribbleStripBatch(scribble_msgs) => {
+                            v1m.top_scribbles.set(scribble_msgs).unwrap();
                         }
                         DownstreamMsg::BottomScribbleStripLine1Text(scribble_msg) => {
                             v1m.bottom_scribbles.set(scribble_msg).unwrap();
@@ -1536,8 +1600,8 @@ impl V1mBuilder {
                         DownstreamMsg::BottomScribbleStripLine2Text(scribble_msg) => {
                             v1m.bottom_scribbles.set(scribble_msg).unwrap();
                         }
-                        DownstreamMsg::ScribbleStripBackgroundColor(scribble_msg) => {
-                            v1m.top_scribbles.set(scribble_msg).unwrap();
+                        DownstreamMsg::BottomScribbleStripBatch(scribble_msgs) => {
+                            v1m.bottom_scribbles.set(scribble_msgs).unwrap();
                         }
                         DownstreamMsg::SevenSegmentDisplay(seven_segment_msg) => {
                             v1m.seven_segment_display
@@ -1570,7 +1634,7 @@ impl V1mBuilder {
                                 .collect();
                             v1m.touchscreen.write_button_text(containers).unwrap();
                         }
-                        _ => panic!("Message {:?} not implemented yet!", msg),
+                        _ => println!("Unhandled downstream message: {:?}", msg),
                     }
                 }
             }
