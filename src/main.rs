@@ -133,19 +133,21 @@ fn main() {
         to_track_manager_rx.clone(),
         from_track_manager_tx.clone(),
     );
-    mode_manager::ModeManager::new_from_channels(
-        from_track_manager_rx.clone(),
-        to_track_manager_tx.clone(),
-        to_mode_manager_rx.clone(),
-        from_mode_manager_tx.clone(),
-    )
-    .run();
+    std::thread::spawn(move || {
+        mode_manager::ModeManager::new_from_channels(
+            from_track_manager_rx.clone(),
+            to_track_manager_tx.clone(),
+            to_mode_manager_rx.clone(),
+            from_mode_manager_tx.clone(),
+        )
+        .run();
+    });
     let (input_port_1, output_connection_1, input_port_4, output_connection_4) =
         match find_v1m_ports() {
             Ok(ports) => ports,
             Err(err) => {
-                println!("Error finding XTouch MIDI ports: {}", err);
-                println!("Please ensure XTouch is connected and try again.");
+                println!("Error finding v1m MIDI ports: {}", err);
+                println!("Please ensure v1m is connected and try again.");
                 return;
             }
         };
@@ -611,7 +613,6 @@ fn main() {
                 Ok((size, _addr)) => {
                     let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
                     from_socket_tx.send(packet);
-                    // handle_packet(packet);
                 }
                 Err(e) => {
                     println!("Error receiving from socket: {}", e);
