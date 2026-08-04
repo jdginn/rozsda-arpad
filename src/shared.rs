@@ -11,11 +11,6 @@ impl<T> Shared<T> {
         }
     }
 
-    pub fn with<R, F: FnOnce(&T) -> R>(&self, f: F) -> R {
-        let guard = self.inner.lock().unwrap();
-        f(&*guard)
-    }
-
     pub fn with_mut<R, F: FnOnce(&mut T) -> R>(&self, f: F) -> R {
         let mut guard = self.inner.lock().unwrap();
         f(&mut *guard)
