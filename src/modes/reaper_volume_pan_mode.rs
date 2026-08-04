@@ -54,11 +54,11 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
                 match msg {
                     track::DataMsg::Selected(msg) => {
                         if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
-                            self.selected_track_guid = if msg.selected {
-                                Some(msg.track_guid)
-                            } else {
-                                None
-                            };
+                            if msg.selected {
+                                self.selected_track_guid = Some(msg.track_guid);
+                            } else if self.selected_track_guid == Some(msg.track_guid) {
+                                self.selected_track_guid = None;
+                            }
                             let state = match msg.selected {
                                 true => v1m::LEDState::On,
                                 false => v1m::LEDState::Off,
