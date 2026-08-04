@@ -7,7 +7,7 @@ use uuid::Uuid;
 use coalescible_derive::{Coalescible, CoalescibleEnum};
 use derive_enum_from::EnumFrom;
 
-use crate::modes::mode_manager::Barrier;
+use crate::{modes::mode_manager::Barrier, track};
 
 /// Set of messages that TrackManager can handle
 #[derive(Clone, Debug, EnumFrom)]
@@ -372,6 +372,212 @@ pub struct TrackManager {
 }
 
 impl TrackManager {
+    fn send_queryall(&self) {
+        let tracks = self.tracks.values().collect::<Vec<&TrackData>>();
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    ReaperTrackIndex {
+                        track_guid: track.track_guid,
+                        track_index: track.reaper_track_index,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Volume {
+                        track_guid: track.track_guid,
+                        volume: track.volume,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Pan {
+                        track_guid: track.track_guid,
+                        pan: track.pan,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Name {
+                        track_guid: track.track_guid,
+                        name: track.name.clone(),
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Selected {
+                        track_guid: track.track_guid,
+                        selected: track.selected,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Muted {
+                        track_guid: track.track_guid,
+                        muted: track.muted,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Soloed {
+                        track_guid: track.track_guid,
+                        soloed: track.soloed,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
+                    Armed {
+                        track_guid: track.track_guid,
+                        armed: track.armed,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            for (send_index, send) in track.sends.iter().enumerate() {
+                self.to_downstream
+                    .send(
+                        SendIndex {
+                            track_guid: send.track_guid,
+                            send_index: send_index as i32,
+                            send_guid: send.target_guid,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                self.to_downstream
+                    .send(
+                        SendLevel {
+                            track_guid: send.track_guid,
+                            send_index: send_index as i32,
+                            level: send.level,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                self.to_downstream
+                    .send(
+                        SendPan {
+                            track_guid: send.track_guid,
+                            send_index: send_index as i32,
+                            pan: send.pan,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+            }
+        }
+        for track in &tracks {
+            for (fx_index, fx) in track.fx.iter().enumerate() {
+                self.to_downstream
+                    .send(
+                        FXGuid {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            guid: fx.guid,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                self.to_downstream
+                    .send(
+                        FXName {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            name: fx.name.clone(),
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                self.to_downstream
+                    .send(
+                        FXEnabled {
+                            track_guid: fx.track_guid,
+                            fx_index: fx_index as i32,
+                            enabled: fx.enabled,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                for (param_index, param) in fx.params.iter().enumerate() {
+                    self.to_downstream
+                        .send(
+                            FXParamName {
+                                track_guid: fx.track_guid,
+                                fx_index: fx_index as i32,
+                                param_index: param_index as i32,
+                                name: format!("Param {}", param_index),
+                            }
+                            .into(),
+                        )
+                        .unwrap();
+                    self.to_downstream
+                        .send(
+                            FXParamValue {
+                                track_guid: fx.track_guid,
+                                fx_index: fx_index as i32,
+                                param_index: param_index as i32,
+                                value: param.value,
+                            }
+                            .into(),
+                        )
+                        .unwrap();
+                    self.to_downstream
+                        .send(
+                            FXParamMin {
+                                track_guid: fx.track_guid,
+                                fx_index: fx_index as i32,
+                                param_index: param_index as i32,
+                                min: param.min,
+                            }
+                            .into(),
+                        )
+                        .unwrap();
+                    self.to_downstream
+                        .send(
+                            FXParamMax {
+                                track_guid: fx.track_guid,
+                                fx_index: fx_index as i32,
+                                param_index: param_index as i32,
+                                max: param.max,
+                            }
+                            .into(),
+                        )
+                        .unwrap();
+                }
+            }
+        }
+    }
+
     fn send_track_query(&self, guid: &Uuid) {
         if let Some(track) = self.tracks.get(guid) {
             let response = TrackMsg::TrackData(track.clone());
@@ -567,9 +773,7 @@ impl TrackManager {
                                     }
                                     Err(TrackMsg::QueryAll) => {
                                         println!("Received track query for all tracks");
-                                        for guid in manager.tracks.keys() {
-                                            manager.send_track_query(guid);
-                                        }
+                                        manager.send_queryall();
                                     }
                                     Err(other) => {
                                         println!("Received unsupported message type from downstream (this should never happen): {:?}", other);
