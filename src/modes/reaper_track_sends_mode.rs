@@ -57,19 +57,19 @@ impl<const N: usize> ReaperTrackSendsMode<N> {
                 mode: v1m::EncoderRingMode::Point,
                 val: v1m::ENCODER_CENTER_MODE_CENTER,
             }));
-            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripLine1Text(
+            io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripLine1Text(
                 v1m::ScribbleStripLine1TextMsg {
                     idx: i as i32,
                     text: String::new(),
                 },
             ));
-            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripLine2Text(
+            io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripLine2Text(
                 v1m::ScribbleStripLine2TextMsg {
                     idx: i as i32,
                     text: String::new(),
                 },
             ));
-            io.send_to_v1m(v1m::DownstreamMsg::ScribbleStripBackgroundColor(
+            io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripBackgroundColor(
                 v1m::ScribbleStripBackgroundColorMsg {
                     idx: i as i32,
                     color: v1m::Color { r: 0, g: 0, b: 0 },

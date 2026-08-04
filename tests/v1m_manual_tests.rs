@@ -957,7 +957,7 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     for channel in 0..8 {
         let test_name = format!("scribble_channel_{}_line1", channel);
         println!("\nTest: {}", test_name);
-        tx.send(DownstreamMsg::ScribbleStripLine1Text(
+        tx.send(DownstreamMsg::TopScribbleStripLine1Text(
             ScribbleStripLine1TextMsg {
                 idx: channel,
                 text: format!("Fader{}", channel),
@@ -976,7 +976,7 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
     for channel in 0..8 {
         let test_name = format!("scribble_channel_{}_line2", channel);
         println!("\nTest: {}", test_name);
-        tx.send(DownstreamMsg::ScribbleStripLine2Text(
+        tx.send(DownstreamMsg::TopScribbleStripLine2Text(
             ScribbleStripLine2TextMsg {
                 idx: channel,
                 text: format!("Displ{}", channel),
@@ -1041,7 +1041,7 @@ fn run_scribble_strip_tests(tx: &Sender<DownstreamMsg>) -> Vec<TestSummary> {
         let test_name = format!("scribble_channel_{}_light_light_color", channel);
         println!("\nTest: {}", test_name);
 
-        tx.send(DownstreamMsg::ScribbleStripBackgroundColor(
+        tx.send(DownstreamMsg::TopScribbleStripBackgroundColor(
             ScribbleStripBackgroundColorMsg {
                 idx: channel,
                 color: colors[channel as usize % colors.len()].1,
