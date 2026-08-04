@@ -2,8 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
-use derive_more::From;
-use helgoboss_midi::{Channel, RawShortMessage, ShortMessage};
+use helgoboss_midi::Channel;
 use midir::{MidiInputPort, MidiOutputConnection};
 
 use derive_enum_from::EnumFrom;

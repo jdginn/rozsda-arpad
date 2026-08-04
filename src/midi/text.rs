@@ -251,7 +251,7 @@ macro_rules! assert_eq_str {
 }
 
 mod tests {
-    use super::*;
+    use super::compact_to_7_bytes;
 
     #[test]
     fn test_exact_7_byte_length() {
