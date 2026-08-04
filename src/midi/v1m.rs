@@ -279,14 +279,14 @@ pub struct Color {
 }
 
 #[derive(Clone, Debug, Coalescible)]
-pub struct ScribbleStripLine1TextMsg {
+pub struct TopScribbleStripLine1TextMsg {
     pub idx: i32,
     #[data]
     pub text: String,
 }
 
 #[derive(Clone, Debug, Coalescible)]
-pub struct ScribbleStripLine2TextMsg {
+pub struct TopScribbleStripLine2TextMsg {
     pub idx: i32,
     #[data]
     pub text: String,
@@ -307,7 +307,7 @@ pub struct BottomScribbleStripLine2TextMsg {
 }
 
 #[derive(Clone, Debug, Coalescible)]
-pub struct ScribbleStripBackgroundColorMsg {
+pub struct TopScribbleStripColorMsg {
     pub idx: i32,
     #[data]
     pub color: Color,
@@ -400,9 +400,9 @@ pub enum UpstreamMsg {
 
 #[derive(Clone, Debug, EnumFrom)]
 pub enum TopScribbleStripMsg {
-    Line1Text(ScribbleStripLine1TextMsg),
-    Line2Text(ScribbleStripLine2TextMsg),
-    BackgroundColor(ScribbleStripBackgroundColorMsg),
+    Line1Text(TopScribbleStripLine1TextMsg),
+    Line2Text(TopScribbleStripLine2TextMsg),
+    BackgroundColor(TopScribbleStripColorMsg),
 }
 
 #[derive(Clone, Debug, EnumFrom)]
@@ -439,11 +439,11 @@ pub enum DownstreamMsg {
 
     // Scribble strip messages
     #[enum_from]
-    TopScribbleStripLine1Text(ScribbleStripLine1TextMsg),
+    TopScribbleStripLine1Text(TopScribbleStripLine1TextMsg),
     #[enum_from]
-    TopScribbleStripLine2Text(ScribbleStripLine2TextMsg),
+    TopScribbleStripLine2Text(TopScribbleStripLine2TextMsg),
     #[enum_from]
-    TopScribbleStripBackgroundColor(ScribbleStripBackgroundColorMsg),
+    TopScribbleStripBackgroundColor(TopScribbleStripColorMsg),
     #[enum_from]
     #[nocoalesce]
     TopScribbleStripBatch(Vec<TopScribbleStripMsg>),
@@ -463,13 +463,13 @@ pub enum DownstreamMsg {
     TouchScreenSetText(TouchScreenSetTextMsg),
     #[enum_from]
     #[nocoalesce]
-    TouchScreenBatchSetText(Vec<TouchScreenSetTextMsg>),
+    TouchScreenTextBatch(Vec<TouchScreenSetTextMsg>),
 
     #[enum_from]
-    TouchScreenSetButtonBehavior(TouchScreenSetButtonBehaviorMsg),
+    TouchScreenButtonBehavior(TouchScreenSetButtonBehaviorMsg),
     #[enum_from]
     #[nocoalesce]
-    TouchScreenBatchSetButtonBehavior(Vec<TouchScreenSetButtonBehaviorMsg>),
+    TouchScreenButtonBehaviorBatch(Vec<TouchScreenSetButtonBehaviorMsg>),
 
     // Encoder assign messages
     Track(LEDState),
@@ -845,25 +845,25 @@ impl TopScribbleStrips {
     }
 }
 
-impl Set<ScribbleStripLine1TextMsg> for TopScribbleStrips {
+impl Set<TopScribbleStripLine1TextMsg> for TopScribbleStrips {
     type Error = ScribbleStripError;
-    fn set(&mut self, value: ScribbleStripLine1TextMsg) -> Result<(), Self::Error> {
+    fn set(&mut self, value: TopScribbleStripLine1TextMsg) -> Result<(), Self::Error> {
         self.line_1[value.idx as usize] = value.text;
         self.write()
     }
 }
 
-impl Set<ScribbleStripLine2TextMsg> for TopScribbleStrips {
+impl Set<TopScribbleStripLine2TextMsg> for TopScribbleStrips {
     type Error = ScribbleStripError;
-    fn set(&mut self, value: ScribbleStripLine2TextMsg) -> Result<(), Self::Error> {
+    fn set(&mut self, value: TopScribbleStripLine2TextMsg) -> Result<(), Self::Error> {
         self.line_2[value.idx as usize] = value.text;
         self.write()
     }
 }
 
-impl Set<ScribbleStripBackgroundColorMsg> for TopScribbleStrips {
+impl Set<TopScribbleStripColorMsg> for TopScribbleStrips {
     type Error = ScribbleStripError;
-    fn set(&mut self, value: ScribbleStripBackgroundColorMsg) -> Result<(), Self::Error> {
+    fn set(&mut self, value: TopScribbleStripColorMsg) -> Result<(), Self::Error> {
         self.background_color[value.idx as usize] = value.color;
         self.write()
     }
@@ -1620,7 +1620,7 @@ impl V1mBuilder {
                                 }])
                                 .unwrap();
                         }
-                        DownstreamMsg::TouchScreenBatchSetText(touch_msgs) => {
+                        DownstreamMsg::TouchScreenTextBatch(touch_msgs) => {
                             let containers: Vec<TouchScreenSetTextContainer> = touch_msgs
                                 .into_iter()
                                 .map(|touch_msg| TouchScreenSetTextContainer {

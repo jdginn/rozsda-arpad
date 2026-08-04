@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_channel::{Receiver, Sender, select};
 use uuid::Uuid;
 
-use crate::midi::v1m;
+use crate::midi::v1m::{self, BottomScribbleStripMsg, TopScribbleStripMsg};
 use crate::modes::coalesce::OrderedCoalescingBuffer;
 use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends_mode::ReaperTrackSendsMode;
@@ -118,6 +118,67 @@ impl IoCoalescing {
             to_v1m_buffer: OrderedCoalescingBuffer::new(),
         }
     }
+
+    pub fn flush_into(&mut self, io: &IoDirect) {
+        let mut top_scribble_msgs: Vec<TopScribbleStripMsg> = Vec::new();
+        let mut bottom_scribble_msgs: Vec<BottomScribbleStripMsg> = Vec::new();
+        let mut touch_screen_text_msgs: Vec<v1m::TouchScreenSetTextMsg> = Vec::new();
+        let mut touch_screen_behavior_msgs: Vec<v1m::TouchScreenSetButtonBehaviorMsg> = Vec::new();
+        for msg in self.to_v1m_buffer.drain() {
+            match msg {
+                v1m::DownstreamMsg::TopScribbleStripLine1Text(msg) => {
+                    top_scribble_msgs.push(msg.into());
+                }
+                v1m::DownstreamMsg::TopScribbleStripLine2Text(msg) => {
+                    top_scribble_msgs.push(msg.into());
+                }
+                v1m::DownstreamMsg::TopScribbleStripBackgroundColor(msg) => {
+                    top_scribble_msgs.push(msg.into());
+                }
+                v1m::DownstreamMsg::BottomScribbleStripLine1Text(msg) => {
+                    bottom_scribble_msgs.push(msg.into());
+                }
+                v1m::DownstreamMsg::BottomScribbleStripLine2Text(msg) => {
+                    bottom_scribble_msgs.push(msg.into());
+                }
+                v1m::DownstreamMsg::TouchScreenSetText(msg) => {
+                    touch_screen_text_msgs.push(msg);
+                }
+                v1m::DownstreamMsg::TouchScreenButtonBehavior(msg) => {
+                    touch_screen_behavior_msgs.push(msg);
+                }
+                _ => {
+                    io.to_v1m.send(msg).unwrap();
+                }
+            }
+        }
+        if !top_scribble_msgs.is_empty() {
+            io.to_v1m
+                .send(v1m::DownstreamMsg::TopScribbleStripBatch(top_scribble_msgs))
+                .unwrap();
+        }
+        if !bottom_scribble_msgs.is_empty() {
+            io.to_v1m
+                .send(v1m::DownstreamMsg::BottomScribbleStripBatch(
+                    bottom_scribble_msgs,
+                ))
+                .unwrap();
+        }
+        if !touch_screen_text_msgs.is_empty() {
+            io.to_v1m
+                .send(v1m::DownstreamMsg::TouchScreenTextBatch(
+                    touch_screen_text_msgs,
+                ))
+                .unwrap();
+        }
+        if !touch_screen_behavior_msgs.is_empty() {
+            io.to_v1m
+                .send(v1m::DownstreamMsg::TouchScreenButtonBehaviorBatch(
+                    touch_screen_behavior_msgs,
+                ))
+                .unwrap();
+        }
+    }
 }
 
 impl ToV1m for IoCoalescing {
@@ -133,14 +194,6 @@ impl DownstreamIo for IoCoalescing {
 }
 
 impl UpstreamIo for IoCoalescing {}
-
-impl IoCoalescing {
-    pub fn flush_into(&mut self, io: &IoDirect) {
-        for msg in self.to_v1m_buffer.drain() {
-            io.to_v1m.send(msg).unwrap();
-        }
-    }
-}
 
 /// Each mode implementation struct needs to implement this trait to handle messages
 ///

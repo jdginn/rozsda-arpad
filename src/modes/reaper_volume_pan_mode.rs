@@ -76,7 +76,7 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
                     track::DataMsg::Name(msg) => {
                         if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
                             io.send_to_v1m(
-                                v1m::ScribbleStripLine1TextMsg {
+                                v1m::TopScribbleStripLine1TextMsg {
                                     idx: hw_channel as i32,
                                     text: msg.name.clone(),
                                 }

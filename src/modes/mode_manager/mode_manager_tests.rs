@@ -366,4 +366,64 @@ mod tests {
         manager.step_once();
         assert!(matches!(manager.curr_state, State::Active));
     }
+    #[test]
+    fn flush_into_batches_scribble_and_preserves_non_scribble_before_batches() {
+        use crate::midi::v1m;
+
+        let (reaper_tx_out, _reaper_rx_out) = unbounded::<TrackMsg>();
+        let (v1m_tx_out, v1m_rx_out) = unbounded::<v1m::DownstreamMsg>();
+        let io = IoDirect::new(reaper_tx_out.clone(), v1m_tx_out);
+
+        let mut io_coalescing = IoCoalescing::new(reaper_tx_out);
+
+        // Queue: scribble, scribble, non-scribble, scribble
+        io_coalescing.send_to_v1m(
+            v1m::TopScribbleStripLine1TextMsg {
+                idx: 0,
+                text: "A".to_string(),
+            }
+            .into(),
+        );
+        io_coalescing.send_to_v1m(v1m::ChannelFaderMsg { idx: 0, value: 0.5 }.into());
+        io_coalescing.send_to_v1m(
+            v1m::TopScribbleStripLine2TextMsg {
+                idx: 0,
+                text: "B".to_string(),
+            }
+            .into(),
+        );
+        io_coalescing.send_to_v1m(
+            v1m::BottomScribbleStripLine1TextMsg {
+                idx: 0,
+                text: "C".to_string(),
+            }
+            .into(),
+        );
+
+        io_coalescing.flush_into(&io);
+
+        // Current behavior from your implementation:
+        // non-scribble emits immediately during drain,
+        // scribble batches emit afterward.
+        let first = recv_v1m(&v1m_rx_out);
+        assert!(
+            matches!(first, v1m::DownstreamMsg::ChannelFader(_)),
+            "expected non-scribble first, got {:?}",
+            first
+        );
+
+        let second = recv_v1m(&v1m_rx_out);
+        assert!(
+            matches!(second, v1m::DownstreamMsg::TopScribbleStripBatch(_)),
+            "expected top scribble batch second, got {:?}",
+            second
+        );
+
+        let third = recv_v1m(&v1m_rx_out);
+        assert!(
+            matches!(third, v1m::DownstreamMsg::BottomScribbleStripBatch(_)),
+            "expected bottom scribble batch third, got {:?}",
+            third
+        );
+    }
 }
