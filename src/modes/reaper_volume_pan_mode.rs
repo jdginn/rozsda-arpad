@@ -18,16 +18,20 @@ use crate::track::track;
 /// Button LED toggling is handled here (downstream does not need to worry about managing button
 /// LEDS.)
 ///
-pub struct ReaperVolumePanMode<const N: usize> {
-    core: VolumeFadersCore<N>,
+pub struct ReaperVolumePanMode {
+    core: VolumeFadersCore,
     pan_states: HashMap<Uuid, f32>,
     selected_track_guid: Option<Uuid>,
 }
 
-impl<const N: usize> ReaperVolumePanMode<N> {
-    pub fn new(selected_track_guid: Option<Uuid>) -> Self {
+impl ReaperVolumePanMode {
+    pub fn new(
+        num_channels: usize,
+        channel_offset: usize,
+        selected_track_guid: Option<Uuid>,
+    ) -> Self {
         ReaperVolumePanMode {
-            core: VolumeFadersCore::new(),
+            core: VolumeFadersCore::new(num_channels, channel_offset),
             pan_states: HashMap::new(),
             selected_track_guid,
         }
@@ -43,7 +47,7 @@ impl<const N: usize> ReaperVolumePanMode<N> {
     }
 }
 
-impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
+impl ModeHandler for ReaperVolumePanMode {
     fn handle_msg_from_upstream(
         &mut self,
         msg: track::TrackMsg,
@@ -146,6 +150,7 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
             v1m::UpstreamMsg::MIDITracksPress => {
                 if let Some(guid) = self.selected_track_guid {
                     ModeAction::Transition(TransitionRequest::ToReaperSends {
+                        offset: 0,
                         selected_track_guid: guid,
                     })
                 } else {
@@ -155,6 +160,7 @@ impl<const N: usize> ModeHandler for ReaperVolumePanMode<N> {
             v1m::UpstreamMsg::InputsPress => {
                 if let Some(guid) = self.selected_track_guid {
                     ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                        offset: self.core.offset(),
                         selected_track_guid: guid,
                     })
                 } else {

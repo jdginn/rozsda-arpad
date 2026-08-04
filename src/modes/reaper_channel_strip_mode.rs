@@ -157,17 +157,17 @@ impl Widgets {
 /// - Gain adjusts level entering the channel strip, before any processing.
 /// - Trim adjust level leaving the channel strip.
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
-pub struct ChannelStripMode<const N: usize> {
-    core: VolumeFadersCore<N>,
+pub struct ChannelStripMode {
+    core: VolumeFadersCore,
     routers: HashMap<Uuid, ChannelStripRouter>,
     widgets: Widgets,
     selected_track_guid: Uuid,
 }
 
-impl<const N: usize> ChannelStripMode<N> {
-    pub fn new(selected_track_guid: Uuid) -> Self {
+impl ChannelStripMode {
+    pub fn new(num_channels: usize, channel_offset: usize, selected_track_guid: Uuid) -> Self {
         ChannelStripMode {
-            core: VolumeFadersCore::new(),
+            core: VolumeFadersCore::new(num_channels, channel_offset),
             routers: HashMap::new(),
             widgets: Widgets::new(),
             selected_track_guid,
@@ -180,7 +180,7 @@ impl<const N: usize> ChannelStripMode<N> {
     }
 }
 
-impl<const N: usize> ModeHandler for ChannelStripMode<N> {
+impl ModeHandler for ChannelStripMode {
     fn handle_msg_from_upstream(
         &mut self,
         msg: track::TrackMsg,
@@ -194,6 +194,7 @@ impl<const N: usize> ModeHandler for ChannelStripMode<N> {
                     track::DataMsg::Selected(msg) => {
                         if msg.selected {
                             ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                                offset: self.core.offset(),
                                 selected_track_guid: msg.track_guid,
                             })
                         } else {
@@ -232,15 +233,15 @@ impl<const N: usize> ModeHandler for ChannelStripMode<N> {
         io: &mut dyn DownstreamIo,
     ) -> ModeAction {
         match msg {
-            // GlobalPress maps to ReaperVolumePanMode
             v1m::UpstreamMsg::GlobalPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+                    offset: self.core.offset(),
                     selected_track_guid: Some(self.selected_track_guid),
                 })
             }
-            // MIDITracksPress maps to ReaperSends mode
             v1m::UpstreamMsg::MIDITracksPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperSends {
+                    offset: 0,
                     selected_track_guid: self.selected_track_guid,
                 })
             }
@@ -255,7 +256,8 @@ impl<const N: usize> ModeHandler for ChannelStripMode<N> {
                             }
                             .into(),
                         );
-                        return ModeAction::Transition(TransitionRequest::ToReaperSends {
+                        return ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                            offset: self.core.offset(),
                             selected_track_guid: guid,
                         });
                     }

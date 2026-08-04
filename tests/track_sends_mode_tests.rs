@@ -27,7 +27,7 @@ const EPSILON: f32 = 0.01;
 fn setup_track_sends_mode(
     selected_track_guid: uuid::Uuid,
 ) -> (
-    ReaperTrackSendsMode<8>,
+    ReaperTrackSendsMode,
     Receiver<TrackMsg>,
     Receiver<DownstreamMsg>,
     IoDirect,
@@ -35,7 +35,7 @@ fn setup_track_sends_mode(
     let (to_reaper_tx, to_reaper_rx) = unbounded();
     let (to_v1m_tx, to_v1m_rx) = unbounded();
 
-    let mode = ReaperTrackSendsMode::new(selected_track_guid);
+    let mode = ReaperTrackSendsMode::new(8, 0, selected_track_guid);
 
     let io_direct = IoDirect::new(to_reaper_tx, to_v1m_tx);
 
@@ -904,6 +904,7 @@ fn test_transition_to_reaperchannelstrip() {
         matches!(
             action,
             ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+                offset: 1,
                 selected_track_guid: _
             })
         ),
@@ -912,6 +913,7 @@ fn test_transition_to_reaperchannelstrip() {
     );
     let selected_track_guid = match action {
         ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
+            offset: 1,
             selected_track_guid,
         }) => selected_track_guid,
         _ => panic!("Expected transition to ReaperSends"),
@@ -931,6 +933,7 @@ fn test_transition_to_reapervolpan() {
         matches!(
             action,
             ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+                offset: 1,
                 selected_track_guid: _
             })
         ),
@@ -939,6 +942,7 @@ fn test_transition_to_reapervolpan() {
     );
     let selected_track_guid = match action {
         ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+            offset: 1,
             selected_track_guid,
         }) => selected_track_guid,
         _ => panic!("Expected transition to ReaperSends"),

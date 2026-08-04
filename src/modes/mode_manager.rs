@@ -60,9 +60,18 @@ pub enum Mode {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TransitionRequest {
-    ToReaperVolumePan { selected_track_guid: Option<Uuid> },
-    ToReaperSends { selected_track_guid: Uuid },
-    ToReaperChannelStrip { selected_track_guid: Uuid },
+    ToReaperVolumePan {
+        selected_track_guid: Option<Uuid>,
+        offset: usize,
+    },
+    ToReaperSends {
+        selected_track_guid: Uuid,
+        offset: usize,
+    },
+    ToReaperChannelStrip {
+        selected_track_guid: Uuid,
+        offset: usize,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -236,13 +245,19 @@ fn default_handler_factory(
     match transition_request {
         TransitionRequest::ToReaperVolumePan {
             selected_track_guid,
-        } => Box::new(ReaperVolumePanMode::<8>::new(selected_track_guid).init(io)),
+            offset,
+            // CHANNEL_OFFSET 1 because reaper starts counting tracks from 1
+        } => Box::new(ReaperVolumePanMode::new(8, offset, selected_track_guid).init(io)),
         TransitionRequest::ToReaperSends {
             selected_track_guid,
-        } => Box::new(ReaperTrackSendsMode::<8>::new(selected_track_guid).init(io)),
+            offset,
+            // CHANNEL_OFFSET 0 because reaper starts counting sends from 0
+        } => Box::new(ReaperTrackSendsMode::new(8, offset, selected_track_guid).init(io)),
         TransitionRequest::ToReaperChannelStrip {
             selected_track_guid,
-        } => Box::new(ChannelStripMode::<8>::new(selected_track_guid).init(io)),
+            offset,
+            // CHANNEL_OFFSET 1 because reaper starts counting tracks from 1
+        } => Box::new(ChannelStripMode::new(8, offset, selected_track_guid).init(io)),
     }
 }
 
@@ -261,7 +276,7 @@ impl ModeManager<HandlerFactoryFn> {
 
             curr_state: State::Active,
 
-            handler: Box::new(ReaperVolumePanMode::<8>::new(None)),
+            handler: Box::new(ReaperVolumePanMode::new(8, 1, None)),
             handler_factory: default_handler_factory,
         }
     }

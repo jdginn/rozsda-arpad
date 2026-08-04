@@ -36,7 +36,7 @@ const EPSILON: f32 = 0.01;
 
 /// Helper to create a VolumePanMode instance for testing
 fn setup_vol_pan_mode() -> (
-    ReaperVolumePanMode<8>,
+    ReaperVolumePanMode,
     Receiver<TrackMsg>,
     Receiver<DownstreamMsg>,
     IoDirect,
@@ -44,7 +44,7 @@ fn setup_vol_pan_mode() -> (
     let (to_reaper_tx, to_reaper_rx) = unbounded();
     let (to_v1m_tx, to_v1m_rx) = unbounded();
 
-    let mode = ReaperVolumePanMode::new(None);
+    let mode = ReaperVolumePanMode::new(8, 1, None);
 
     let io_direct = IoDirect::new(to_reaper_tx, to_v1m_tx);
 
@@ -950,6 +950,7 @@ fn test_transition_to_reapersends() {
         matches!(
             action,
             ModeAction::Transition(TransitionRequest::ToReaperSends {
+                offset: 0,
                 selected_track_guid: _
             })
         ),
@@ -958,6 +959,7 @@ fn test_transition_to_reapersends() {
     );
     let selected_track_guid = match action {
         ModeAction::Transition(TransitionRequest::ToReaperSends {
+            offset: 0,
             selected_track_guid,
         }) => selected_track_guid,
         _ => panic!("Expected transition to ReaperSends"),
@@ -989,6 +991,7 @@ fn test_transition_to_reapersends() {
         matches!(
             action,
             ModeAction::Transition(TransitionRequest::ToReaperSends {
+                offset: 0,
                 selected_track_guid: _
             })
         ),
@@ -997,6 +1000,7 @@ fn test_transition_to_reapersends() {
     );
     let selected_track_guid = match action {
         ModeAction::Transition(TransitionRequest::ToReaperSends {
+            offset: 0,
             selected_track_guid,
         }) => selected_track_guid,
         _ => panic!("Expected transition to ReaperSends"),
@@ -1045,6 +1049,7 @@ fn test_selection_of_different_track_from_downstream() {
         matches!(
             action,
             ModeAction::Transition(TransitionRequest::ToReaperSends {
+                offset: 0,
                 selected_track_guid: _
             })
         ),
@@ -1053,6 +1058,7 @@ fn test_selection_of_different_track_from_downstream() {
     );
     let selected_track_guid = match action {
         ModeAction::Transition(TransitionRequest::ToReaperSends {
+            offset: 0,
             selected_track_guid,
         }) => selected_track_guid,
         _ => panic!("Expected transition to ReaperSends"),
