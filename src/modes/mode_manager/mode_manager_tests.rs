@@ -79,6 +79,7 @@ mod tests {
             match msg {
                 v1m::UpstreamMsg::GlobalPress => {
                     ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
+                        offset: 0,
                         selected_track_guid: self.selected_track_guid,
                     })
                 }
@@ -103,6 +104,7 @@ mod tests {
     ) -> Box<dyn ModeHandler> {
         match transition_request {
             TransitionRequest::ToReaperVolumePan {
+                offset,
                 selected_track_guid: _,
             } => Box::new(FakeHandler {
                 selected_track_guid: None,

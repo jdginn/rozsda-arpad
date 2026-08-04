@@ -13,13 +13,6 @@ use crate::track::track;
 //
 // When 8 or more channels are configured, all faders stop working
 //
-// Encoders don't pick up the faster speeds. Also, they appear to always increase Reaper rather than
-// either increasing OR decreasing it based on their direction of rotation.
-//
-// Reaper's Select doesn't seem to be respected
-//
-// We have only implemented naming on scribbles
-//
 // FIXME:
 
 // This functionality is common enough to warrant making it reusable.
@@ -56,7 +49,11 @@ pub struct TrackIndexUpdateEpilogue {
 ///
 /// Button LED toggling is handled here (downstream does not need to worry about managing button
 /// LEDS.)
-pub struct VolumeFadersCore<const N: usize> {
+pub struct VolumeFadersCore {
+    // Number of channels in the hardware controller
+    num_channels: usize,
+    // Track index in Reaper that corresponds to the first channel on the hardware controller
+    channel_offset: usize,
     // Maps each channel on the hardware controller to a Reaper track
     pub track_hw_assignments: Vec<Option<Uuid>>,
     // Store state for each track by track GUID
@@ -65,20 +62,26 @@ pub struct VolumeFadersCore<const N: usize> {
     last_sent_volume: Vec<f32>,
 }
 
-impl<const N: usize> VolumeFadersCore<N> {
-    pub fn new() -> Self {
-        let track_hw_assignments = vec![None; N];
+impl VolumeFadersCore {
+    pub fn new(num_channels: usize, channel_offset: usize) -> Self {
+        let track_hw_assignments = vec![None; num_channels];
         let track_states = HashMap::new();
 
         VolumeFadersCore {
+            num_channels,
+            channel_offset,
             track_hw_assignments,
             track_states,
-            last_sent_volume: vec![0.0; N], // Initialize with default volume values
+            last_sent_volume: vec![0.0; num_channels], // Initialize with default volume values
         }
     }
 
+    pub fn offset(&self) -> usize {
+        self.channel_offset
+    }
+
     pub fn init(self, io: &mut dyn UpstreamIo) -> Self {
-        for i in 0..N {
+        for i in 0..self.num_channels {
             io.send_to_v1m(
                 v1m::ChannelFaderMsg {
                     idx: i as i32,
@@ -191,27 +194,32 @@ impl<const N: usize> VolumeFadersCore<N> {
             // We use track index according to reaper to assign tracks to hardware channels
             track::DataMsg::ReaperTrackIndex(msg) => {
                 if let Some(index) = msg.track_index {
-                    if index < 1 {
-                        // Invalid index, ignore
-                        // Reaper starts indexing from 1
+                    if index < self.channel_offset as i32
+                        || index >= (self.channel_offset + self.num_channels) as i32
+                    {
+                        // Index is outside the range of channels we manage, ignore
                         return;
                     }
                     // First, check if the assignment is changing. If not changing, do nothing.
-                    if let Some(current_guid) = &self.track_hw_assignments[index as usize] {
+                    if let Some(current_guid) =
+                        &self.track_hw_assignments[index as usize - self.channel_offset]
+                    {
                         if current_guid == &msg.track_guid {
                             return; // No change in assignment
                         }
                     }
+                    // TODO: is this totally redundant?
                     // Clear any existing assignment for this track GUID before setting the new one
                     for slot in self.track_hw_assignments.iter_mut() {
                         if let Some(guid) = slot {
                             if guid == &msg.track_guid {
-                                *slot = None; // FIXME: seems sketchy
+                                *slot = None;
                             }
                         }
                     }
                     // Now set the new assignment
-                    self.track_hw_assignments[index as usize - 1] = Some(msg.track_guid);
+                    self.track_hw_assignments[index as usize - self.channel_offset] =
+                        Some(msg.track_guid);
                 }
                 // Now, send the current state of the track to the hardware for this channel
                 if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
@@ -422,11 +430,5 @@ impl<const N: usize> VolumeFadersCore<N> {
             }
             _ => (),
         }
-    }
-}
-
-impl<const N: usize> Default for VolumeFadersCore<N> {
-    fn default() -> Self {
-        Self::new()
     }
 }
