@@ -705,7 +705,9 @@ impl Query for TrackSendPan {
 
 #[derive(Debug)]
 pub struct TrackColorArgs {
-    pub color: i32, // color of the track, represented as an RGB integer
+    pub r: i32, // encoded from u8
+    pub g: i32, // encoded from u8
+    pub b: i32, // encoded from u8
 }
 
 pub type TrackColorHandler = Box<dyn FnMut(TrackColorArgs) + 'static>;
@@ -723,7 +725,11 @@ impl Set<TrackColorArgs> for TrackColor {
         let osc_address = format!("/track/{}/color", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
-            args: vec![rosc::OscType::Int(args.color)],
+            args: vec![
+                rosc::OscType::Int(args.r),
+                rosc::OscType::Int(args.g),
+                rosc::OscType::Int(args.b),
+            ],
         };
         let packet = rosc::OscPacket::Message(osc_msg);
         let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
@@ -2565,6 +2571,7 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/color") {
+        println!("MATCHED COLOR PATTERN");
         let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
             Ok(v) => v,
             Err(_) => {
@@ -2580,7 +2587,8 @@ pub fn dispatch_osc<F, G>(
         };
         let endpoint = reaper.track_color(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            let _decoded_color = match msg.args.get(0) {
+            println!("HAVE HANDLER");
+            let _decoded_r = match msg.args.get(0) {
                 Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
                     Some(v) => v,
                     None => {
@@ -2599,8 +2607,48 @@ pub fn dispatch_osc<F, G>(
                     return;
                 }
             };
+            let _decoded_g = match msg.args.get(1) {
+                Some(_raw_arg_1) => match _raw_arg_1.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_1),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 1 });
+                    return;
+                }
+            };
+            let _decoded_b = match msg.args.get(2) {
+                Some(_raw_arg_2) => match _raw_arg_2.clone().int() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "int",
+                                got: osc_type_name(_raw_arg_2),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 2 });
+                    return;
+                }
+            };
             handler(TrackColorArgs {
-                color: _decoded_color,
+                r: _decoded_r,
+                g: _decoded_g,
+                b: _decoded_b,
             });
         }
         return;

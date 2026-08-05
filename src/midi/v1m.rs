@@ -278,6 +278,17 @@ pub struct Color {
     pub b: u8,
 }
 
+impl Color {
+    fn scaled(self, scale: f32) -> Self {
+        let scale = scale.clamp(0.0, 1.0);
+        Self {
+            r: (self.r as f32 * scale).round().clamp(0.0, 127.0) as u8,
+            g: (self.g as f32 * scale).round().clamp(0.0, 127.0) as u8,
+            b: (self.b as f32 * scale).round().clamp(0.0, 127.0) as u8,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Coalescible)]
 pub struct TopScribbleStripLine1TextMsg {
     pub idx: i32,
@@ -830,9 +841,10 @@ impl TopScribbleStrips {
         // Now we do the same for the background color and line modes, which are sent in a separate message
         let mut msg_bytes = vec![0xf0, 0x00, 0x02, 0x4e, 0x16, 0x14];
         for i in 0..self.line_1.len() {
-            msg_bytes.push(self.background_color[i].r.clamp(0, 0x7f));
-            msg_bytes.push(self.background_color[i].g.clamp(0, 0x7f));
-            msg_bytes.push(self.background_color[i].b.clamp(0, 0x7f));
+            let color = self.background_color[i].scaled(0.7);
+            msg_bytes.push(color.r.clamp(0, 0x7f));
+            msg_bytes.push(color.g.clamp(0, 0x7f));
+            msg_bytes.push(color.b.clamp(0, 0x7f));
         }
         msg_bytes.push(0xf7);
 

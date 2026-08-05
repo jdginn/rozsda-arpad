@@ -229,6 +229,23 @@ fn main() {
                                         .unwrap();
                                 }
                             });
+                            // Track Color
+                            reaper.track_color(track_guid).bind({
+                                let a_send = a_send.clone();
+                                move |color| {
+                                    a_send
+                                        .try_send(
+                                            track::RgbColor {
+                                                track_guid,
+                                                r: color.r as u8,
+                                                g: color.g as u8,
+                                                b: color.b as u8,
+                                            }
+                                            .into(),
+                                        )
+                                        .unwrap();
+                                }
+                            });
                             // Track Selected
                             reaper.track_selected(track_guid).bind({
                                 let a_send = a_send.clone();
@@ -625,6 +642,7 @@ fn main() {
     loop {
         select! {
             recv(from_socket_rx) -> msg => {
+                println!("Message from dispatcher: {:?}", msg);
                 match msg {
                     Ok(msg) => {
                         router.dispatch_osc(msg);

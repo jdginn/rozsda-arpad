@@ -96,6 +96,22 @@ impl ModeHandler for ReaperVolumePanMode {
                         }
                         ModeAction::None
                     }
+                    track::DataMsg::RgbColor(msg) => {
+                        if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
+                            io.send_to_v1m(
+                                v1m::TopScribbleStripColorMsg {
+                                    idx: hw_channel as i32,
+                                    color: v1m::Color {
+                                        r: msg.r,
+                                        g: msg.g,
+                                        b: msg.b,
+                                    },
+                                }
+                                .into(),
+                            );
+                        }
+                        ModeAction::None
+                    }
                     track::DataMsg::Pan(msg) => {
                         let pan_val = msg.pan;
                         self.pan_states.insert(msg.track_guid, pan_val);

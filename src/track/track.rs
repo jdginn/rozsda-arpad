@@ -17,6 +17,7 @@ pub enum TrackMsg {
     Query(TrackQuery),
     Delete(Delete),
     Name(Name),
+    Color(RgbColor),
     ReaperTrackIndex(ReaperTrackIndex),
     Selected(Selected),
     Muted(Muted),
@@ -43,6 +44,7 @@ pub enum TrackMsg {
 pub enum DataMsg {
     Delete(Delete),
     Name(Name),
+    RgbColor(RgbColor),
     ReaperTrackIndex(ReaperTrackIndex),
     Selected(Selected),
     Muted(Muted),
@@ -70,6 +72,7 @@ impl TryFrom<TrackMsg> for DataMsg {
         match msg {
             TrackMsg::Delete(x) => Ok(DataMsg::Delete(x)),
             TrackMsg::Name(x) => Ok(DataMsg::Name(x)),
+            TrackMsg::Color(x) => Ok(DataMsg::RgbColor(x)),
             TrackMsg::ReaperTrackIndex(x) => Ok(DataMsg::ReaperTrackIndex(x)),
             TrackMsg::Selected(x) => Ok(DataMsg::Selected(x)),
             TrackMsg::Muted(x) => Ok(DataMsg::Muted(x)),
@@ -112,6 +115,37 @@ pub struct Name {
     pub track_guid: Uuid,
     #[data]
     pub name: String,
+}
+
+#[derive(Clone, Copy, Debug, Coalescible)]
+pub struct RgbColor {
+    pub track_guid: Uuid,
+    #[data]
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+impl RgbColor {
+    pub fn new(track_guid: Uuid, r: u8, g: u8, b: u8) -> Self {
+        Self {
+            track_guid,
+            r,
+            g,
+            b,
+        }
+    }
+}
+
+impl Default for RgbColor {
+    fn default() -> Self {
+        Self {
+            track_guid: Uuid::nil(),
+            r: 0,
+            g: 0,
+            b: 0,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Coalescible)]
@@ -300,6 +334,7 @@ pub struct FXParamData {
 pub struct TrackData {
     pub track_guid: Uuid,
     pub name: String,
+    color: RgbColor,
     pub reaper_track_index: Option<i32>,
     pub selected: bool,
     pub muted: bool,
@@ -316,6 +351,7 @@ impl TrackData {
         Self {
             track_guid: guid,
             name: String::new(),
+            color: RgbColor::default(),
             reaper_track_index: None,
             selected: false,
             muted: false,
@@ -735,6 +771,7 @@ impl TrackManager {
                             Ok(msg) => {
                                 match DataMsg::try_from(msg.clone()){
                                     Ok(data_msg) =>  {
+                                        println!("Track manager: message from upstream: {:?}", data_msg);
                                         manager.handle_track_data_msg(data_msg.clone());
                                         // Forward message after we process it
                                         manager.to_downstream.send(msg).unwrap();
@@ -811,6 +848,9 @@ impl TrackManager {
             }
             DataMsg::Name(msg) => {
                 self.get_or_create_track(msg.track_guid).name = msg.name.clone();
+            }
+            DataMsg::RgbColor(msg) => {
+                self.get_or_create_track(msg.track_guid).color = msg;
             }
             DataMsg::ReaperTrackIndex(msg) => {
                 self.get_or_create_track(msg.track_guid).reaper_track_index = msg.track_index;
