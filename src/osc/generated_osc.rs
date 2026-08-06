@@ -765,6 +765,102 @@ impl Query for TrackColor {
 }
 
 #[derive(Debug)]
+pub struct AllTracksArgs {}
+
+pub type AllTracksHandler = Box<dyn FnMut(AllTracksArgs) + 'static>;
+
+pub struct AllTracks {
+    socket: Arc<UdpSocket>,
+    handler: Option<AllTracksHandler>,
+}
+
+/// /all_tracks
+impl Bind<AllTracksArgs> for AllTracks {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(AllTracksArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+/// /all_tracks
+impl Query for AllTracks {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/all_tracks?");
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct ServerHelloArgs {}
+
+pub type ServerHelloHandler = Box<dyn FnMut(ServerHelloArgs) + 'static>;
+
+pub struct ServerHello {
+    socket: Arc<UdpSocket>,
+    handler: Option<ServerHelloHandler>,
+}
+
+/// /server/hello
+impl Bind<ServerHelloArgs> for ServerHello {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(ServerHelloArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+#[derive(Debug)]
+pub struct ServerGoodbyeArgs {}
+
+pub type ServerGoodbyeHandler = Box<dyn FnMut(ServerGoodbyeArgs) + 'static>;
+
+pub struct ServerGoodbye {
+    socket: Arc<UdpSocket>,
+    handler: Option<ServerGoodbyeHandler>,
+}
+
+/// /server/goodbye
+impl Bind<ServerGoodbyeArgs> for ServerGoodbye {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(ServerGoodbyeArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+#[derive(Debug)]
+pub struct ServerResetArgs {}
+
+pub type ServerResetHandler = Box<dyn FnMut(ServerResetArgs) + 'static>;
+
+pub struct ServerReset {
+    socket: Arc<UdpSocket>,
+    handler: Option<ServerResetHandler>,
+}
+
+/// /server/reset
+impl Bind<ServerResetArgs> for ServerReset {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(ServerResetArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+#[derive(Debug)]
 pub struct TrackFxGuidArgs {
     pub guid: Uuid, // unique identifier for the FX
 }
@@ -1573,6 +1669,10 @@ pub struct Reaper {
     track_send_volume_endpoints: HashMap<Uuid, HashMap<i32, TrackSendVolume>>,
     track_send_pan_endpoints: HashMap<Uuid, HashMap<i32, TrackSendPan>>,
     track_color_endpoints: HashMap<Uuid, TrackColor>,
+    all_tracks_endpoint: AllTracks,
+    server_hello_endpoint: ServerHello,
+    server_goodbye_endpoint: ServerGoodbye,
+    server_reset_endpoint: ServerReset,
     track_fx_guid_endpoints: HashMap<Uuid, HashMap<i32, TrackFxGuid>>,
     track_fx_name_endpoints: HashMap<Uuid, HashMap<i32, TrackFxName>>,
     track_fx_enabled_endpoints: HashMap<Uuid, HashMap<i32, TrackFxEnabled>>,
@@ -1615,6 +1715,22 @@ impl Reaper {
             track_send_volume_endpoints: HashMap::new(),
             track_send_pan_endpoints: HashMap::new(),
             track_color_endpoints: HashMap::new(),
+            all_tracks_endpoint: AllTracks {
+                socket: socket.clone(),
+                handler: None,
+            },
+            server_hello_endpoint: ServerHello {
+                socket: socket.clone(),
+                handler: None,
+            },
+            server_goodbye_endpoint: ServerGoodbye {
+                socket: socket.clone(),
+                handler: None,
+            },
+            server_reset_endpoint: ServerReset {
+                socket: socket.clone(),
+                handler: None,
+            },
             track_fx_guid_endpoints: HashMap::new(),
             track_fx_name_endpoints: HashMap::new(),
             track_fx_enabled_endpoints: HashMap::new(),
@@ -1769,6 +1885,18 @@ impl Reaper {
                 track_guid: track_guid,
                 handler: None,
             })
+    }
+    pub fn all_tracks(&mut self) -> &mut AllTracks {
+        &mut self.all_tracks_endpoint
+    }
+    pub fn server_hello(&mut self) -> &mut ServerHello {
+        &mut self.server_hello_endpoint
+    }
+    pub fn server_goodbye(&mut self) -> &mut ServerGoodbye {
+        &mut self.server_goodbye_endpoint
+    }
+    pub fn server_reset(&mut self) -> &mut ServerReset {
+        &mut self.server_reset_endpoint
     }
     pub fn track_fx_guid(&mut self, track_guid: Uuid, fx_idx: i32) -> &mut TrackFxGuid {
         self.track_fx_guid_endpoints
@@ -2571,7 +2699,6 @@ pub fn dispatch_osc<F, G>(
         return;
     }
     if let Some(args) = match_addr(addr, "/track/{track_guid}/color") {
-        println!("MATCHED COLOR PATTERN");
         let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
             Ok(v) => v,
             Err(_) => {
@@ -2587,7 +2714,6 @@ pub fn dispatch_osc<F, G>(
         };
         let endpoint = reaper.track_color(track_guid);
         if let Some(handler) = &mut endpoint.handler {
-            println!("HAVE HANDLER");
             let _decoded_r = match msg.args.get(0) {
                 Some(_raw_arg_0) => match _raw_arg_0.clone().int() {
                     Some(v) => v,
@@ -2650,6 +2776,34 @@ pub fn dispatch_osc<F, G>(
                 g: _decoded_g,
                 b: _decoded_b,
             });
+        }
+        return;
+    }
+    if let Some(_args) = match_addr(addr, "/all_tracks") {
+        let endpoint = reaper.all_tracks();
+        if let Some(handler) = &mut endpoint.handler {
+            handler(AllTracksArgs {});
+        }
+        return;
+    }
+    if let Some(_args) = match_addr(addr, "/server/hello") {
+        let endpoint = reaper.server_hello();
+        if let Some(handler) = &mut endpoint.handler {
+            handler(ServerHelloArgs {});
+        }
+        return;
+    }
+    if let Some(_args) = match_addr(addr, "/server/goodbye") {
+        let endpoint = reaper.server_goodbye();
+        if let Some(handler) = &mut endpoint.handler {
+            handler(ServerGoodbyeArgs {});
+        }
+        return;
+    }
+    if let Some(_args) = match_addr(addr, "/server/reset") {
+        let endpoint = reaper.server_reset();
+        if let Some(handler) = &mut endpoint.handler {
+            handler(ServerResetArgs {});
         }
         return;
     }
