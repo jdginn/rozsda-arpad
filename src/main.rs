@@ -5,11 +5,20 @@ mod traits;
 use std::net::{SocketAddrV4, UdpSocket};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+fn unix_now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_secs()
+}
 
 use clap::Parser;
 use crossbeam_channel::{bounded, select};
 use midir::{Ignore, MidiInput, MidiInputPort, MidiOutput, MidiOutputConnection};
-use rosc::OscMessage;
+use rosc::{OscMessage, OscPacket};
 
 use osc::generated_osc;
 use osc::generated_osc::{Reaper, context_kind, dispatch_osc};
@@ -19,9 +28,8 @@ use arpad_rust::midi::v1m;
 use arpad_rust::modes::mode_manager;
 use arpad_rust::track::track;
 
-use crate::osc::generated_osc::TrackMuteArgs;
 use crate::shared::Shared;
-use crate::traits::{Bind, Set};
+use crate::traits::{Bind, Query, Set};
 
 #[derive(Parser)]
 struct Cli {
@@ -51,25 +59,24 @@ fn find_v1m_ports() -> Result<
     let mut output_port_4 = None;
 
     for (i, p) in midi_in.ports().iter().enumerate() {
-        println!("Input port {}: {}", i, midi_in.port_name(p)?);
         if input_port_1.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 1" {
             input_port_1 = Some(p.clone());
             break;
         }
     }
-    for (i, p) in midi_out.ports().iter().enumerate() {
+    for p in midi_out.ports().iter() {
         if output_port_1.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 1" {
             output_port_1 = Some(p.clone());
             break;
         }
     }
-    for (i, p) in midi_in.ports().iter().enumerate() {
+    for p in midi_in.ports().iter() {
         if input_port_4.is_none() && midi_in.port_name(p)? == "iCON V1-M Port 4" {
             input_port_4 = Some(p.clone());
             break;
         }
     }
-    for (i, p) in midi_out.ports().iter().enumerate() {
+    for p in midi_out.ports().iter() {
         if output_port_4.is_none() && midi_out.port_name(p)? == "iCON V1-M Port 4" {
             output_port_4 = Some(p.clone());
             break;
@@ -104,6 +111,36 @@ fn find_v1m_ports() -> Result<
     }
 }
 
+const HEARTBEAT_TIMEOUT_SEC: u64 = 9; // seconds
+const WATCHDOG_TICK_MS: u64 = 500; // milliseconds
+
+struct ConnectionState {
+    last_heartbeat_s: AtomicU64,
+    timed_out: AtomicBool,
+    initialized: AtomicBool,
+}
+
+impl ConnectionState {
+    fn new(now_s: u64) -> Self {
+        Self {
+            last_heartbeat_s: AtomicU64::new(now_s),
+            timed_out: AtomicBool::new(false),
+            initialized: AtomicBool::new(false),
+        }
+    }
+
+    fn on_heartbeat(&self, now_s: u64) -> bool {
+        self.last_heartbeat_s.store(now_s, Ordering::Relaxed);
+        self.timed_out.store(false, Ordering::SeqCst);
+        !self.initialized.swap(true, Ordering::SeqCst) // true if first heartbeat ever
+    }
+
+    fn should_timeout(&self, now_s: u64, timeout_s: u64) -> bool {
+        now_s.saturating_sub(self.last_heartbeat_s.load(Ordering::Relaxed)) > timeout_s
+            && !self.timed_out.swap(true, Ordering::SeqCst)
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let socket_addr = SocketAddrV4::from_str(&cli.osc_address)
@@ -135,6 +172,7 @@ fn main() {
     );
     std::thread::spawn(move || {
         mode_manager::ModeManager::new_from_channels(
+            8,
             from_track_manager_rx.clone(),
             to_track_manager_tx.clone(),
             to_mode_manager_rx.clone(),
@@ -621,15 +659,37 @@ fn main() {
         .build()
         .unwrap();
 
+    let connection_state = Arc::new(ConnectionState::new(unix_now_secs()));
+
+    // watchdog thread
+    {
+        let from_reaper_tx = from_reaper_tx.clone();
+        let connection_state = connection_state.clone();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_millis(WATCHDOG_TICK_MS));
+                if connection_state.should_timeout(unix_now_secs(), HEARTBEAT_TIMEOUT_SEC) {
+                    from_reaper_tx.send(track::TrackMsg::ResetAll).unwrap();
+                    connection_state.initialized.store(false, Ordering::SeqCst);
+                    println!(
+                        "Heartbeat timeout (>{}). Enqueued ResetAll.",
+                        HEARTBEAT_TIMEOUT_SEC
+                    );
+                }
+            }
+        });
+    }
+
     let (from_socket_tx, from_socket_rx) = bounded(128); // buffer size as needed
 
+    // socket listening thread
     std::thread::spawn(move || {
         loop {
             let mut buf = [0u8; rosc::decoder::MTU];
             match socket.recv_from(&mut buf) {
                 Ok((size, _addr)) => {
                     let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
-                    from_socket_tx.send(packet);
+                    from_socket_tx.send(packet).unwrap();
                 }
                 Err(e) => {
                     println!("Error receiving from socket: {}", e);
@@ -644,11 +704,25 @@ fn main() {
             recv(from_socket_rx) -> msg => {
                 println!("Message from dispatcher: {:?}", msg);
                 match msg {
-                    Ok(msg) => {
-                        router.dispatch_osc(msg);
+                    Ok(packet) => {
+                        if let OscPacket::Message(ref msg) = packet {
+                            if msg.addr == "/server/hello" {
+                                let first_heartbeat = connection_state.on_heartbeat(unix_now_secs());
+                                if first_heartbeat {
+                                    reaper.with_mut(|reaper| {
+                                        reaper.all_tracks().query().unwrap();
+                                    });
+                                }
+                                println!("Received hello message from Reaper");
+                            } else {
+                                router.dispatch_osc(packet);
+                            }
+                        } else {
+                            router.dispatch_osc(packet);
+                        }
                     }
                     Err(e) => {
-                        println!("Error...")
+                        println!("Error... {}", e)
                     }
                 }
             }
@@ -659,7 +733,7 @@ fn main() {
                     }
                     Ok(track::TrackMsg::Muted(msg))  => {
                         reaper.with_mut(|reaper|{
-                            match reaper.track_mute(msg.track_guid).set(TrackMuteArgs{mute: msg.muted}) {
+                            match reaper.track_mute(msg.track_guid).set(generated_osc::TrackMuteArgs{mute: msg.muted}) {
                                 Ok(_) => {},
                                 Err(e) => println!("Error setting mute for track {}", msg.track_guid),
                             };

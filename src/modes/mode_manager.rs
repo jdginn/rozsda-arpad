@@ -9,6 +9,7 @@ use crate::modes::coalesce::OrderedCoalescingBuffer;
 use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends_mode::ReaperTrackSendsMode;
 use crate::modes::reaper_volume_pan_mode::ReaperVolumePanMode;
+use crate::modes::reset;
 use crate::track::track::TrackMsg;
 
 // Global atomic counter for unique IDs
@@ -230,39 +231,44 @@ pub struct ModeManager<HandlerFactoryFn> {
     io_direct: IoDirect,
     io_coalescing: IoCoalescing,
 
-    curr_state: State,
+    num_channels: usize,
 
+    curr_state: State,
     handler: Box<dyn ModeHandler>,
     handler_factory: HandlerFactoryFn,
 }
 
-type HandlerFactoryFn = fn(TransitionRequest, &mut IoCoalescing) -> Box<dyn ModeHandler>;
+type HandlerFactoryFn = fn(TransitionRequest, &mut IoCoalescing, usize) -> Box<dyn ModeHandler>;
 
 fn default_handler_factory(
     transition_request: TransitionRequest,
     io: &mut IoCoalescing,
+    num_channels: usize,
 ) -> Box<dyn ModeHandler> {
     match transition_request {
         TransitionRequest::ToReaperVolumePan {
             selected_track_guid,
             offset,
             // CHANNEL_OFFSET 1 because reaper starts counting tracks from 1
-        } => Box::new(ReaperVolumePanMode::new(8, offset, selected_track_guid).init(io)),
+        } => Box::new(ReaperVolumePanMode::new(num_channels, offset, selected_track_guid).init(io)),
         TransitionRequest::ToReaperSends {
             selected_track_guid,
             offset,
             // CHANNEL_OFFSET 0 because reaper starts counting sends from 0
-        } => Box::new(ReaperTrackSendsMode::new(8, offset, selected_track_guid).init(io)),
+        } => {
+            Box::new(ReaperTrackSendsMode::new(num_channels, offset, selected_track_guid).init(io))
+        }
         TransitionRequest::ToReaperChannelStrip {
             selected_track_guid,
             offset,
             // CHANNEL_OFFSET 1 because reaper starts counting tracks from 1
-        } => Box::new(ChannelStripMode::new(8, offset, selected_track_guid).init(io)),
+        } => Box::new(ChannelStripMode::new(num_channels, offset, selected_track_guid).init(io)),
     }
 }
 
 impl ModeManager<HandlerFactoryFn> {
     pub fn new_from_channels(
+        num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
         from_v1m: Receiver<v1m::UpstreamMsg>,
@@ -274,15 +280,17 @@ impl ModeManager<HandlerFactoryFn> {
             io_direct: IoDirect::new(to_reaper.clone(), to_v1m),
             io_coalescing: IoCoalescing::new(to_reaper),
 
-            curr_state: State::Active,
+            num_channels,
 
-            handler: Box::new(ReaperVolumePanMode::new(8, 1, None)),
+            curr_state: State::Active,
+            handler: Box::new(ReaperVolumePanMode::new(num_channels, 1, None)),
             handler_factory: default_handler_factory,
         }
     }
 
     #[cfg(test)]
     pub fn new_for_testing(
+        num_channels: usize,
         from_reaper: Receiver<TrackMsg>,
         to_reaper: Sender<TrackMsg>,
         from_v1m: Receiver<v1m::UpstreamMsg>,
@@ -296,8 +304,9 @@ impl ModeManager<HandlerFactoryFn> {
             io_direct: IoDirect::new(to_reaper.clone(), to_v1m),
             io_coalescing: IoCoalescing::new(to_reaper),
 
-            curr_state: State::Active,
+            num_channels,
 
+            curr_state: State::Active,
             handler: startup_handler,
             handler_factory,
         }
@@ -309,12 +318,22 @@ impl ModeManager<HandlerFactoryFn> {
         }
     }
 
+    pub fn reset_hardware(&mut self) {
+        reset::reset_hardware(&mut self.io_direct, self.num_channels);
+        self.handler = Box::new(ReaperVolumePanMode::new(self.num_channels, 1, None));
+        self.curr_state = State::Active;
+    }
+
     /// Returns true if we should break the loop
     fn apply_mode_action(&mut self, action: ModeAction) {
         match action {
             ModeAction::None => {}
             ModeAction::Transition(transition_request) => {
-                self.handler = (self.handler_factory)(transition_request, &mut self.io_coalescing);
+                self.handler = (self.handler_factory)(
+                    transition_request,
+                    &mut self.io_coalescing,
+                    self.num_channels,
+                );
                 self.io_direct.send_to_reaper(TrackMsg::QueryAll);
                 let barrier = Barrier::new();
                 self.io_direct.send_to_reaper(TrackMsg::Barrier(barrier));
@@ -329,8 +348,12 @@ impl ModeManager<HandlerFactoryFn> {
                 select! {
                     recv(self.from_reaper) -> msg => {
                         if let Ok(msg) = msg {
-                            let action = self.handler.handle_msg_from_upstream(msg, &mut self.io_direct);
-                            self.apply_mode_action(action);
+                            if let TrackMsg::ResetAll = msg {
+                                self.reset_hardware();
+                            } else {
+                                let action = self.handler.handle_msg_from_upstream(msg, &mut self.io_direct);
+                                self.apply_mode_action(action);
+                            }
                         }
                     }
                     recv(self.from_v1m) -> msg => {
@@ -363,6 +386,9 @@ impl ModeManager<HandlerFactoryFn> {
                                     // Forward all barriers downstream
                                     self.io_direct.send_to_v1m
                                         (v1m::DownstreamMsg::Barrier(barrier));
+                                },
+                                TrackMsg::ResetAll => {
+                                    self.reset_hardware();
                                 },
                                 _ => {
                                     // Coalesce all messages from upstream
