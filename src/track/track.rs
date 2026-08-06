@@ -36,6 +36,7 @@ pub enum TrackMsg {
     FXParamMin(FXParamMin),
     FXParamMax(FXParamMax),
     TrackData(TrackData),
+    ResetAll,
 }
 
 // DataMsg doesn't need From impls because we expect to only be converting structs into TrackMsg.
@@ -92,7 +93,10 @@ impl TryFrom<TrackMsg> for DataMsg {
             TrackMsg::FXParamMax(x) => Ok(DataMsg::FXParamMax(x)),
             TrackMsg::TrackData(x) => Ok(DataMsg::TrackData(x)),
 
-            other @ (TrackMsg::Barrier(_) | TrackMsg::Query(_) | TrackMsg::QueryAll) => Err(other),
+            other @ (TrackMsg::Barrier(_)
+            | TrackMsg::Query(_)
+            | TrackMsg::QueryAll
+            | TrackMsg::ResetAll) => Err(other),
         }
     }
 }
@@ -408,6 +412,11 @@ pub struct TrackManager {
 }
 
 impl TrackManager {
+    fn reset(&mut self) {
+        self.tracks.clear();
+        self.selected_track = None;
+    }
+
     fn send_queryall(&self) {
         let tracks = self.tracks.values().collect::<Vec<&TrackData>>();
         for track in &tracks {
@@ -779,6 +788,12 @@ impl TrackManager {
                                     Err(TrackMsg::Barrier(barrier_msg)) => {
                                         // Simply forward barriers
                                         manager.to_downstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
+                                    }
+                                    Err(TrackMsg::ResetAll) => {
+                                        println!("Track manager: received ResetAll from upstream");
+                                        manager.reset();
+                                        // Forward message after we process it
+                                        manager.to_downstream.send(msg).unwrap();
                                     }
                                     Err(other) => {
                                         println!("Received unsupported message type from upstream (this should never happen): {:?}", other);

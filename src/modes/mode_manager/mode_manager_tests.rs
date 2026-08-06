@@ -22,6 +22,7 @@ mod tests {
         let (v1m_tx_out, v1m_rx_out) = unbounded();
 
         let manager = ModeManager::new_for_testing(
+            8,
             reaper_rx_in,
             reaper_tx_out,
             v1m_rx_in,
@@ -101,10 +102,11 @@ mod tests {
     fn handler_factory(
         transition_request: TransitionRequest,
         _io: &mut IoCoalescing,
+        _num_channels: usize,
     ) -> Box<dyn ModeHandler> {
         match transition_request {
             TransitionRequest::ToReaperVolumePan {
-                offset,
+                offset: _,
                 selected_track_guid: _,
             } => Box::new(FakeHandler {
                 selected_track_guid: None,
