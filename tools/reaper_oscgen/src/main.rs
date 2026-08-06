@@ -553,7 +553,7 @@ fn write_node_query_trait(code: &mut String, node: &OscRoute) {
     let re = Regex::new(r"\{[^\}]+\}").unwrap();
     let osc_address_template = re.replace_all(&node.osc_address, "{}");
     code.push_str(&format!(
-        "        let osc_address = format!(\"{}?\"{});\n",
+        "        let osc_address = format!(\"{}/?\"{});\n",
         osc_address_template,
         node.params
             .iter()
