@@ -12,7 +12,7 @@
 # The following parameter types are supported:
 # - int: 32-bit integer
 # - string: UTF-8 string
-# - uuid: A string representing a UUID (universally unique identifier)
+# - uuid: A string representing a UUID (universally unique identifier) 
 #
 # Routes may be used in 3 ways, each of which is indicated by a corresponding access tag:
 # 1. readable: The route transmits data FROM the application. The client can listen for messages on this route.
@@ -32,411 +32,455 @@
 - osc_address: /num_tracks
   params: []
   arguments:
-    - name: num_tracks
-      type: int
-      description: number of tracks in the current project
+  - name: num_tracks
+    type: int
+    description: number of tracks in the current project
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /track/all_guids
   params: []
   arguments: []
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /track/{track_guid}/index
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: index
-      type: int
-      description: index of the track in the project according to reaper's mixer view
+  - name: index
+    type: int
+    description: index of the track in the project according to reaper's mixer view
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /track/{track_guid}/delete
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments: []
   access_tags:
-    - readable
-    - writeable
+  - readable
+  - writeable
 - osc_address: /track/{track_guid}/name
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: name
-      type: string
-      description: name of the track
+  - name: name
+    type: string
+    description: name of the track
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/selected
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: selected
-      type: bool
-      description: true means track is selected
+  - name: selected
+    type: bool
+    description: true means track is selected
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/volume
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: volume
-      type: float
-      description: volume of the track, normalized to 0 to 1.0
+  - name: volume
+    type: float
+    description: volume of the track, normalized to 0 to 1.0
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/pan
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: pan
-      type: float
-      description: pan of the track, normalized to -1.0 to 1.0
+  - name: pan
+    type: float
+    description: pan of the track, normalized to -1.0 to 1.0
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/mute
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: mute
-      type: bool
-      description: true means track is muted
+  - name: mute
+    type: bool
+    description: true means track is muted
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/solo
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: solo
-      type: bool
-      description: true means track is soloed
+  - name: solo
+    type: bool
+    description: true means track is soloed
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/rec-arm
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: rec_arm
-      type: bool
-      description: true means track is armed for recording
+  - name: rec_arm
+    type: bool
+    description: true means track is armed for recording
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/send/{send_index}/guid
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: send_index
-      type: int
-      description: index of the send on the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: send_index
+    type: int
+    description: index of the send on the track
   arguments:
-    - name: guid
-      type: uuid
-      description: unique identifier for the send
+  - name: guid
+    type: uuid
+    description: unique identifier for the send
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /track/{track_guid}/send/{send_index}/volume
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: send_index
-      type: int
-      description: index of the send on the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: send_index
+    type: int
+    description: index of the send on the track
   arguments:
-    - name: volume
-      type: float
-      description: volume of the send, normalized to 0 to 1.
+  - name: volume
+    type: float
+    description: volume of the send, normalized to 0 to 1.
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/send/{send_index}/pan
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: send_index
-      type: int
-      description: index of the send on the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: send_index
+    type: int
+    description: index of the send on the track
   arguments:
-    - name: pan
-      type: float
-      description: pan of the send, normalized to -1.0 to 1.0
+  - name: pan
+    type: float
+    description: pan of the send, normalized to -1.0 to 1.0
   access_tags:
-    - readable
-    - writeable
-    - queryable
+  - readable
+  - writeable
+  - queryable
 - osc_address: /track/{track_guid}/color
   params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
   arguments:
-    - name: r
-      type: int
-      description: encoded from u8
-    - name: g
-      type: int
-      description: encoded from u8
-    - name: b
-      type: int
-      description: encoded from u8
+  - name: r
+    type: int
+    description: encoded from u8
+  - name: g
+    type: int
+    description: encoded from u8
+  - name: b
+    type: int
+    description: encoded from u8
   access_tags:
-    - readable
-    - writeable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/guid
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-  arguments:
-    - name: guid
-      type: uuid
-      description: unique identifier for the FX
-  access_tags:
-    - readable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/name
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-  arguments:
-    - name: name
-      type: string
-      description: name of the FX
-  access_tags:
-    - readable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/enabled
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-  arguments:
-    - name: enabled
-      type: bool
-      description: true if the FX is enabled
-  access_tags:
-    - readable
-    - writeable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/param_count
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-  arguments:
-    - name: param_count
-      type: int
-      description: number of parameters for the FX
-  access_tags:
-    - readable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/name
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-    - name: param_idx
-      type: int
-      description: index of the parameter
-  arguments:
-    - name: param_name
-      type: string
-      description: name of the parameter
-  access_tags:
-    - readable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/value
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-    - name: param_idx
-      type: int
-      description: index of the parameter
-  arguments:
-    - name: value
-      type: float
-      description: value of the parameter
-  access_tags:
-    - readable
-    - writeable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/min
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-    - name: param_idx
-      type: int
-      description: index of the parameter
-  arguments:
-    - name: min
-      type: float
-      description: minimum value of the parameter
-  access_tags:
-    - readable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/max
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
-    - name: param_idx
-      type: int
-      description: index of the parameter
-  arguments:
-    - name: max
-      type: float
-      description: maximum value of the parameter
-  access_tags:
-    - readable
-    - queryable
-- osc_address: /track/{track_guid}/fx/{fx_idx}/info
-  params:
-    - name: track_guid
-      type: uuid
-      description: unique identifier for the track
-    - name: fx_idx
-      type: int
-      description: index of the FX on the track
+  - readable
+  - writeable
+  - queryable
+- osc_address: /all_tracks
+  params: []
   arguments: []
   access_tags:
-    - queryable
+  - readable
+  - queryable
+  comments:
+  - Replies with many OSC messages reporting all state for all tracks
+- osc_address: /server/hello
+  params: []
+  arguments: []
+  access_tags:
+  - readable
+  comments:
+  - Sent periodically by the server, alerting clients that the server is still alive. Functions both
+  - as the beginning of a handshake and a heartbeat message.
+- osc_address: /server/goodbye
+  params: []
+  arguments: []
+  access_tags:
+  - readable
+  comments:
+  - Sent by the server when it shuts down.
+- osc_address: /server/reset
+  params: []
+  arguments: []
+  access_tags:
+  - readable
+  comments:
+  - Sent by the server to indicate that all currently accumulated state is invalid. Practically,
+  - this happens when we open a new Reaper project.
+- osc_address: /track/{track_guid}/fx/{fx_idx}/guid
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments:
+  - name: guid
+    type: uuid
+    description: unique identifier for the FX
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/name
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments:
+  - name: name
+    type: string
+    description: name of the FX
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/enabled
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments:
+  - name: enabled
+    type: bool
+    description: true if the FX is enabled
+  access_tags:
+  - readable
+  - writeable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param_count
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments:
+  - name: param_count
+    type: int
+    description: number of parameters for the FX
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/name
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: param_name
+    type: string
+    description: name of the parameter
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/value
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: value
+    type: float
+    description: value of the parameter
+  access_tags:
+  - readable
+  - writeable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/min
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: min
+    type: float
+    description: minimum value of the parameter
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/max
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: max
+    type: float
+    description: maximum value of the parameter
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/info
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments: []
+  access_tags:
+  - queryable
+  comments:
+  - 'Replies with many OSC messages reporting the folowing:'
+  - 'guid (uuid): unique identifier for the FX'
+  - 'name (string): name of the FX'
+  - 'param_count (int): number of parameters for the FX'
+  - 'for each param:'
+  - 'param_idx (int): index of the parameter'
+  - 'param_name (string): name of the parameter'
+  - 'param_value (float): current value of the parameter, normalized to 0.'
+  - 'param_min (float): minimum value of the parameter, normalized to 0. TODO: what here?'
+  - 'param_max (float): maximum value of the parameter, normalized to 1.0'
 - osc_address: /fxinfo/{ident}/name
   params:
-    - name: ident
-      type: string
-      description: unique identifier for the FX
+  - name: ident
+    type: string
+    description: unique identifier for the FX
   arguments:
-    - name: name
-      type: string
-      description: name of the FX
+  - name: name
+    type: string
+    description: name of the FX
   access_tags:
-    - readable
+  - readable
 - osc_address: /fxinfo/{ident}/param_count
   params:
-    - name: ident
-      type: string
-      description: unique identifier for the FX
+  - name: ident
+    type: string
+    description: unique identifier for the FX
   arguments:
-    - name: param_count
-      type: int
-      description: number of parameters for the FX
+  - name: param_count
+    type: int
+    description: number of parameters for the FX
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /fxinfo/{ident}/param/{param_idx}/name
   params:
-    - name: ident
-      type: string
-      description: unique identifier for the FX
-    - name: param_idx
-      type: int
-      description: index of the parameter
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
   arguments:
-    - name: param_name
-      type: string
-      description: name of the parameter
+  - name: param_name
+    type: string
+    description: name of the parameter
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /fxinfo/{ident}/param/{param_idx}/min
   params:
-    - name: ident
-      type: string
-      description: unique identifier for the FX
-    - name: param_idx
-      type: int
-      description: index of the parameter
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
   arguments:
-    - name: param_min
-      type: float
-      description: minimum raw value of the parameter
+  - name: param_min
+    type: float
+    description: minimum raw value of the parameter
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /fxinfo/{ident}/param/{param_idx}/max
   params:
-    - name: ident
-      type: string
-      description: unique identifier for the FX
-    - name: param_idx
-      type: int
-      description: index of the parameter
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
   arguments:
-    - name: param_max
-      type: float
-      description: maximum raw value of the parameter
+  - name: param_max
+    type: float
+    description: maximum raw value of the parameter
   access_tags:
-    - readable
-    - queryable
+  - readable
+  - queryable
 - osc_address: /fxinfo
   params: []
   arguments: []
   access_tags:
-    - queryable
+  - queryable
+  comments:
+  - 'Replies with many OSC messages reporting the following for all FX on all tracks:'
