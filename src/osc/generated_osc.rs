@@ -39,7 +39,7 @@ impl Bind<NumTracksArgs> for NumTracks {
 impl Query for NumTracks {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/num_tracks?");
+        let osc_address = format!("/num_tracks/?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -75,7 +75,7 @@ impl Bind<TrackAllGuidsArgs> for TrackAllGuids {
 impl Query for TrackAllGuids {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/all_guids?");
+        let osc_address = format!("/track/all_guids/?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -114,7 +114,7 @@ impl Bind<TrackIndexArgs> for TrackIndex {
 impl Query for TrackIndex {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/index?", self.track_guid);
+        let osc_address = format!("/track/{}/index/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -206,7 +206,7 @@ impl Bind<TrackNameArgs> for TrackName {
 impl Query for TrackName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/name?", self.track_guid);
+        let osc_address = format!("/track/{}/name/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -261,7 +261,7 @@ impl Bind<TrackSelectedArgs> for TrackSelected {
 impl Query for TrackSelected {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/selected?", self.track_guid);
+        let osc_address = format!("/track/{}/selected/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -316,7 +316,7 @@ impl Bind<TrackVolumeArgs> for TrackVolume {
 impl Query for TrackVolume {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/volume?", self.track_guid);
+        let osc_address = format!("/track/{}/volume/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -371,7 +371,7 @@ impl Bind<TrackPanArgs> for TrackPan {
 impl Query for TrackPan {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/pan?", self.track_guid);
+        let osc_address = format!("/track/{}/pan/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -426,7 +426,7 @@ impl Bind<TrackMuteArgs> for TrackMute {
 impl Query for TrackMute {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/mute?", self.track_guid);
+        let osc_address = format!("/track/{}/mute/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -481,7 +481,7 @@ impl Bind<TrackSoloArgs> for TrackSolo {
 impl Query for TrackSolo {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/solo?", self.track_guid);
+        let osc_address = format!("/track/{}/solo/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -536,7 +536,7 @@ impl Bind<TrackRecArmArgs> for TrackRecArm {
 impl Query for TrackRecArm {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/rec-arm?", self.track_guid);
+        let osc_address = format!("/track/{}/rec-arm/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -576,7 +576,7 @@ impl Bind<TrackSendGuidArgs> for TrackSendGuid {
 impl Query for TrackSendGuid {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/send/{}/guid?", self.track_guid, self.send_index);
+        let osc_address = format!("/track/{}/send/{}/guid/?", self.track_guid, self.send_index);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -633,7 +633,7 @@ impl Query for TrackSendVolume {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/send/{}/volume?",
+            "/track/{}/send/{}/volume/?",
             self.track_guid, self.send_index
         );
         let osc_msg = rosc::OscMessage {
@@ -691,7 +691,7 @@ impl Bind<TrackSendPanArgs> for TrackSendPan {
 impl Query for TrackSendPan {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/send/{}/pan?", self.track_guid, self.send_index);
+        let osc_address = format!("/track/{}/send/{}/pan/?", self.track_guid, self.send_index);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -752,7 +752,7 @@ impl Bind<TrackColorArgs> for TrackColor {
 impl Query for TrackColor {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/color?", self.track_guid);
+        let osc_address = format!("/track/{}/color/?", self.track_guid);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -788,7 +788,7 @@ impl Bind<AllTracksArgs> for AllTracks {
 impl Query for AllTracks {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/all_tracks?");
+        let osc_address = format!("/all_tracks/?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -888,7 +888,7 @@ impl Bind<TrackFxGuidArgs> for TrackFxGuid {
 impl Query for TrackFxGuid {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/guid?", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/guid/?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -928,7 +928,7 @@ impl Bind<TrackFxNameArgs> for TrackFxName {
 impl Query for TrackFxName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/name?", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/name/?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -984,7 +984,7 @@ impl Bind<TrackFxEnabledArgs> for TrackFxEnabled {
 impl Query for TrackFxEnabled {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/enabled?", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/enabled/?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1024,7 +1024,10 @@ impl Bind<TrackFxParamCountArgs> for TrackFxParamCount {
 impl Query for TrackFxParamCount {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/param_count?", self.track_guid, self.fx_idx);
+        let osc_address = format!(
+            "/track/{}/fx/{}/param_count/?",
+            self.track_guid, self.fx_idx
+        );
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1066,7 +1069,7 @@ impl Query for TrackFxParamName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/name?",
+            "/track/{}/fx/{}/param/{}/name/?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1129,7 +1132,7 @@ impl Query for TrackFxParamValue {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/value?",
+            "/track/{}/fx/{}/param/{}/value/?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1173,7 +1176,7 @@ impl Query for TrackFxParamMin {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/min?",
+            "/track/{}/fx/{}/param/{}/min/?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1217,7 +1220,7 @@ impl Query for TrackFxParamMax {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
         let osc_address = format!(
-            "/track/{}/fx/{}/param/{}/max?",
+            "/track/{}/fx/{}/param/{}/max/?",
             self.track_guid, self.fx_idx, self.param_idx
         );
         let osc_msg = rosc::OscMessage {
@@ -1247,7 +1250,7 @@ pub struct TrackFxInfo {
 impl Query for TrackFxInfo {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/track/{}/fx/{}/info?", self.track_guid, self.fx_idx);
+        let osc_address = format!("/track/{}/fx/{}/info/?", self.track_guid, self.fx_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1309,7 +1312,7 @@ impl Bind<FxinfoParamCountArgs> for FxinfoParamCount {
 impl Query for FxinfoParamCount {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param_count?", self.ident);
+        let osc_address = format!("/fxinfo/{}/param_count/?", self.ident);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1349,7 +1352,7 @@ impl Bind<FxinfoParamNameArgs> for FxinfoParamName {
 impl Query for FxinfoParamName {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param/{}/name?", self.ident, self.param_idx);
+        let osc_address = format!("/fxinfo/{}/param/{}/name/?", self.ident, self.param_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1389,7 +1392,7 @@ impl Bind<FxinfoParamMinArgs> for FxinfoParamMin {
 impl Query for FxinfoParamMin {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param/{}/min?", self.ident, self.param_idx);
+        let osc_address = format!("/fxinfo/{}/param/{}/min/?", self.ident, self.param_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1429,7 +1432,7 @@ impl Bind<FxinfoParamMaxArgs> for FxinfoParamMax {
 impl Query for FxinfoParamMax {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo/{}/param/{}/max?", self.ident, self.param_idx);
+        let osc_address = format!("/fxinfo/{}/param/{}/max/?", self.ident, self.param_idx);
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
@@ -1455,7 +1458,7 @@ pub struct Fxinfo {
 impl Query for Fxinfo {
     type Error = OscError;
     fn query(&self) -> Result<(), Self::Error> {
-        let osc_address = format!("/fxinfo?");
+        let osc_address = format!("/fxinfo/?");
         let osc_msg = rosc::OscMessage {
             addr: osc_address,
             args: vec![],
