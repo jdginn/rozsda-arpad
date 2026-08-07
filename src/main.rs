@@ -111,7 +111,7 @@ fn find_v1m_ports() -> Result<
     }
 }
 
-const HEARTBEAT_TIMEOUT_SEC: u64 = 9; // seconds
+const HEARTBEAT_TIMEOUT_SEC: u64 = 3; // seconds
 const WATCHDOG_TICK_MS: u64 = 500; // milliseconds
 
 struct ConnectionState {
@@ -702,7 +702,6 @@ fn main() {
     loop {
         select! {
             recv(from_socket_rx) -> msg => {
-                println!("Message from dispatcher: {:?}", msg);
                 match msg {
                     Ok(packet) => {
                         if let OscPacket::Message(ref msg) = packet {
@@ -713,7 +712,6 @@ fn main() {
                                         reaper.all_tracks().query().unwrap();
                                     });
                                 }
-                                println!("Received hello message from Reaper");
                             } else {
                                 router.dispatch_osc(packet);
                             }
