@@ -841,7 +841,7 @@ impl TopScribbleStrips {
         // Now we do the same for the background color and line modes, which are sent in a separate message
         let mut msg_bytes = vec![0xf0, 0x00, 0x02, 0x4e, 0x16, 0x14];
         for i in 0..self.line_1.len() {
-            let color = self.background_color[i].scaled(0.7);
+            let color = self.background_color[i].scaled(0.2);
             msg_bytes.push(color.r.clamp(0, 0x7f));
             msg_bytes.push(color.g.clamp(0, 0x7f));
             msg_bytes.push(color.b.clamp(0, 0x7f));
