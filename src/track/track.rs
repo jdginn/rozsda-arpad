@@ -466,6 +466,19 @@ impl TrackManager {
         for track in &tracks {
             self.to_downstream
                 .send(
+                    RgbColor {
+                        track_guid: track.track_guid,
+                        r: track.color.r,
+                        g: track.color.g,
+                        b: track.color.b,
+                    }
+                    .into(),
+                )
+                .unwrap();
+        }
+        for track in &tracks {
+            self.to_downstream
+                .send(
                     Selected {
                         track_guid: track.track_guid,
                         selected: track.selected,
