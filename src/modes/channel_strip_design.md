@@ -1,7 +1,9 @@
+# Channel Strip Mode Design
+
 Implements a mode where the faders and Arm/Mute/Solo/Select buttons behave the same as VolumePanMode
 but the encoders and scribble strpes expose key tone-shaping functions like EQ, Compression, Saturation, etc.
 
-Principles
+## Principles
 
 - Everything fits on the top scribble strip
 - Everything is iether visible or visible by ONLY pressing Shift
@@ -23,6 +25,8 @@ Principles
 The encoders ONLY control the selected track, and only control one track at a time. Track
 selection still follows reaper and still responds to the select buttons on the surface.
 
+## Encoder behaviors
+
 Encoders support multiple behaviors, with each encoder supporting up to the following:
 
 1.  Turn the encoder without pressing anything
@@ -36,9 +40,11 @@ In each case, the behavior updates the scribble strip to indicate what parameter
 
 This mode assumes 16 encoders are available. The encoders have the following functions:
 
+## Controls in each mode
+
 <!-- markdownlint-disable MD060 -->
 
-| #   | Normal      | Presse d                                 | Shift           | Shift+Pressed | Click          | Shift+Click     |
+| #   | Normal      | Pressed                                  | Shift           | Shift+Pressed | Click          | Shift+Click     |
 | --- | ----------- | ---------------------------------------- | --------------- | ------------- | -------------- | --------------- |
 | 1   | HP filter   | slope                                    | EQ type         |               |                |                 |
 | 2   | Low freq    | Low Q (bell) / slope (shelf)             | bell/shelf      |               |                |                 |
@@ -55,7 +61,7 @@ This mode assumes 16 encoders are available. The encoders have the following fun
 | 13  | Comp makeup | Comp release                             | Comp2 makeup    | Comp2 release |                |                 |
 | 14  | Comp type   |                                          | Comp2 type      |               | bypass Comp    | bypass Comp2    |
 | 15  | Saturation  |                                          | Saturation type |               | bypass Sat     |                 |
-| 16  | Gain        | Interface gain (only if armed            | Trim            |               |                |                 |
+| 16  | Gain        | Interface gain (only if armed)           | Trim            |               |                |                 |
 
 Notes on specific controls:
 
@@ -68,24 +74,22 @@ Notes on specific controls:
   - "MIDDLE": Gain -> Comp -> Comp -> EQ -> Saturation -> Trim
   - "LAST": Gain -> Comp -> Comp -> Saturation -> EQ -> Trim
 - Comp order sets the ordering of compressors. Modes:
-  - "F->S": Comp -> Comp2
-  - "S->F": Comp2 -> Comp1
+  - "Cmp1->2"
+  - "Cmp2->1"
 - Comp and Comp2 are separate compressors and controlled fully independently.
 - Comp is a "fast", FET-style compressor. Comp2 is a "slow" optical-style compressor.
-- Comp type selects between comprssors germain to the two categories above. Examples:
+- Comp type selects between compressors germane to the two categories above. Examples:
   - Comp1: 1176, Distressor, Digital, SSL, API
   - Comp2: LA2A, LA3A, Vari-MU, etc.
-- For compressor types that do not have a threshold control, Comp thresh maps to input gain.
-- Some compressor tyeps do not have a ratio control.
-- For compressor types that do not have a ratio control, Comp makeup maps to output gain.
-- Some compressor types lack attack and release controls.
+  - NOTE: maybe we want Comp1 and Comp2 to both support all types?
+- Comp controls vary based on type
 - Comp SC filter is a high-pass filter on the compressor sidechain.
 - Saturation type selects between various console, tape simulators up to full-on distortion.
 - Gain adjusts level entering the channel strip, before any processing.
 - Trim adjust level leaving the channel strip.
 - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
 
-Colors by element:
+## Colors by element:
 
 <!-- markdownlint-disable MD060 -->
 
@@ -107,7 +111,9 @@ Colors by element:
 | Light Green  | Delay      |                                  |
 | Sky Blue     | Reverb     |                                  |
 
-Scribble Strip definitions/examples (always 7 characters)
+## Scribble Strip definitions/examples
+
+Note: scribble strip is always exactly 7 characters wide.
 
 <!-- markdownlint-disable MD060 -->
 
@@ -130,22 +136,29 @@ Scribble Strip definitions/examples (always 7 characters)
 | 15  | Sat       |         | SatIN\*   | Sat      |           | Tape\*    | Options: Tape, Console, Distortion, etc.                                                                          |
 | 16  | Gain      | -12db   | Intrfc\*  | Trim     |           | -12db     | Intrfc blank if track not armed                                                                                   |
 
-Scribble mappings for compressor types:
-1176
+## Scribble mappings for compressor types:
+
+### 1176
 
 - CompThr -> CmpInpt, Cmp2Inp
 - CompMkp -> CmpOtpt, Cmp2Otp
-  LA2A, LA3A
+
+### LA2A, LA3A
+
 - CompThr -> CmpGain, Cmp2Gn
 - CompRat -> CmpRedn, Cmp2Red
-  Distressor
+
+### Distressor
+
 - CompThr -> CmpInpt, Cmp2Inp
 - CompMkp -> CmpOtpt, Cmp2Otp
-  Fairchild
-- CmpRat -> CmpInpt
-- <attack> -> TmCnst<1-5>
 
-Ideas if we add more V1x:
+### Fairchild
+
+- CmpRat -> CmpInpt
+- CmpAtk -> TmCnst<1-5>
+
+## Ideas if we add more V1x:
 
 - Support additional FX elements
   - Pultec? (separate from channel EQ)
