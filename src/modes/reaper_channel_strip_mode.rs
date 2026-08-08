@@ -98,6 +98,24 @@ impl Widgets {
 /// Implements a mode where the faders and Arm/Mute/Solo/Select buttons behave the same as VolumePanMode
 /// but the encoders and scribble strpes expose key tone-shaping functions like EQ, Compression, Saturation, etc.
 ///
+/// Principles
+/// - Everything fits on the top scribble strip
+/// - Everything is iether visible or visible by ONLY pressing Shift
+/// - Shift does not change anything unless you turn/click an encoder
+/// - An encoder EITHER has a Pressed (press&turn) functionality OR a Click functionality but never both
+/// - Top line of scribble strip displays what happens on a Normal turn (i.e. no press)
+/// - "Encoer ring" (shown as a bar on v1) displays the value of the Normal turn parameter
+/// - On turn, top line shows precise value while turning and for 2 seconds after the turn stops, then reverts to showing the parameter name
+/// - Bottom line shows Pressed turn OR Click _value_
+/// - Top and bottom line are both related to the same element
+/// - Bottom line values should always make it obvious what the value means, when seen below the top line
+/// - Colors match element
+/// - Shfit _may_ EITHER switch a widget to a different element or expose extra parameters of the
+/// non-shift element
+/// - Shift elements should be logically related to non-shift elements on the same widget
+/// - Everything for channel strip mode should fit on ONLY encoders + shift
+/// - Shift behavior is a HOLD, not a toggle
+///
 /// The encoders ONLY control the selected track, and only control one track at a time. Track
 /// selection still follows reaper and still responds to the select buttons on the surface.
 ///
@@ -157,6 +175,71 @@ impl Widgets {
 /// - Gain adjusts level entering the channel strip, before any processing.
 /// - Trim adjust level leaving the channel strip.
 /// - Interface gain adjusts the gain at the audio interface, if the selected tack is armed. This does not affect recorded material.
+///
+/// Colors by element:
+/// | Color         | Element        | Notes                            |
+/// |---------------|----------------|----------------------------------|
+/// | Black         | Meta           | Eq type, Eq position, Comp order |
+/// | Dark Brown    | HPF            |                                  |
+/// | Brown         | Low            |                                  |
+/// | Dark Blue     | LM             |                                  |
+/// | Green         | HM             |                                  |
+/// | Red           | High           |                                  |
+/// | Light Orange  | LPF            |                                  |
+/// | Pink          | Eq sides       |                                  |
+/// | Amber         | Comp 1         |                                  |
+/// | White         | Comp 2         |                                  |
+/// | Orange        | Saturation     |                                  |
+/// | Purple        | Interface      |                                  |
+/// | Grey          | Gain/Trim      |                                  |
+/// | Light Green   |  Delay         |                                  |
+/// | Sky Blue      | Reverb         |                                  |
+///
+///
+/// Scribble Strip definitions/examples (always 7 characters)
+/// |    | Normal                      | Shift                       |
+/// |----|-----------------------------|-----------------------------|
+/// |    | Line 1  | Line 1  | Line 2  | Line 1  | Line 1  | Line 2  | Notes
+/// | #  |         | (turn)  |         |         | (turn)  |         |
+/// |----|---------|---------|---------|---------|---------|---------|-------------
+/// | 1  | HpfFreq | 150Hz   | -12/oct | EqType  |         | SSL*    | Options: SSL, Neve, API, Digital, etc.
+/// | 2  | LowFreq | 300Hz   | 0.8 Q   | LowFreq |         | bell*   | Options: bell, shelf
+/// | 3  | LowGain | -5db    | zero    | LowGain | -5db    | zero    |
+/// | 4  | LM Freq | 400Hz   | 1.0 Q   | LM Freq | 400Hz   | 1.0 Q   |
+/// | 5  | LM Gain | 3db     | zero    | LM Gain | 3db     | zero    |
+/// | 6  | HM Freq | 2000Hz  | 1.0 Q   | HM Freq | 2000Hz  | 1.0 Q   |
+/// | 7  | LM Gain | 5db     | zero    | HM Gain | 5db     | zero    |
+/// | 8  | Hi Freq | 5000Hz  | -24/oct*| Hi Mode |         | bell*   | Options: bell (5db), shelf (5db), filter (-12/oct)
+/// | 9  | Hi Gain | 0db     | zero    | SidesGn | 2db     | zero    |
+/// | 10 | EqFIRST |         | EqIN*   |         | Cmp1->2 |         | Options: EqFirst, EqMiddl, EqLast; EqIN, EqOut; Cmp1->2, Cmp2->1
+/// | 11 | CompThr*| -20db   | 200HzSc*| Cmp2Thr | -20db   | 200HzSc*| CmpThr has different behavior depending on CompTyp; Sc Freq blank for no sidechain filter (turn all the way left)
+/// | 12 | CompRat*| 3:1     | 10msAtk | Cmp2Rat | 3:1     | 10msAtk |
+/// | 13 | CompMkp*| +5db    | 50msRel | Cmp2Mkp | -5db    | 50msRel |
+/// | 14 | 1176*   |         | CompIN  | LA2A*   |         | Cmp2IN  | Options: 1176, LA2A, Digital, SSL, Distressor, Vari-MU, etc.
+/// | 15 | Sat     |         | SatIN*  | Sat     |         | Tape*   | Options: Tape, Console, Distortion, etc.
+/// | 16 | Gain    | -12db   | Intrfc* | Trim    |         | -12db   | Intrfc blank if track not armed
+///
+/// Scribble mappings for compressor types:
+/// 1176
+/// - CompThr -> CmpInpt, Cmp2Inp
+/// - CompMkp -> CmpOtpt, Cmp2Otp
+/// LA2A, LA3A
+/// - CompThr -> CmpGain, Cmp2Gn
+/// - CompRat -> CmpRedn, Cmp2Red
+/// Distressor
+/// - CompThr -> CmpInpt, Cmp2Inp
+/// - CompMkp -> CmpOtpt, Cmp2Otp
+/// Fairchild
+/// - CmpRat -> CmpInpt
+/// - <attack> -> TmCnst<1-5>
+///
+/// Ideas if we add more V1x:
+/// - Support additional FX elements
+///     + Pultec? (separate from channel EQ)
+///     + Surgical EQ?
+///     + Delay?
+///     + Reverb?
+///     + Vibrato/Chorus etc.?
 pub struct ChannelStripMode {
     core: VolumeFadersCore,
     routers: HashMap<Uuid, ChannelStripRouter>,
