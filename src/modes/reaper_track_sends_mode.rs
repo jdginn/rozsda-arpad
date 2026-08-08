@@ -103,6 +103,10 @@ impl ReaperTrackSendsMode {
 
     pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
         for (hw_channel, &assigned_guid) in self.hw_assignments.iter().enumerate() {
+            println!(
+                "Checking hw_channel {} with assigned_guid {:?}",
+                hw_channel, assigned_guid
+            );
             if let Some(assigned_guid) = assigned_guid {
                 if assigned_guid == guid {
                     return Some(hw_channel);
@@ -117,32 +121,51 @@ impl ModeHandler for ReaperTrackSendsMode {
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
+                println!("ReaperTrackSendsMode received msg: {:?}", msg);
+                println!("hw_channel_mapping {:?}", self.hw_assignments);
                 match msg {
                     track::DataMsg::Name(msg) => {
-                        io.send_to_v1m(
-                            v1m::TopScribbleStripLine1TextMsg {
-                                idx: self.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
-                                text: msg.name.clone(),
-                            }
-                            .into(),
-                        );
-                        io.send_to_v1m(
-                            v1m::BottomScribbleStripLine2TextMsg {
-                                idx: self.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
-                                text: msg.name,
-                            }
-                            .into(),
-                        );
+                        if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
+                            io.send_to_v1m(
+                                v1m::TopScribbleStripLine1TextMsg {
+                                    idx: hw_channel as i32,
+                                    text: msg.name.clone(),
+                                }
+                                .into(),
+                            );
+                            io.send_to_v1m(
+                                v1m::BottomScribbleStripLine2TextMsg {
+                                    idx: hw_channel as i32,
+                                    text: msg.name,
+                                }
+                                .into(),
+                            );
+                        }
+                        ModeAction::None
+                    }
+                    track::DataMsg::RgbColor(msg) => {
+                        println!("Rgb msg {:?}", msg);
+                        println!("hw_channel_mapping {:?}", self.hw_assignments);
+                        if let Some(hw_channel) = self.find_hw_channel(msg.track_guid) {
+                            io.send_to_v1m(
+                                v1m::TopScribbleStripColorMsg {
+                                    idx: hw_channel as i32,
+                                    color: v1m::Color {
+                                        r: msg.r,
+                                        g: msg.g,
+                                        b: msg.b,
+                                    },
+                                }
+                                .into(),
+                            );
+                        }
                         ModeAction::None
                     }
                     // If a new track is selected, we need to initiate a mode transition so that we
                     // are controlling sends for that new track
+                    //
+                    // FIXME: this behavior doesn't seem quite right in terms of intent
                     track::DataMsg::Selected(msg) => {
-                        // FIXME
-                        // - There is some kind of double selection or initiation behavior at least with TrackSendsMode
-                        // - Send naming has an off by one error (should say 2 but says 3)
-                        // - Scribble strip messages are jittery
-                        // - Still some fader jitter to sort through
                         if msg.track_guid == self.selected_track_guid && msg.selected {
                             // No change, skip
                             return ModeAction::None;
@@ -171,8 +194,16 @@ impl ModeHandler for ReaperTrackSendsMode {
                             return ModeAction::None;
                         }
 
+                        println!("SendIndex msg: {:?}", msg);
+
+                        println!("msg: {:?}", msg);
+
                         // If the send was previously mapped to a hw_channel, zero that channel
                         if let Some(index) = self.find_hw_channel(msg.send_guid) {
+                            println!(
+                                "Adjusted send index: {}",
+                                msg.send_index - self.channel_offset as i32
+                            );
                             if index as i32 == msg.send_index {
                                 // No change, skip
                                 return ModeAction::None;
@@ -211,6 +242,14 @@ impl ModeHandler for ReaperTrackSendsMode {
                             .entry(msg.send_guid)
                             .or_default()
                             .clone();
+                        println!(
+                            "Setting send index {} to guid {} ",
+                            msg.send_index, msg.send_guid
+                        );
+                        println!(
+                            "Adjusted send index: {}",
+                            msg.send_index - self.channel_offset as i32
+                        );
                         // Send current state to hardware for this send index
                         io.send_to_v1m(
                             v1m::ChannelFaderMsg {

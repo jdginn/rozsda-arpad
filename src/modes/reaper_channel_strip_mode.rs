@@ -211,6 +211,8 @@ impl ModeHandler for ChannelStripMode {
                             .entry(self.selected_track_guid)
                             .or_insert(ChannelStripRouter::new(self.selected_track_guid));
                         // Each message from upstream may cause one or more ChannelStripMsgs
+                        //
+                        // ChannelStripMsgs are handled by the widgets themselves
                         if let Ok(translated_msgs) = router.translate_message_from_upstream(msg) {
                             for translated_msg in translated_msgs {
                                 self.widgets.handle_message_from_upstream(translated_msg);

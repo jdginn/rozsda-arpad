@@ -431,6 +431,42 @@ impl TrackManager {
                 .unwrap();
         }
         for track in &tracks {
+            println!("Processing sends for track: {}", track.track_guid);
+            println!("Number of sends: {}", track.sends.len());
+            for (send_index, send) in track.sends.iter().enumerate() {
+                self.to_downstream
+                    .send(
+                        SendIndex {
+                            track_guid: send.track_guid,
+                            send_index: send_index as i32,
+                            send_guid: send.target_guid,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                self.to_downstream
+                    .send(
+                        SendLevel {
+                            track_guid: send.track_guid,
+                            send_index: send_index as i32,
+                            level: send.level,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+                self.to_downstream
+                    .send(
+                        SendPan {
+                            track_guid: send.track_guid,
+                            send_index: send_index as i32,
+                            pan: send.pan,
+                        }
+                        .into(),
+                    )
+                    .unwrap();
+            }
+        }
+        for track in &tracks {
             self.to_downstream
                 .send(
                     Volume {
@@ -519,40 +555,6 @@ impl TrackManager {
                     .into(),
                 )
                 .unwrap();
-        }
-        for track in &tracks {
-            for (send_index, send) in track.sends.iter().enumerate() {
-                self.to_downstream
-                    .send(
-                        SendIndex {
-                            track_guid: send.track_guid,
-                            send_index: send_index as i32,
-                            send_guid: send.target_guid,
-                        }
-                        .into(),
-                    )
-                    .unwrap();
-                self.to_downstream
-                    .send(
-                        SendLevel {
-                            track_guid: send.track_guid,
-                            send_index: send_index as i32,
-                            level: send.level,
-                        }
-                        .into(),
-                    )
-                    .unwrap();
-                self.to_downstream
-                    .send(
-                        SendPan {
-                            track_guid: send.track_guid,
-                            send_index: send_index as i32,
-                            pan: send.pan,
-                        }
-                        .into(),
-                    )
-                    .unwrap();
-            }
         }
         for track in &tracks {
             for (fx_index, fx) in track.fx.iter().enumerate() {
