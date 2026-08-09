@@ -9,3 +9,4 @@ pub mod reaper_faders_buttons_core;
 pub mod reaper_track_sends_mode;
 pub mod reaper_volume_pan_mode;
 pub mod reset;
+pub mod timer_scheduler;
