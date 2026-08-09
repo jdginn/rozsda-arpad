@@ -71,6 +71,7 @@ Notes on specific controls:
 - Sides gain applies the "High" band only to the sides in a mid-side EQ. This value is offset from the main high gain.
 - EQ pos sets the position of EQ in the signal chain. Modes:
   - "FIRST": Gain -> EQ -> Comp -> Comp -> Saturation -> Trim
+  - "BET": Gain -> Comp -> EQ -> Comp -> Saturation -> Trim
   - "MIDDLE": Gain -> Comp -> Comp -> EQ -> Saturation -> Trim
   - "LAST": Gain -> Comp -> Comp -> Saturation -> EQ -> Trim
 - Comp order sets the ordering of compressors. Modes:
@@ -117,24 +118,24 @@ Note: scribble strip is always exactly 7 characters wide.
 
 <!-- markdownlint-disable MD060 -->
 
-| #   | Normal L1 | Turn L1 | Normal 2  | Shift L1 | S+Turn L1 | Shift L2  | Notes                                                                                                             |
-| --- | --------- | ------- | --------- | -------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
-| 1   | HpfFreq   | 150Hz   | -12/oct   | EqType   |           | SSL\*     | Options: SSL, Neve, API, Digital, etc.                                                                            |
-| 2   | LowFreq   | 300Hz   | 0.8 Q     | LowFreq  |           | bell\*    | Options: bell, shelf                                                                                              |
-| 3   | LowGain   | -5db    | zero      | LowGain  | -5db      | zero      |                                                                                                                   |
-| 4   | LM Freq   | 400Hz   | 1.0 Q     | LM Freq  | 400Hz     | 1.0 Q     |                                                                                                                   |
-| 5   | LM Gain   | 3db     | zero      | LM Gain  | 3db       | zero      |                                                                                                                   |
-| 6   | HM Freq   | 2000Hz  | 1.0 Q     | HM Freq  | 2000Hz    | 1.0 Q     |                                                                                                                   |
-| 7   | LM Gain   | 5db     | zero      | HM Gain  | 5db       | zero      |                                                                                                                   |
-| 8   | Hi Freq   | 5000Hz  | -24/oct\* | Hi Mode  |           | bell\*    | Options: bell (5db), shelf (5db), filter (-12/oct)                                                                |
-| 9   | Hi Gain   | 0db     | zero      | SidesGn  | 2db       | zero      |                                                                                                                   |
-| 10  | EqFIRST   |         | EqIN\*    |          | Cmp1->2   |           | Options: EqFirst, EqMiddl, EqLast; EqIN, EqOut; Cmp1->2, Cmp2->1                                                  |
-| 11  | CompThr\* | -20db   | 200HzSc\* | Cmp2Thr  | -20db     | 200HzSc\* | CmpThr has different behavior depending on CompTyp; Sc Freq blank for no sidechain filter (turn all the way left) |
-| 12  | CompRat\* | 3:1     | 10msAtk   | Cmp2Rat  | 3:1       | 10msAtk   |                                                                                                                   |
-| 13  | CompMkp\* | +5db    | 50msRel   | Cmp2Mkp  | -5db      | 50msRel   |                                                                                                                   |
-| 14  | 1176\*    |         | CompIN    | LA2A\*   |           | Cmp2IN    | Options: 1176, LA2A, Digital, SSL, Distressor, Vari-MU, etc.                                                      |
-| 15  | Sat       |         | SatIN\*   | Sat      |           | Tape\*    | Options: Tape, Console, Distortion, etc.                                                                          |
-| 16  | Gain      | -12db   | Intrfc\*  | Trim     |           | -12db     | Intrfc blank if track not armed                                                                                   |
+| #   | Normal L1 | Turn L1   | Normal 2  | Shift L1 | S+Turn L1 | Shift L2  | Notes                                                                                                             |
+| --- | --------- | --------- | --------- | -------- | --------- | --------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | HpfFreq   | 150Hz     | -12/oct   | EqType   |           | SSL\*     | Options: SSL, Neve, API, Digital, etc.                                                                            |
+| 2   | LowFreq   | 300Hz     | 0.8 Q\*   | LowMode  |           | bell\*    | Options: bell, shelf; for shelf mode, don't display Q on L                                                        |
+| 3   | LowGain   | -5db      | zero      | LowGain  | -5db      | zero      |                                                                                                                   |
+| 4   | LM Freq   | 400Hz     | 1.0 Q     | LM Freq  | 400Hz     | 1.0 Q     |                                                                                                                   |
+| 5   | LM Gain   | 3db       | zero      | LM Gain  | 3db       | zero      |                                                                                                                   |
+| 6   | HM Freq   | 2000Hz    | 1.0 Q     | HM Freq  | 2000Hz    | 1.0 Q     |                                                                                                                   |
+| 7   | LM Gain   | 5db       | zero      | HM Gain  | 5db       | zero      |                                                                                                                   |
+| 8   | Hi Freq   | 5000Hz    | 1.0 Q\*   | Hi Mode  |           | bell\*    | Options: bell (1.0 Q), shelf (blank), filter (0.72 Q)                                                             |
+| 9   | Hi Gain   | 0db\*     | zero      | SidesGn  | 2db       | zero      | bell (5db), shelf (5db), filter (-12/oct)                                                                         |
+| 10  | EqFirst\* | E>C>C>S\* | EqIN\*    |          | Cmp1->2   |           | Options: EqFirst, EqMiddl, EqLast; E>C>C>S, C>E>C>S, C>C>E>S>, C>C>S>E; EqIN, EqOut; Cmp1->2, Cmp2->1             |
+| 11  | CompThr\* | -20db     | 200HzSc\* | Cmp2Thr  | -20db     | 200HzSc\* | CmpThr has different behavior depending on CompTyp; Sc Freq blank for no sidechain filter (turn all the way left) |
+| 12  | CompRat\* | 3:1       | 10msAtk\* | Cmp2Rat  | 3:1       | 10msAtk   | Attack, relase time sometimes in us for some compressors                                                          |
+| 13  | CompMkp\* | +5db      | 50msRel   | Cmp2Mkp  | -5db      | 50msRel   |                                                                                                                   |
+| 14  | 1176\*    |           | CompIN    | LA2A\*   |           | Cmp2IN    | Options: 1176, LA2A, Digital, SSL, Distressor, Vari-MU, etc.                                                      |
+| 15  | Sat       |           | SatIN\*   | Sat      |           | Tape\*    | Options: Tape, Console, Distortion, etc.                                                                          |
+| 16  | Gain      | -12db     | Intrfc\*  | Trim     |           | -12db     | Intrfc blank if track not armed; Interface gain on turn                                                           |
 
 ## Scribble mappings for compressor types:
 
