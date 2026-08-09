@@ -3,7 +3,47 @@ use std::sync::Mutex;
 use uuid::Uuid;
 
 use crate::modes::generated_fx_param as fx;
+use crate::modes::reaper_channel_strip_widgets::EncoderTurn;
 use crate::track::track;
+
+macro_rules! rotary_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $Name:ident {
+            $($Variant:ident => $label:expr),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        $vis enum $Name { $($Variant),+ }
+
+        impl $Name {
+            const ALL: &'static [Self] = &[$(Self::$Variant),+];
+
+            pub fn next(self) -> Self {
+                let i = Self::ALL.iter().position(|v| *v == self).unwrap();
+                Self::ALL[(i + 1) % Self::ALL.len()]
+            }
+
+            pub fn prev(self) -> Self {
+                let i = Self::ALL.iter().position(|v| *v == self).unwrap();
+                Self::ALL[(i + Self::ALL.len() - 1) % Self::ALL.len()]
+            }
+
+            pub fn step(self, dir: EncoderTurn) -> Self {
+                match dir {
+                    Inc => self.next(),
+                    Dec => self.prev(),
+                }
+            }
+
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$Variant => $label),+
+                }
+            }
+        }
+    }
+}
 
 // | #  | Normal      | Pressed                          | Shift            | Shift+Pressed  | Click          | Shift+Click     |
 // |----|-------------|----------------------------------|------------------|----------------|--------------- |-----------------|
@@ -24,44 +64,68 @@ use crate::track::track;
 // | 15 | Saturation  |                                  | Saturation type  |                | bypass Sat     |                 |
 // | 16 | Gain        | Interface gain (only if armed)   | Trim             |                |                |                 |
 
-#[derive(Debug, Clone, Copy)]
-pub enum BandMode {
-    Bell,
-    Shelf,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum BandMode {
+        Bell => "bell",
+        Shelf => "shelf",
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum EqType {
-    Digital,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EqType {
+        Digital => "Digital",
+        SSL => "SSL",
+        Neve => "Neve",
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum EqPosition {
-    First,
-    Middle,
-    Last,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EqPosition {
+        First => "EqFirst",
+        Middle => "EqMiddl",
+        Last => "EqLast",
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum CompOrder {
-    FtoS,
-    StoF,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CompOrder {
+        C1toC2 => "Cmp1->2",
+        C2toC1 => "Cmp2->1",
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum CompType {
-    Digital,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CompType {
+        Digital => "Digital",
+        Eleven76 => "1176",
+        LA2A => "LA2A",
+        Distressor => "Distrsr",
+        LA3A => "LA3A",
+        VariMu => "VariMu",
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum BypassMode {
-    Engaged,
-    Bypassed,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EqBypass {
+        Engaged => "EqIN",
+        Bypassed => "EqOUT",
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum SaturationType {
-    Console,
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SaturationType {
+        Console => "Console",
+        Tape => "Tape",
+        Decapitator => "Decap",
+        BitCrush => "BitCrsh",
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

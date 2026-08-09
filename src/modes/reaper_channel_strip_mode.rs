@@ -11,95 +11,133 @@ use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
 
-struct Widgets {
-    hp_filter: widgets::ChannelWidget<widgets::HPWidgetBehavior>,
-    low_freq: widgets::ChannelWidget<widgets::LowFreqWidgetBehavior>,
-    low_gain: widgets::ChannelWidget<widgets::LowGainWidgetBehavior>,
-    lm_freq: widgets::ChannelWidget<widgets::LmFreqWidgetBehavior>,
-    lm_gain: widgets::ChannelWidget<widgets::LmGainWidgetBehavior>,
-    hm_freq: widgets::ChannelWidget<widgets::HmFreqWidgetBehavior>,
-    hm_gain: widgets::ChannelWidget<widgets::HmGainWidgetBehavior>,
-    high_freq: widgets::ChannelWidget<widgets::HighFreqWidgetBehavior>,
-    high_gain: widgets::ChannelWidget<widgets::HighGainWidgetBehavior>,
-    eq_pos: widgets::ChannelWidget<widgets::EqPosWidgetBehavior>,
-    comp_thresh: widgets::ChannelWidget<widgets::CompThreshWidgetBehavior>,
-    comp_ratio: widgets::ChannelWidget<widgets::CompRatioWidgetBehavior>,
-    comp_makeup: widgets::ChannelWidget<widgets::CompMakeupWidgetBehavior>,
-    comp_type: widgets::ChannelWidget<widgets::CompTypeWidgetBehavior>,
-    saturation: widgets::ChannelWidget<widgets::SaturationWidgetBehavior>,
-    gain: widgets::ChannelWidget<widgets::GainWidgetBehavior>,
-}
+// struct Widgets {
+//     hp_filter: widgets::Widget<widgets::HPWidgetBehavior>,
+//     low_freq: widgets::Widget<widgets::LowFreqWidgetBehavior>,
+//     low_gain: widgets::Widget<widgets::LowGainWidgetBehavior>,
+//     lm_freq: widgets::Widget<widgets::LmFreqWidgetBehavior>,
+//     lm_gain: widgets::Widget<widgets::LmGainWidgetBehavior>,
+//     hm_freq: widgets::Widget<widgets::HmFreqWidgetBehavior>,
+//     hm_gain: widgets::Widget<widgets::HmGainWidgetBehavior>,
+//     high_freq: widgets::Widget<widgets::HighFreqWidgetBehavior>,
+//     high_gain: widgets::Widget<widgets::HighGainWidgetBehavior>,
+//     eq_pos: widgets::Widget<widgets::EqPosWidgetBehavior>,
+//     comp_thresh: widgets::Widget<widgets::CompThreshWidgetBehavior>,
+//     comp_ratio: widgets::Widget<widgets::CompRatioWidgetBehavior>,
+//     comp_makeup: widgets::Widget<widgets::CompMakeupWidgetBehavior>,
+//     comp_type: widgets::Widget<widgets::CompTypeWidgetBehavior>,
+//     saturation: widgets::Widget<widgets::SaturationWidgetBehavior>,
+//     gain: widgets::Widget<widgets::GainWidgetBehavior>,
+// }
+//
+// impl Widgets {
+//     fn new() -> Self {
+//         Widgets {
+//             hp_filter: widgets::Widget::new(),
+//             low_freq: widgets::Widget::new(),
+//             low_gain: widgets::Widget::new(),
+//             lm_freq: widgets::Widget::new(),
+//             lm_gain: widgets::Widget::new(),
+//             hm_freq: widgets::Widget::new(),
+//             hm_gain: widgets::Widget::new(),
+//             high_freq: widgets::Widget::new(),
+//             high_gain: widgets::Widget::new(),
+//             eq_pos: widgets::Widget::new(),
+//             comp_thresh: widgets::Widget::new(),
+//             comp_ratio: widgets::Widget::new(),
+//             comp_makeup: widgets::Widget::new(),
+//             comp_type: widgets::Widget::new(),
+//             saturation: widgets::Widget::new(),
+//             gain: widgets::Widget::new(),
+//         }
+//     }
+//
+//     fn at_index(&self, idx: usize) -> &mut dyn Widget {
+//         match idx {
+//             0 => &mut self.hp_filter,
+//             1 => &mut self.low_freq,
+//             2 => &mut self.low_gain,
+//             3 => &mut self.lm_freq,
+//             4 => &mut self.lm_gain,
+//             5 => &mut self.hm_freq,
+//             6 => &mut self.hm_gain,
+//             7 => &mut self.high_freq,
+//             8 => &mut self.high_gain,
+//             9 => &mut self.eq_pos,
+//             10 => &mut self.comp_thresh,
+//             11 => &mut self.comp_ratio,
+//             12 => &mut self.comp_makeup,
+//             13 => &mut self.comp_type,
+//             14 => &mut self.saturation,
+//             15 => &mut self.gain,
+//             _ => panic!("Invalid widget index: {}", idx),
+//         }
+//     }
+//
+//     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
+//         self.hp_filter.handle_message_from_upstream(msg);
+//         self.low_freq.handle_message_from_upstream(msg);
+//         self.low_gain.handle_message_from_upstream(msg);
+//         self.lm_freq.handle_message_from_upstream(msg);
+//         self.lm_gain.handle_message_from_upstream(msg);
+//         self.hm_freq.handle_message_from_upstream(msg);
+//         self.hm_gain.handle_message_from_upstream(msg);
+//         self.high_freq.handle_message_from_upstream(msg);
+//         self.high_gain.handle_message_from_upstream(msg);
+//         self.eq_pos.handle_message_from_upstream(msg);
+//         self.comp_thresh.handle_message_from_upstream(msg);
+//         self.comp_ratio.handle_message_from_upstream(msg);
+//         self.comp_makeup.handle_message_from_upstream(msg);
+//         self.comp_type.handle_message_from_upstream(msg);
+//         self.saturation.handle_message_from_upstream(msg);
+//         self.gain.handle_message_from_upstream(msg);
+//     }
+//
+//     fn handle_message_from_downstream(&mut self, msg: v1m::UpstreamMsg) -> Vec<ChannelStripMsg> {
+//         let mut responses = Vec::new();
+//
+//         responses.extend(self.hp_filter.handle_message_from_downstream(msg));
+//         responses.extend(self.low_freq.handle_message_from_downstream(msg));
+//         responses.extend(self.low_gain.handle_message_from_downstream(msg));
+//         responses.extend(self.lm_freq.handle_message_from_downstream(msg));
+//         responses.extend(self.lm_gain.handle_message_from_downstream(msg));
+//         responses.extend(self.hm_freq.handle_message_from_downstream(msg));
+//         responses.extend(self.hm_gain.handle_message_from_downstream(msg));
+//         responses.extend(self.high_freq.handle_message_from_downstream(msg));
+//         responses.extend(self.high_gain.handle_message_from_downstream(msg));
+//         responses.extend(self.eq_pos.handle_message_from_downstream(msg));
+//         responses.extend(self.comp_thresh.handle_message_from_downstream(msg));
+//         responses.extend(self.comp_ratio.handle_message_from_downstream(msg));
+//         responses.extend(self.comp_makeup.handle_message_from_downstream(msg));
+//         responses.extend(self.comp_type.handle_message_from_downstream(msg));
+//         responses.extend(self.saturation.handle_message_from_downstream(msg));
+//         responses.extend(self.gain.handle_message_from_downstream(msg));
+//
+//         responses
+//     }
+// }
 
-impl Widgets {
-    fn new() -> Self {
-        Widgets {
-            hp_filter: widgets::ChannelWidget::new(),
-            low_freq: widgets::ChannelWidget::new(),
-            low_gain: widgets::ChannelWidget::new(),
-            lm_freq: widgets::ChannelWidget::new(),
-            lm_gain: widgets::ChannelWidget::new(),
-            hm_freq: widgets::ChannelWidget::new(),
-            hm_gain: widgets::ChannelWidget::new(),
-            high_freq: widgets::ChannelWidget::new(),
-            high_gain: widgets::ChannelWidget::new(),
-            eq_pos: widgets::ChannelWidget::new(),
-            comp_thresh: widgets::ChannelWidget::new(),
-            comp_ratio: widgets::ChannelWidget::new(),
-            comp_makeup: widgets::ChannelWidget::new(),
-            comp_type: widgets::ChannelWidget::new(),
-            saturation: widgets::ChannelWidget::new(),
-            gain: widgets::ChannelWidget::new(),
-        }
-    }
-
-    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
-        self.hp_filter.handle_message_from_upstream(msg);
-        self.low_freq.handle_message_from_upstream(msg);
-        self.low_gain.handle_message_from_upstream(msg);
-        self.lm_freq.handle_message_from_upstream(msg);
-        self.lm_gain.handle_message_from_upstream(msg);
-        self.hm_freq.handle_message_from_upstream(msg);
-        self.hm_gain.handle_message_from_upstream(msg);
-        self.high_freq.handle_message_from_upstream(msg);
-        self.high_gain.handle_message_from_upstream(msg);
-        self.eq_pos.handle_message_from_upstream(msg);
-        self.comp_thresh.handle_message_from_upstream(msg);
-        self.comp_ratio.handle_message_from_upstream(msg);
-        self.comp_makeup.handle_message_from_upstream(msg);
-        self.comp_type.handle_message_from_upstream(msg);
-        self.saturation.handle_message_from_upstream(msg);
-        self.gain.handle_message_from_upstream(msg);
-    }
-
-    fn handle_message_from_downstream(&mut self, msg: v1m::UpstreamMsg) -> Vec<ChannelStripMsg> {
-        let mut responses = Vec::new();
-
-        responses.extend(self.hp_filter.handle_message_from_downstream(msg));
-        responses.extend(self.low_freq.handle_message_from_downstream(msg));
-        responses.extend(self.low_gain.handle_message_from_downstream(msg));
-        responses.extend(self.lm_freq.handle_message_from_downstream(msg));
-        responses.extend(self.lm_gain.handle_message_from_downstream(msg));
-        responses.extend(self.hm_freq.handle_message_from_downstream(msg));
-        responses.extend(self.hm_gain.handle_message_from_downstream(msg));
-        responses.extend(self.high_freq.handle_message_from_downstream(msg));
-        responses.extend(self.high_gain.handle_message_from_downstream(msg));
-        responses.extend(self.eq_pos.handle_message_from_downstream(msg));
-        responses.extend(self.comp_thresh.handle_message_from_downstream(msg));
-        responses.extend(self.comp_ratio.handle_message_from_downstream(msg));
-        responses.extend(self.comp_makeup.handle_message_from_downstream(msg));
-        responses.extend(self.comp_type.handle_message_from_downstream(msg));
-        responses.extend(self.saturation.handle_message_from_downstream(msg));
-        responses.extend(self.gain.handle_message_from_downstream(msg));
-
-        responses
-    }
-}
+// fn event_from_downsteram_msg(msg: v1m::UpstreamMsg) -> Option<Event> {
+//     match msg {
+//         v1m::UpstreamMsg::EncoderTurnInc(msg) => Some(Even::EncoderEvent{
+//             EncoderEvent::Inc {
+//                 idx: msg.idx as usize,
+//                 accel: msg.accel,
+//             },
+//         }),
+//         _ => None,
+//     }
+// }
 
 pub struct ChannelStripMode {
     core: VolumeFadersCore,
+
     routers: HashMap<Uuid, ChannelStripRouter>,
-    widgets: Widgets,
     selected_track_guid: Uuid,
+
+    // widgets: Widgets,
+    scribble_line_1_dirty: bool,
+    scribble_line_2_dirty: bool,
 }
 
 impl ChannelStripMode {

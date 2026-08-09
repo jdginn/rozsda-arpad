@@ -407,6 +407,8 @@ pub enum UpstreamMsg {
     OutputsRelease,
     UserPress,
     UserRelease,
+    ShiftPress,   //TODO: what does this map to?
+    ShiftRelease, //TODO: what does this map to?
 }
 
 #[derive(Clone, Debug, EnumFrom)]
