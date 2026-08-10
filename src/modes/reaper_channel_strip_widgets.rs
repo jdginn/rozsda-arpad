@@ -108,7 +108,7 @@ use crate::modes::reaper_channel_strip_router::{
 // IMPORTANT: widgets should NEVER access the upstream/downstream channels direcdtly
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WidgetMode {
+pub enum WidgetMode {
     Disabled,
     Default,
     Press,
@@ -150,7 +150,7 @@ pub trait Widget {
         event: EncoderEvent,
     ) -> (Vec<ChannelStripMsg>, Vec<v1m::DownstreamMsg>);
 
-    fn is_clickable() -> bool {
+    fn is_clickable(&self) -> bool {
         false
     }
 
@@ -168,7 +168,7 @@ pub trait Widget {
     }
 }
 
-struct WidgetView {
+pub struct WidgetView {
     mode: WidgetMode,
 
     line1_default: String,
@@ -321,7 +321,7 @@ impl Widget for HpfWidget {
     }
 }
 
-pub struct LowFreqWidgetBehavior {
+pub struct LowFreqWidget {
     view: WidgetView,
 
     freq: f32,
@@ -329,7 +329,7 @@ pub struct LowFreqWidgetBehavior {
     band_mode: BandMode,
 }
 
-impl Widget for LowFreqWidgetBehavior {
+impl Widget for LowFreqWidget {
     fn view(&self) -> &WidgetView {
         &self.view
     }

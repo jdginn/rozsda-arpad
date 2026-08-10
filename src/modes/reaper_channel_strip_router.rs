@@ -31,8 +31,8 @@ macro_rules! rotary_enum {
 
             pub fn step(self, dir: EncoderTurn) -> Self {
                 match dir {
-                    Inc => self.next(),
-                    Dec => self.prev(),
+                    EncoderTurn::Inc {..} => self.next(),
+                    EncoderTurn::Dec {..} => self.prev(),
                 }
             }
 
@@ -120,6 +120,30 @@ rotary_enum! {
 
 rotary_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CompBypass {
+        Engaged => "CompIN",
+        Bypassed => "CompOUT",
+    }
+}
+
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Cmp2Bypass {
+        Engaged => "Cmp2IN",
+        Bypassed => "Cmp2OUT",
+    }
+}
+
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SatBypass {
+        Engaged => "SatIN",
+        Bypassed => "SatOUT",
+    }
+}
+
+rotary_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SaturationType {
         Console => "Console",
         Tape => "Tape",
@@ -173,7 +197,7 @@ pub enum ChannelStripMsg {
     HighSidesGain(f32),
     EqPos(EqPosition),
     CompOrder(CompOrder),
-    EqBypass(BypassMode),
+    EqBypass(EqBypass),
     CompThresh(f32),
     CompScFilter(f32),
     Comp2Thresh(f32),
@@ -188,11 +212,11 @@ pub enum ChannelStripMsg {
     Comp2Release(f32),
     CompType(CompType),
     Comp2Type(CompType),
-    CompBypass(BypassMode),
-    Comp2Bypass(BypassMode),
+    CompBypass(CompBypass),
+    Comp2Bypass(Cmp2Bypass),
     Saturation(f32),
     SaturationType(SaturationType),
-    SaturationBypass(BypassMode),
+    SaturationBypass(SatBypass),
     Gain(f32),
     Trim(f32),
     InterfaceGain(f32),

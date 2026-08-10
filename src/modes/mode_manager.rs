@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crossbeam_channel::{Receiver, Sender, select};
+use crossbeam_channel::{Receiver, Sender, after, select};
 use uuid::Uuid;
 
 use crate::midi::v1m::{self, BottomScribbleStripMsg, TopScribbleStripMsg};
@@ -210,12 +210,36 @@ impl UpstreamIo for IoCoalescing {}
 /// Each mode implementation should also implement initiate_mode_transition(self, ...) -> ModeState. This implementation
 /// will vary from mode to mode but usually will require sending a barrier to the upstream channel.
 pub trait ModeHandler {
+    /// Process a message from upstream (Reaper), update internal state as necessary, send messages
+    /// downstream (to hardware) as necessary, and return a ModeAction indicating whether we should transition to a new mode.
+    ///
+    /// Messages can only be sent downstream to indicate feedback from changes in reaper, since
+    /// Reaper is the source of truth. Changes within the source of truth should never modify that source of truth.
     fn handle_msg_from_upstream(&mut self, msg: TrackMsg, io: &mut dyn UpstreamIo) -> ModeAction;
+    /// Process a message from downstream (hardware), update internal state as necessary, send messages
+    /// upstream (to Reaper) AND downstream (to hardware) as necessary, and return a ModeAction indicating whether we
+    /// should transition to a new mode.
+    ///
+    /// Messages can be sent in both directions, since the hardware's main job is to comunicate with
+    /// Reaper AND the we sometimes need to send feedback from a hardware message back to the hardware (e.g. toggle button LED on press).
     fn handle_msg_from_downstream(
         &mut self,
         msg: v1m::UpstreamMsg,
         io: &mut dyn DownstreamIo,
     ) -> ModeAction;
+    /// Mode-specific functionality to run periodically. Runs after handling a message or after next_wake_deadline() has elapsed.
+    /// Example usecases include sending messages based on a "dirty" flag or sending messages on a timer.
+    ///
+    /// on_tick is allowed to change mode by returning a ModeAction::Transition.
+    ///
+    /// No-op by default
+    fn on_tick(&mut self, _io: &mut dyn DownstreamIo) -> ModeAction {
+        ModeAction::None
+    }
+    /// Deadline at which on_tick() will be called in the event that no messages are received from upstream or downstream.
+    fn next_wake_deadline(&self) -> Option<std::time::Instant> {
+        None
+    }
 }
 
 /// Presents all modes with a uniform interface, (mostly) seamlessly handling switching between modes.
@@ -343,23 +367,56 @@ impl ModeManager<HandlerFactoryFn> {
     }
 
     pub fn step_once(&mut self) {
+        let now = std::time::Instant::now();
         match self.curr_state {
             State::Active => {
-                select! {
-                    recv(self.from_reaper) -> msg => {
-                        if let Ok(msg) = msg {
-                            if let TrackMsg::ResetAll = msg {
-                                self.reset_hardware();
-                            } else {
-                                let action = self.handler.handle_msg_from_upstream(msg, &mut self.io_direct);
-                                self.apply_mode_action(action);
+                if let Some(deadline) = self.handler.next_wake_deadline() {
+                    let wait = deadline.saturating_duration_since(now);
+                    let tick = after(wait);
+                    select! {
+                        recv(self.from_reaper) -> msg => {
+                            if let Ok(msg) = msg {
+                                if let TrackMsg::ResetAll = msg {
+                                    self.reset_hardware();
+                                } else {
+                                    let action = self.handler.handle_msg_from_upstream(msg, &mut self.io_direct);
+                                    self.apply_mode_action(action);
+                                    // Maybe call opportunistic on_tick()?
+
+                                }
                             }
                         }
+                        recv(self.from_v1m) -> msg => {
+                            if let Ok(msg) = msg {
+                                let action = self.handler.handle_msg_from_downstream(msg, &mut self.io_direct);
+                                self.apply_mode_action(action)
+                                // Maybe call opportunistic on_tick()?
+                            }
+                        }
+                        recv(tick) -> _ => {
+                            let action = self.handler.on_tick(&mut self.io_direct);
+                            self.apply_mode_action(action);
+                        }
                     }
-                    recv(self.from_v1m) -> msg => {
-                        if let Ok(msg) = msg {
-                            let action = self.handler.handle_msg_from_downstream(msg, &mut self.io_direct);
-                            self.apply_mode_action(action)
+                } else {
+                    select! {
+                        recv(self.from_reaper) -> msg => {
+                            if let Ok(msg) = msg {
+                                if let TrackMsg::ResetAll = msg {
+                                    self.reset_hardware();
+                                } else {
+                                    let action = self.handler.handle_msg_from_upstream(msg, &mut self.io_direct);
+                                    self.apply_mode_action(action);
+                                    // Maybe call opportunistic on_tick()?
+                                }
+                            }
+                        }
+                        recv(self.from_v1m) -> msg => {
+                            if let Ok(msg) = msg {
+                                let action = self.handler.handle_msg_from_downstream(msg, &mut self.io_direct);
+                                self.apply_mode_action(action)
+                                // Maybe call opportunistic on_tick()?
+                            }
                         }
                     }
                 }
