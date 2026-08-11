@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -131,9 +134,17 @@ pub struct EncoderRingMsg {
 // Maps a float to an encoder u8
 //
 // u8 encodes setps from to one of 12 values representing positions along the encoder
-pub fn map_to_encoder_ring(x: f32) -> u8 {
+pub fn map_to_encoder_ring_from_center(x: f32) -> u8 {
     let clamped = x.clamp(-1.0, 1.0) as f64;
     ((clamped + 1.0) * 0.5 * 0xb as f64).round() as u8
+}
+
+// Maps a float to an encoder u8
+//
+// u8 encodes setps from to one of 12 values representing positions along the encoder
+pub fn map_to_encoder_ring_from_left(x: f32) -> u8 {
+    let clamped = x.clamp(0.0, 1.0) as f64;
+    ((clamped) * 0xb as f64).round() as u8
 }
 
 /// Val between -1.0 and 1.0
@@ -142,7 +153,7 @@ impl EncoderRingMsg {
         Self {
             idx,
             mode,
-            val: map_to_encoder_ring(val),
+            val: map_to_encoder_ring_from_center(val),
         }
     }
 }
@@ -409,6 +420,8 @@ pub enum UpstreamMsg {
     UserRelease,
     ShiftPress,   //TODO: what does this map to?
     ShiftRelease, //TODO: what does this map to?
+    FlipPress,
+    FlipRelease,
 }
 
 #[derive(Clone, Debug, EnumFrom)]
@@ -539,6 +552,7 @@ impl Set<i32> for Fader {
 
 pub struct Encoder {
     base: Arc<Mutex<MidiDevice>>,
+    pressed: Arc<AtomicBool>,
     knob_cc: u8,
     click_note: u8,
     led_cc: u8,
@@ -563,33 +577,46 @@ impl Encoder {
 
     fn bind_press<F>(&mut self, mut callback: F)
     where
-        F: FnMut(u8) + 'static + std::marker::Send,
+        F: FnMut(u8) + Send + 'static,
     {
+        let pressed = Arc::clone(&self.pressed);
+
+        let mut dev = self.base.lock().unwrap();
         NoteOnBuilder {
-            device: &mut self.base.lock().unwrap(),
+            device: &mut dev,
             spec: NoteOn {
                 channel: 0,
                 key_number: self.click_note,
             },
         }
         .bind(move |value| {
-            callback(value);
-        })
+            let was = pressed.fetch_xor(true, Ordering::SeqCst);
+            let is_pressed = !was;
+            if is_pressed {
+                callback(value);
+            }
+        });
     }
 
     fn bind_release<F>(&mut self, mut callback: F)
     where
         F: FnMut(u8) + 'static + std::marker::Send,
     {
-        NoteOffBuilder {
-            device: &mut self.base.lock().unwrap(),
-            spec: NoteOff {
+        let pressed = Arc::clone(&self.pressed);
+
+        let mut dev = self.base.lock().unwrap();
+        NoteOnBuilder {
+            device: &mut dev,
+            spec: NoteOn {
                 channel: 0,
                 key_number: self.click_note,
             },
         }
         .bind(move |value| {
-            callback(value);
+            let is_pressed = pressed.load(Ordering::SeqCst);
+            if !is_pressed {
+                callback(value);
+            }
         })
     }
 
@@ -1386,6 +1413,7 @@ impl V1mBuilder {
         for i in 0..self.num_channels {
             let mut e = Encoder {
                 base: self.main_midi.clone(),
+                pressed: Arc::new(AtomicBool::new(false)),
                 knob_cc: 0x10 + i as u8,
                 click_note: 0x20 + i as u8,
                 led_cc: 0x30 + i as u8,
@@ -1513,8 +1541,8 @@ impl V1mBuilder {
         };
         let upstream_press = upstream.clone();
         b.bind_press(move |velocity| match velocity {
-            0 => upstream_press.send(UpstreamMsg::GlobalPress).unwrap(),
-            127 => upstream_press.send(UpstreamMsg::GlobalRelease).unwrap(),
+            0 => upstream_press.send(UpstreamMsg::GlobalRelease).unwrap(),
+            127 => upstream_press.send(UpstreamMsg::GlobalPress).unwrap(),
             _ => panic!("Unexpected global button velocity: {}", velocity),
         });
         // MIDITracks view
@@ -1525,9 +1553,33 @@ impl V1mBuilder {
         };
         let upstream_press = upstream.clone();
         b.bind_press(move |velocity| match velocity {
-            0 => upstream_press.send(UpstreamMsg::MIDITracksPress).unwrap(),
-            127 => upstream_press.send(UpstreamMsg::MIDITracksRelease).unwrap(),
+            0 => upstream_press.send(UpstreamMsg::MIDITracksRelease).unwrap(),
+            127 => upstream_press.send(UpstreamMsg::MIDITracksPress).unwrap(),
             _ => panic!("Unexpected MIDITracks button velocity: {}", velocity),
+        });
+        // Inputs view
+        let mut b = Button {
+            base: self.main_midi.clone(),
+            channel: Channel::new(0),
+            midi_note: 63,
+        };
+        let upstream_press = upstream.clone();
+        b.bind_press(move |velocity| match velocity {
+            0 => upstream_press.send(UpstreamMsg::InputsRelease).unwrap(),
+            127 => upstream_press.send(UpstreamMsg::InputsPress).unwrap(),
+            _ => panic!("Unexpected Inputs button velocity: {}", velocity),
+        });
+        // Flip
+        let mut b = Button {
+            base: self.main_midi.clone(),
+            channel: Channel::new(0),
+            midi_note: 0x32,
+        };
+        let upstream_press = upstream.clone();
+        b.bind_press(move |velocity| match velocity {
+            0 => upstream_press.send(UpstreamMsg::FlipRelease).unwrap(),
+            127 => upstream_press.send(UpstreamMsg::FlipPress).unwrap(),
+            _ => panic!("Unexpected Flip button velocity: {}", velocity),
         });
 
         self.main_midi.lock().unwrap().run();
@@ -1680,6 +1732,9 @@ mod tests {
 
     #[test]
     fn test_encoder_center_mode_center_const() {
-        assert_eq!(map_to_encoder_ring(0.0), ENCODER_CENTER_MODE_CENTER);
+        assert_eq!(
+            map_to_encoder_ring_from_center(0.0),
+            ENCODER_CENTER_MODE_CENTER
+        );
     }
 }
