@@ -113,12 +113,7 @@ pub struct EncoderTurnCCW {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct EncoderPressMsg {
-    pub idx: i32,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct EncoderReleaseMsg {
+pub struct EncoderClickMsg {
     pub idx: i32,
 }
 
@@ -374,8 +369,7 @@ pub enum UpstreamMsg {
     MasterFader(MasterFaderMsg),
     EncoderTurnInc(EncoderTurnCW),
     EncoderTurnDec(EncoderTurnCCW),
-    EncoderPress(EncoderPressMsg),
-    EncoderRelease(EncoderReleaseMsg),
+    EncoderClick(EncoderClickMsg),
     MutePress(MutePress),
     MuteRelease(MuteRelease),
     SoloPress(SoloPress),
@@ -552,7 +546,6 @@ impl Set<i32> for Fader {
 
 pub struct Encoder {
     base: Arc<Mutex<MidiDevice>>,
-    pressed: Arc<AtomicBool>,
     knob_cc: u8,
     click_note: u8,
     led_cc: u8,
@@ -575,49 +568,20 @@ impl Encoder {
         })
     }
 
-    fn bind_press<F>(&mut self, mut callback: F)
+    fn bind_click<F>(&mut self, mut callback: F)
     where
         F: FnMut(u8) + Send + 'static,
     {
-        let pressed = Arc::clone(&self.pressed);
-
-        let mut dev = self.base.lock().unwrap();
         NoteOnBuilder {
-            device: &mut dev,
+            device: &mut self.base.lock().unwrap(),
             spec: NoteOn {
                 channel: 0,
                 key_number: self.click_note,
             },
         }
         .bind(move |value| {
-            let was = pressed.fetch_xor(true, Ordering::SeqCst);
-            let is_pressed = !was;
-            if is_pressed {
-                callback(value);
-            }
+            callback(value);
         });
-    }
-
-    fn bind_release<F>(&mut self, mut callback: F)
-    where
-        F: FnMut(u8) + 'static + std::marker::Send,
-    {
-        let pressed = Arc::clone(&self.pressed);
-
-        let mut dev = self.base.lock().unwrap();
-        NoteOnBuilder {
-            device: &mut dev,
-            spec: NoteOn {
-                channel: 0,
-                key_number: self.click_note,
-            },
-        }
-        .bind(move |value| {
-            let is_pressed = pressed.load(Ordering::SeqCst);
-            if !is_pressed {
-                callback(value);
-            }
-        })
     }
 
     fn set(&mut self, mode: EncoderRingMode, val: u8) -> Result<(), MidiError> {
@@ -1413,7 +1377,6 @@ impl V1mBuilder {
         for i in 0..self.num_channels {
             let mut e = Encoder {
                 base: self.main_midi.clone(),
-                pressed: Arc::new(AtomicBool::new(false)),
                 knob_cc: 0x10 + i as u8,
                 click_note: 0x20 + i as u8,
                 led_cc: 0x30 + i as u8,
@@ -1437,15 +1400,9 @@ impl V1mBuilder {
                 _ => println!("HERE: Unexpected encoder turn value: {}\n", value),
             });
             let upstream_press = upstream.clone();
-            e.bind_press(move |_value| {
+            e.bind_click(move |_value| {
                 upstream_press
-                    .send(UpstreamMsg::from(EncoderPressMsg { idx: i as i32 }))
-                    .unwrap();
-            });
-            let upstream_release = upstream.clone();
-            e.bind_release(move |_value| {
-                upstream_release
-                    .send(EncoderReleaseMsg { idx: i as i32 }.into())
+                    .send(UpstreamMsg::from(EncoderClickMsg { idx: i as i32 }))
                     .unwrap();
             });
             encoders.push(e);
