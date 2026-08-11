@@ -8,7 +8,7 @@ use crate::modes::mode_manager::{
 };
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
-use crate::modes::reaper_channel_strip_widgets::Widget;
+use crate::modes::reaper_channel_strip_widgets::{Dirty, Widget};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
 use crate::track::track;
 
@@ -34,8 +34,8 @@ struct Widgets {
 impl Widgets {
     fn new() -> Self {
         Widgets {
-            hp_filter: widgets::HpfWidget::new(),
-            low_freq: widgets::LowFreqWidget::new(),
+            hp_filter: widgets::HpfWidget::new(0),
+            low_freq: widgets::LowFreqWidget::new(1),
             // low_gain: widgets::Widget::new(),
             // lm_freq: widgets::Widget::new(),
             // lm_gain: widgets::Widget::new(),
@@ -57,6 +57,21 @@ impl Widgets {
         match idx {
             0 => &mut self.hp_filter,
             1 => &mut self.low_freq,
+            // FIXME: temp until we have more widgets implemented
+            2 => &mut self.hp_filter,
+            3 => &mut self.low_freq,
+            4 => &mut self.hp_filter,
+            5 => &mut self.low_freq,
+            6 => &mut self.hp_filter,
+            7 => &mut self.low_freq,
+            8 => &mut self.hp_filter,
+            9 => &mut self.low_freq,
+            10 => &mut self.hp_filter,
+            11 => &mut self.low_freq,
+            12 => &mut self.hp_filter,
+            13 => &mut self.low_freq,
+            14 => &mut self.hp_filter,
+            15 => &mut self.low_freq,
             // 2 => &mut self.low_gain,
             // 3 => &mut self.lm_freq,
             // 4 => &mut self.lm_gain,
@@ -144,9 +159,7 @@ pub struct ChannelStripMode {
     selected_track_guid: Uuid,
 
     widgets: Widgets,
-    scribble_line_1_dirty: bool,
-    scribble_line_2_dirty: bool,
-    color_dirty: bool,
+    dirty: widgets::Dirty,
 }
 
 impl ChannelStripMode {
@@ -156,9 +169,10 @@ impl ChannelStripMode {
             routers: HashMap::new(),
             widgets: Widgets::new(),
             selected_track_guid,
-            scribble_line_1_dirty: false,
-            scribble_line_2_dirty: false,
-            color_dirty: false,
+            dirty: widgets::Dirty::default()
+                | widgets::Dirty::LINE1
+                | widgets::Dirty::LINE2
+                | widgets::Dirty::COLOR,
         }
     }
 
@@ -169,6 +183,58 @@ impl ChannelStripMode {
 }
 
 impl ModeHandler for ChannelStripMode {
+    fn on_tick(&mut self, io: &mut dyn DownstreamIo) -> ModeAction {
+        if self.dirty.intersects(Dirty::LINE1) {
+            let mut msgs = vec![];
+            for (i, w) in self.widgets.iter().enumerate() {
+                msgs.push(
+                    v1m::TopScribbleStripLine1TextMsg {
+                        idx: i as i32,
+                        text: w.line1_text(),
+                    }
+                    .into(),
+                );
+            }
+            io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripBatch(msgs));
+        }
+        if self.dirty.intersects(Dirty::LINE2) {
+            let mut msgs = vec![];
+            for (i, w) in self.widgets.iter().enumerate() {
+                msgs.push(
+                    v1m::TopScribbleStripLine2TextMsg {
+                        idx: i as i32,
+                        text: w.line2_text(),
+                    }
+                    .into(),
+                );
+            }
+            io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripBatch(msgs));
+        }
+        if self.dirty.intersects(Dirty::COLOR) {
+            let mut msgs = vec![];
+            for (i, w) in self.widgets.iter().enumerate() {
+                msgs.push(
+                    v1m::TopScribbleStripColorMsg {
+                        idx: i as i32,
+                        color: v1m::Color {
+                            r: w.color().red,
+                            g: w.color().green,
+                            b: w.color().blue,
+                        },
+                    }
+                    .into(),
+                );
+            }
+            io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripBatch(msgs));
+        }
+        self.dirty = widgets::Dirty::default();
+        ModeAction::None
+    }
+
+    fn next_wake_deadline(&self) -> Option<std::time::Instant> {
+        Some(std::time::Instant::now() + std::time::Duration::from_millis(50))
+    }
+
     fn handle_msg_from_upstream(
         &mut self,
         msg: track::TrackMsg,
@@ -232,56 +298,79 @@ impl ModeHandler for ChannelStripMode {
             //
             // FIXME: Shifts are placeholders on v1m, since we don't have a native shfit button.
             // Replace with something else (Master/Assign?)
-            v1m::UpstreamMsg::ShiftPress => {
+            v1m::UpstreamMsg::FlipPress => {
+                println!("Got flip press");
                 for w in self.widgets.iter_mut() {
                     w.set_mode(widgets::ModeEvent::ShiftPress);
                 }
-                self.scribble_line_1_dirty = true;
-                self.scribble_line_2_dirty = true;
                 // TODO: should we just assume color needs to change?
+                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
                 ModeAction::None
             }
-            v1m::UpstreamMsg::ShiftRelease => {
+            v1m::UpstreamMsg::FlipRelease => {
+                println!("Got flip release");
                 for w in self.widgets.iter_mut() {
                     w.set_mode(widgets::ModeEvent::ShiftRelease);
                 }
-                self.scribble_line_1_dirty = true;
-                self.scribble_line_2_dirty = true;
+                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
                 // TODO: should we just assume color needs to change?
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderPress(msg) => {
+                println!("Got encoder press for idx {}", msg.idx);
                 self.widgets
                     .at_index(msg.idx as usize)
                     .set_mode(widgets::ModeEvent::EncoderPress);
-                self.scribble_line_1_dirty = true;
-                self.scribble_line_2_dirty = true;
+                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
                 // TODO: should we just assume color needs to change?
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderRelease(msg) => {
+                println!("Got encoder release for idx {}", msg.idx);
                 self.widgets
                     .at_index(msg.idx as usize)
                     .set_mode(widgets::ModeEvent::EncoderRelease);
-                self.scribble_line_1_dirty = true;
-                self.scribble_line_2_dirty = true;
+                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
                 // TODO: should we just assume color needs to change?
                 ModeAction::None
             }
+            // TODO: we can probably collapse these into each other for simplicity/legibility
             v1m::UpstreamMsg::EncoderTurnInc(msg) => {
-                self.widgets
+                let outcome = self
+                    .widgets
                     .at_index(msg.idx as usize)
                     .handle_encoder_event(widgets::EncoderEvent::EncoderTurn(
                         widgets::EncoderTurn::Inc { accel: msg.accel },
                     ));
+                self.dirty |= outcome.dirty;
+                // TODO: this needs to go through the router
+                // outcome
+                //     .upstream_msgs
+                //     .into_iter()
+                //     .for_each(|m| io.send_to_reaper(m));
+                outcome
+                    .downstream_msgs
+                    .into_iter()
+                    .for_each(|m| io.send_to_v1m(m));
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnDec(msg) => {
-                self.widgets
+                let outcome = self
+                    .widgets
                     .at_index(msg.idx as usize)
                     .handle_encoder_event(widgets::EncoderEvent::EncoderTurn(
                         widgets::EncoderTurn::Dec { accel: msg.accel },
                     ));
+                self.dirty |= outcome.dirty;
+                // TODO: this needs to go through the router
+                // outcome
+                //     .upstream_msgs
+                //     .into_iter()
+                //     .for_each(|m| io.send_to_reaper(m));
+                outcome
+                    .downstream_msgs
+                    .into_iter()
+                    .for_each(|m| io.send_to_v1m(m));
                 ModeAction::None
             }
             // Messages switch modes

@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 use crate::midi::v1m;
 use crate::modes::color;
 use crate::modes::color::RgbColor;
@@ -136,19 +138,84 @@ pub enum ModeEvent {
     ShiftRelease,
 }
 
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Dirty: u8 {
+        const NONE = 0b000;
+        const LINE1 = 0b001;
+        const LINE2 = 0b010;
+        const COLOR = 0b100;
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HandledUpstreamOutcome {
+    pub downstream_msgs: Vec<v1m::DownstreamMsg>,
+    pub dirty: Dirty,
+}
+
+impl Default for HandledUpstreamOutcome {
+    fn default() -> Self {
+        Self {
+            downstream_msgs: vec![],
+            dirty: Dirty::default(),
+        }
+    }
+}
+
+impl HandledUpstreamOutcome {
+    fn downstream(mut self, msg: v1m::DownstreamMsg) -> Self {
+        self.downstream_msgs.push(msg);
+        self
+    }
+    fn dirty(mut self, d: Dirty) -> Self {
+        self.dirty |= d;
+        self
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HandledEncoderOutcome {
+    pub upstream_msgs: Vec<ChannelStripMsg>,
+    pub downstream_msgs: Vec<v1m::DownstreamMsg>,
+    pub dirty: Dirty,
+}
+
+impl Default for HandledEncoderOutcome {
+    fn default() -> Self {
+        Self {
+            upstream_msgs: vec![],
+            downstream_msgs: vec![],
+            dirty: Dirty::default(),
+        }
+    }
+}
+
+impl HandledEncoderOutcome {
+    fn upstream(mut self, msg: ChannelStripMsg) -> Self {
+        self.upstream_msgs.push(msg);
+        self
+    }
+    fn downstream(mut self, msg: v1m::DownstreamMsg) -> Self {
+        self.downstream_msgs.push(msg);
+        self
+    }
+    fn dirty(mut self, d: Dirty) -> Self {
+        self.dirty |= d;
+        self
+    }
+}
+
 pub trait Widget {
-    fn new() -> Self
+    fn new(hw_idx: usize) -> Self
     where
         Self: Sized;
 
     fn view(&self) -> &WidgetView;
     fn view_mut(&mut self) -> &mut WidgetView;
 
-    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> Vec<v1m::DownstreamMsg>;
-    fn handle_encoder_event(
-        &mut self,
-        event: EncoderEvent,
-    ) -> (Vec<ChannelStripMsg>, Vec<v1m::DownstreamMsg>);
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome;
+    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome;
 
     fn is_clickable(&self) -> bool {
         false
@@ -256,6 +323,7 @@ fn apply_accel(prev: f32, turn: EncoderTurn) -> f32 {
 // ----------------------
 
 pub struct HpfWidget {
+    hw_idx: usize,
     view: WidgetView,
     freq: f32,
     slope: f32,
@@ -269,9 +337,10 @@ impl Widget for HpfWidget {
     fn view_mut(&mut self) -> &mut WidgetView {
         &mut self.view
     }
-    fn new() -> Self {
+    fn new(hw_idx: usize) -> Self {
         const DEFAULT_EQ_TYPE: EqType = EqType::Digital;
         Self {
+            hw_idx,
             view: WidgetView {
                 mode: WidgetMode::Default,
                 line1_default: "HP Filter".to_string(),
@@ -287,41 +356,69 @@ impl Widget for HpfWidget {
         }
     }
 
-    fn handle_encoder_event(
-        &mut self,
-        event: EncoderEvent,
-    ) -> (Vec<ChannelStripMsg>, Vec<v1m::DownstreamMsg>) {
+    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome {
         match (self.view.mode, event) {
             (WidgetMode::Default, EncoderEvent::EncoderTurn(turn)) => {
                 self.freq = apply_accel(self.freq, turn);
-                (vec![ChannelStripMsg::HpfFreq(self.freq)], vec![])
+                HandledEncoderOutcome::default()
+                    .upstream(ChannelStripMsg::HpfFreq(self.freq))
+                    .downstream(
+                        v1m::EncoderRingMsg {
+                            idx: self.hw_idx as i32,
+                            mode: v1m::EncoderRingMode::FromLeft,
+                            val: v1m::map_to_encoder_ring_from_left(self.freq),
+                        }
+                        .into(),
+                    )
+                    .dirty(Dirty::LINE1)
             }
             (WidgetMode::Press, EncoderEvent::EncoderTurn(turn)) => {
                 self.slope = apply_accel(self.slope, turn);
-                (vec![ChannelStripMsg::HpfSlope(self.slope)], vec![])
+                HandledEncoderOutcome::default()
+                    .upstream(ChannelStripMsg::HpfSlope(self.slope))
+                    .dirty(Dirty::LINE2)
             }
             (WidgetMode::Shift, EncoderEvent::EncoderTurn(turn)) => {
                 self.eq_type = self.eq_type.step(turn);
                 self.view.line2_shift = self.eq_type.as_str().to_string();
-                (vec![ChannelStripMsg::EqType(self.eq_type)], vec![])
+                HandledEncoderOutcome::default()
+                    .upstream(ChannelStripMsg::EqType(self.eq_type))
+                    .dirty(Dirty::LINE2)
             }
-            _ => (vec![], vec![]),
+            _ => HandledEncoderOutcome::default(),
         }
     }
 
-    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> Vec<v1m::DownstreamMsg> {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
-            ChannelStripMsg::HpfFreq(freq) => self.freq = freq,
-            ChannelStripMsg::HpfSlope(slope) => self.slope = slope,
-            ChannelStripMsg::EqType(eq_type) => self.eq_type = eq_type,
-            _ => {}
+            ChannelStripMsg::HpfFreq(freq) => {
+                self.freq = freq;
+                HandledUpstreamOutcome::default()
+                    .dirty(Dirty::LINE1)
+                    .downstream(
+                        v1m::EncoderRingMsg {
+                            idx: self.hw_idx as i32,
+                            mode: v1m::EncoderRingMode::FromLeft,
+                            val: v1m::map_to_encoder_ring_from_left(self.freq),
+                        }
+                        .into(),
+                    )
+            }
+            ChannelStripMsg::HpfSlope(slope) => {
+                self.slope = slope;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+            }
+            ChannelStripMsg::EqType(eq_type) => {
+                self.eq_type = eq_type;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+            }
+            _ => HandledUpstreamOutcome::default(),
         }
-        vec![]
-        // TODO
     }
 }
 
 pub struct LowFreqWidget {
+    hw_idx: usize,
     view: WidgetView,
 
     freq: f32,
@@ -336,8 +433,9 @@ impl Widget for LowFreqWidget {
     fn view_mut(&mut self) -> &mut WidgetView {
         &mut self.view
     }
-    fn new() -> Self {
+    fn new(hw_idx: usize) -> Self {
         Self {
+            hw_idx,
             view: WidgetView {
                 mode: WidgetMode::Default,
                 line1_default: "LowFreq".to_string(),
@@ -353,34 +451,44 @@ impl Widget for LowFreqWidget {
         }
     }
 
-    fn handle_encoder_event(
-        &mut self,
-        event: EncoderEvent,
-    ) -> (Vec<ChannelStripMsg>, Vec<v1m::DownstreamMsg>) {
+    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome {
         match (self.view.mode, event) {
             (WidgetMode::Default, EncoderEvent::EncoderTurn(turn)) => {
                 self.freq = apply_accel(self.freq, turn);
-                (vec![ChannelStripMsg::LowFreq(self.freq)], vec![])
+                HandledEncoderOutcome::default()
+                    .upstream(ChannelStripMsg::LowFreq(self.freq))
+                    .downstream(
+                        v1m::EncoderRingMsg {
+                            idx: self.hw_idx as i32,
+                            mode: v1m::EncoderRingMode::FromLeft,
+                            val: v1m::map_to_encoder_ring_from_left(self.freq),
+                        }
+                        .into(),
+                    )
+                    .dirty(Dirty::LINE1)
             }
             (WidgetMode::Press, EncoderEvent::EncoderTurn(turn)) => {
                 self.q = apply_accel(self.q, turn);
-                (vec![ChannelStripMsg::LowSlope(self.q)], vec![])
+                HandledEncoderOutcome::default()
+                    .upstream(ChannelStripMsg::LowSlope(self.q))
+                    .dirty(Dirty::LINE2)
             }
             (WidgetMode::Shift, EncoderEvent::EncoderTurn(turn)) => {
                 self.band_mode = self.band_mode.step(turn);
                 self.view.line2_shift = self.band_mode.as_str().to_string();
-                (vec![ChannelStripMsg::LowBandMode(self.band_mode)], vec![])
+                HandledEncoderOutcome::default()
+                    .upstream(ChannelStripMsg::LowBandMode(self.band_mode))
+                    .dirty(Dirty::LINE2)
             }
-            _ => (vec![], vec![]),
+            _ => HandledEncoderOutcome::default(),
         }
     }
 
-    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> Vec<v1m::DownstreamMsg> {
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
             // TODO:
-            _ => {}
+            _ => HandledUpstreamOutcome::default(),
         }
-        vec![]
         // TODO
     }
 
