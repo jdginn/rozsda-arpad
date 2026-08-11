@@ -1,6 +1,5 @@
-use bitflags::bitflags;
-
 use crate::midi::v1m;
+use crate::midi::v1m::EncoderRingMode::{FromCenter, FromLeft, Point, Width};
 use crate::modes::color;
 use crate::modes::color::RgbColor;
 use crate::modes::reaper_channel_strip_router::{
@@ -112,7 +111,7 @@ use crate::modes::reaper_channel_strip_router::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WidgetMode {
     Disabled,
-    Default,
+    Normal,
     Press,
     Shift,
     ShiftPress,
@@ -122,20 +121,6 @@ pub enum WidgetMode {
 pub enum EncoderTurn {
     Inc { accel: u8 },
     Dec { accel: u8 },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EncoderEvent {
-    EncoderTurn(EncoderTurn),
-    Click,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ModeEvent {
-    EncoderPress,
-    EncoderRelease,
-    ShiftPress,
-    ShiftRelease,
 }
 
 bitflags::bitflags! {
@@ -206,6 +191,19 @@ impl HandledEncoderOutcome {
     }
 }
 
+struct ClickEncoderBehavior {
+    is_pressed: bool,
+}
+
+struct HoldEncoderBehavior {
+    is_pressed: bool,
+}
+
+enum EncoderClickBehavior {
+    Click(ClickEncoderBehavior),
+    Hold(HoldEncoderBehavior),
+}
+
 pub trait Widget {
     fn new(hw_idx: usize) -> Self
     where
@@ -215,25 +213,77 @@ pub trait Widget {
     fn view_mut(&mut self) -> &mut WidgetView;
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome;
-    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome;
 
-    fn is_clickable_default(&self) -> bool {
-        false
+    fn on_click(&mut self) -> Option<HandledEncoderOutcome> {
+        None
     }
 
-    fn is_clickable_shift(&self) -> bool {
-        false
+    fn on_shift_click(&mut self) -> Option<HandledEncoderOutcome> {
+        None
     }
 
-    fn set_mode(&mut self, event: ModeEvent) {
-        if self.is_clickable_default() && event == ModeEvent::EncoderPress {
-            return;
+    fn handle_encoder_click(&mut self) -> Option<HandledEncoderOutcome> {
+        if !self.view().encoder_pressed {
+            let outcome = match self.view().mode {
+                WidgetMode::Disabled => None,
+                WidgetMode::Normal => {
+                    if let Some(outcome) = self.on_click() {
+                        Some(outcome)
+                    } else {
+                        self.view_mut().mode = WidgetMode::Press;
+                        self.view_mut().in_hold_mode = true;
+                        // FIXME
+                        Some(HandledEncoderOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                    }
+                }
+                WidgetMode::Press => None,
+                WidgetMode::Shift => {
+                    if let Some(outcome) = self.on_shift_click() {
+                        Some(outcome)
+                    } else {
+                        self.view_mut().mode = WidgetMode::ShiftPress;
+                        self.view_mut().in_hold_mode = true;
+                        Some(HandledEncoderOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                    }
+                }
+                WidgetMode::ShiftPress => None,
+            };
+            self.view_mut().encoder_pressed = true;
+            outcome
+        } else {
+            let outcome = match self.view().mode {
+                WidgetMode::Disabled => None,
+                WidgetMode::Normal => None,
+                WidgetMode::Press => {
+                    if self.view_mut().in_hold_mode {
+                        self.view_mut().in_hold_mode = false;
+                        self.view_mut().mode = WidgetMode::Normal;
+                        Some(HandledEncoderOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                    } else {
+                        None
+                    }
+                }
+                WidgetMode::Shift => None,
+                WidgetMode::ShiftPress => {
+                    if self.view_mut().in_hold_mode {
+                        self.view_mut().in_hold_mode = false;
+                        self.view_mut().mode = WidgetMode::Shift;
+                        Some(HandledEncoderOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                    } else {
+                        None
+                    }
+                }
+            };
+            self.view_mut().encoder_pressed = false;
+            outcome
         }
-        if self.is_clickable_shift() && event == ModeEvent::ShiftPress {
-            return;
-        }
-        self.view_mut().set_mode(event);
     }
+
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        let _ = turn;
+        None
+    }
+
     fn line1_text(&self) -> String {
         self.view().line1_text()
     }
@@ -248,40 +298,114 @@ pub trait Widget {
 pub struct WidgetView {
     mode: WidgetMode,
 
-    line1_default: String,
+    encoder_pressed: bool,
+    in_hold_mode: bool,
+
+    line1_normal: String,
     line1_shift: String,
 
-    line2_default: String,
+    line2_normal: String,
     line2_shift: String,
 
-    color_default: RgbColor,
+    color_normal: RgbColor,
     color_shift: RgbColor,
 }
 
+impl Default for WidgetView {
+    fn default() -> Self {
+        Self {
+            mode: WidgetMode::Normal,
+            encoder_pressed: false,
+            in_hold_mode: false,
+            line1_normal: String::new(),
+            line1_shift: String::new(),
+            line2_normal: String::new(),
+            line2_shift: String::new(),
+            color_normal: RgbColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
+            color_shift: RgbColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
+        }
+    }
+}
+
 impl WidgetView {
-    fn set_mode(&mut self, event: ModeEvent) {
-        self.mode = match (self.mode, event) {
-            (WidgetMode::Disabled, _) => WidgetMode::Disabled,
-            (WidgetMode::Default, ModeEvent::EncoderPress) => WidgetMode::Press,
-            (WidgetMode::Default, ModeEvent::ShiftPress) => WidgetMode::Shift,
-            (WidgetMode::Default, _) => WidgetMode::Default,
-            (WidgetMode::Press, ModeEvent::EncoderRelease) => WidgetMode::Default,
-            (WidgetMode::Press, ModeEvent::ShiftPress) => WidgetMode::ShiftPress,
-            (WidgetMode::Press, _) => WidgetMode::Press,
-            (WidgetMode::Shift, ModeEvent::EncoderPress) => WidgetMode::ShiftPress,
-            (WidgetMode::Shift, ModeEvent::ShiftRelease) => WidgetMode::Default,
-            (WidgetMode::Shift, _) => WidgetMode::Shift,
-            (WidgetMode::ShiftPress, ModeEvent::EncoderRelease) => WidgetMode::Shift,
-            (WidgetMode::ShiftPress, ModeEvent::ShiftRelease) => WidgetMode::Press,
-            (WidgetMode::ShiftPress, _) => WidgetMode::ShiftPress,
+    fn new() -> Self {
+        Self {
+            mode: WidgetMode::Normal,
+            encoder_pressed: false,
+            in_hold_mode: false,
+            line1_normal: String::new(),
+            line1_shift: String::new(),
+            line2_normal: String::new(),
+            line2_shift: String::new(),
+            color_normal: RgbColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
+            color_shift: RgbColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
         }
     }
 
+    fn line1_normal(self, txt: &str) -> Self {
+        Self {
+            line1_normal: txt.to_string(),
+            ..self
+        }
+    }
+
+    fn line1_shift(self, txt: &str) -> Self {
+        Self {
+            line1_shift: txt.to_string(),
+            ..self
+        }
+    }
+
+    fn line2_normal(self, txt: &str) -> Self {
+        Self {
+            line2_normal: txt.to_string(),
+            ..self
+        }
+    }
+
+    fn line2_shift(self, txt: &str) -> Self {
+        Self {
+            line2_shift: txt.to_string(),
+            ..self
+        }
+    }
+
+    fn color_normal(self, color: RgbColor) -> Self {
+        Self {
+            color_normal: color,
+            ..self
+        }
+    }
+
+    fn color_shift(self, color: RgbColor) -> Self {
+        Self {
+            color_shift: color,
+            ..self
+        }
+    }
+
+    // Used at runtime
     fn line1_text(&self) -> String {
         match self.mode {
             WidgetMode::Disabled => String::new(),
-            WidgetMode::Default => self.line1_default.clone(),
-            WidgetMode::Press => self.line1_default.clone(),
+            WidgetMode::Normal => self.line1_normal.clone(),
+            WidgetMode::Press => self.line1_normal.clone(),
             WidgetMode::Shift => self.line1_shift.clone(),
             WidgetMode::ShiftPress => self.line1_shift.clone(),
         }
@@ -290,8 +414,8 @@ impl WidgetView {
     fn line2_text(&self) -> String {
         match self.mode {
             WidgetMode::Disabled => String::new(),
-            WidgetMode::Default => self.line2_default.clone(),
-            WidgetMode::Press => self.line2_default.clone(),
+            WidgetMode::Normal => self.line2_normal.clone(),
+            WidgetMode::Press => self.line2_normal.clone(),
             WidgetMode::Shift => self.line2_shift.clone(),
             WidgetMode::ShiftPress => self.line2_shift.clone(),
         }
@@ -304,8 +428,8 @@ impl WidgetView {
                 green: 0,
                 blue: 0,
             },
-            WidgetMode::Default => self.color_default,
-            WidgetMode::Press => self.color_default,
+            WidgetMode::Normal => self.color_normal,
+            WidgetMode::Press => self.color_normal,
             WidgetMode::Shift => self.color_shift,
             WidgetMode::ShiftPress => self.color_shift,
         }
@@ -344,6 +468,20 @@ fn apply_accel_center(prev: f32, turn: EncoderTurn) -> f32 {
     }
 }
 
+fn encoder_ring_msg(hw_idx: usize, val: f32, mode: v1m::EncoderRingMode) -> v1m::DownstreamMsg {
+    v1m::EncoderRingMsg {
+        idx: hw_idx as i32,
+        mode,
+        val: match mode {
+            v1m::EncoderRingMode::FromLeft => v1m::map_to_encoder_ring_from_left(val),
+            v1m::EncoderRingMode::Point => v1m::map_to_encoder_ring_from_left(val),
+            v1m::EncoderRingMode::Width => v1m::map_to_encoder_ring_from_left(val), //TODO:
+            v1m::EncoderRingMode::FromCenter => v1m::map_to_encoder_ring_from_center(val),
+        },
+    }
+    .into()
+}
+
 // ----------------------
 // Individual Widget implementations
 // ----------------------
@@ -367,51 +505,47 @@ impl Widget for HpfWidget {
         const DEFAULT_EQ_TYPE: EqType = EqType::Digital;
         Self {
             hw_idx,
-            view: WidgetView {
-                mode: WidgetMode::Default,
-                line1_default: "HP Filter".to_string(),
-                line1_shift: "EQ Type".to_string(),
-                line2_default: "".to_string(),
-                line2_shift: DEFAULT_EQ_TYPE.as_str().to_string(),
-                color_default: color::DARK_BROWN,
-                color_shift: color::DARK_BROWN,
-            },
+            view: WidgetView::new()
+                .line1_normal("HP Filter")
+                .line1_shift("EQ Type")
+                .line2_shift(DEFAULT_EQ_TYPE.as_str())
+                .color_normal(color::DARK_BROWN)
+                .color_shift(color::DARK_BROWN),
             freq: 0.1,
             slope: 0.0, // TODO: how do we represent this?
             eq_type: DEFAULT_EQ_TYPE,
         }
     }
 
-    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome {
-        match (self.view.mode, event) {
-            (WidgetMode::Default, EncoderEvent::EncoderTurn(turn)) => {
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal => {
                 self.freq = apply_accel(self.freq, turn);
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::HpfFreq(self.freq))
-                    .downstream(
-                        v1m::EncoderRingMsg {
-                            idx: self.hw_idx as i32,
-                            mode: v1m::EncoderRingMode::FromLeft,
-                            val: v1m::map_to_encoder_ring_from_left(self.freq),
-                        }
-                        .into(),
-                    )
-                    .dirty(Dirty::LINE1)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::HpfFreq(self.freq))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
+                        .dirty(Dirty::LINE1),
+                )
             }
-            (WidgetMode::Press, EncoderEvent::EncoderTurn(turn)) => {
+            WidgetMode::Press => {
                 self.slope = apply_accel(self.slope, turn);
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::HpfSlope(self.slope))
-                    .dirty(Dirty::LINE2)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::HpfSlope(self.slope))
+                        .dirty(Dirty::LINE2),
+                )
             }
-            (WidgetMode::Shift, EncoderEvent::EncoderTurn(turn)) => {
+            WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.eq_type = self.eq_type.step(turn);
                 self.view.line2_shift = self.eq_type.as_str().to_string();
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::EqType(self.eq_type))
-                    .dirty(Dirty::LINE2)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::EqType(self.eq_type))
+                        .dirty(Dirty::LINE2),
+                )
             }
-            _ => HandledEncoderOutcome::default(),
         }
     }
 
@@ -421,14 +555,7 @@ impl Widget for HpfWidget {
                 self.freq = freq;
                 HandledUpstreamOutcome::default()
                     .dirty(Dirty::LINE1)
-                    .downstream(
-                        v1m::EncoderRingMsg {
-                            idx: self.hw_idx as i32,
-                            mode: v1m::EncoderRingMode::FromLeft,
-                            val: v1m::map_to_encoder_ring_from_left(self.freq),
-                        }
-                        .into(),
-                    )
+                    .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
             }
             ChannelStripMsg::HpfSlope(slope) => {
                 self.slope = slope;
@@ -463,51 +590,47 @@ impl Widget for LowFreqWidget {
         const DEFAULT_BAND_MODE: BandMode = BandMode::Shelf;
         Self {
             hw_idx,
-            view: WidgetView {
-                mode: WidgetMode::Default,
-                line1_default: "LowFreq".to_string(),
-                line1_shift: "LowMode".to_string(),
-                line2_default: "".to_string(),
-                line2_shift: DEFAULT_BAND_MODE.as_str().to_string(),
-                color_default: color::BROWN,
-                color_shift: color::BROWN,
-            },
+            view: WidgetView::new()
+                .line1_normal("LowFreq")
+                .line1_shift("LowMode")
+                .line2_shift(DEFAULT_BAND_MODE.as_str())
+                .color_normal(color::BROWN)
+                .color_shift(color::BROWN),
             freq: 0.2,
             q: 0.72,
             band_mode: DEFAULT_BAND_MODE,
         }
     }
 
-    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome {
-        match (self.view.mode, event) {
-            (WidgetMode::Default, EncoderEvent::EncoderTurn(turn)) => {
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal => {
                 self.freq = apply_accel(self.freq, turn);
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::LowFreq(self.freq))
-                    .downstream(
-                        v1m::EncoderRingMsg {
-                            idx: self.hw_idx as i32,
-                            mode: v1m::EncoderRingMode::FromLeft,
-                            val: v1m::map_to_encoder_ring_from_left(self.freq),
-                        }
-                        .into(),
-                    )
-                    .dirty(Dirty::LINE1)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LowFreq(self.freq))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
+                        .dirty(Dirty::LINE1),
+                )
             }
-            (WidgetMode::Press, EncoderEvent::EncoderTurn(turn)) => {
+            WidgetMode::Press => {
                 self.q = apply_accel(self.q, turn);
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::LowSlope(self.q))
-                    .dirty(Dirty::LINE2)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LowSlope(self.q))
+                        .dirty(Dirty::LINE2),
+                )
             }
-            (WidgetMode::Shift, EncoderEvent::EncoderTurn(turn)) => {
+            WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.band_mode = self.band_mode.step(turn);
                 self.view.line2_shift = self.band_mode.as_str().to_string();
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::LowBandMode(self.band_mode))
-                    .dirty(Dirty::LINE2)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LowBandMode(self.band_mode))
+                        .dirty(Dirty::LINE2),
+                )
             }
-            _ => HandledEncoderOutcome::default(),
         }
     }
 
@@ -522,7 +645,7 @@ impl Widget for LowFreqWidget {
     fn line2_text(&self) -> String {
         match self.view.mode {
             WidgetMode::Disabled => String::new(),
-            WidgetMode::Default | WidgetMode::Press => match self.band_mode {
+            WidgetMode::Normal | WidgetMode::Press => match self.band_mode {
                 BandMode::Shelf => format!("{} Q", self.q),
                 BandMode::Bell => "".to_string(),
             },
@@ -539,12 +662,6 @@ pub struct LowGainWidget {
 }
 
 impl Widget for LowGainWidget {
-    fn is_clickable_default(&self) -> bool {
-        true
-    }
-    fn is_clickable_shift(&self) -> bool {
-        true
-    }
     fn view(&self) -> &WidgetView {
         &self.view
     }
@@ -554,50 +671,44 @@ impl Widget for LowGainWidget {
     fn new(hw_idx: usize) -> Self {
         Self {
             hw_idx,
-            view: WidgetView {
-                mode: WidgetMode::Default,
-                line1_default: "LowGain".to_string(),
-                line1_shift: "LowGain".to_string(),
-                line2_default: "zero".to_string(),
-                line2_shift: "zero".to_string(),
-                color_default: color::BROWN,
-                color_shift: color::BROWN,
-            },
+            view: WidgetView::new()
+                .line1_normal("LowGain")
+                .line2_normal("zero")
+                .line1_shift("LowGain")
+                .line2_shift("zero")
+                .color_normal(color::BROWN)
+                .color_shift(color::BROWN),
             gain: 0.0,
         }
     }
 
-    fn handle_encoder_event(&mut self, event: EncoderEvent) -> HandledEncoderOutcome {
-        match (self.view.mode, event) {
-            (WidgetMode::Default | WidgetMode::Shift, EncoderEvent::EncoderTurn(turn)) => {
+    fn on_click(&mut self) -> Option<HandledEncoderOutcome> {
+        self.gain = 0.0;
+        Some(
+            HandledEncoderOutcome::default()
+                .upstream(ChannelStripMsg::LowGain(0.0))
+                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .dirty(Dirty::LINE1),
+        )
+    }
+
+    fn on_shift_click(&mut self) -> Option<HandledEncoderOutcome> {
+        self.on_click()
+    }
+
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal | WidgetMode::Shift => {
                 self.gain = apply_accel_center(self.gain, turn);
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::LowFreq(self.gain))
-                    .downstream(
-                        v1m::EncoderRingMsg {
-                            idx: self.hw_idx as i32,
-                            mode: v1m::EncoderRingMode::FromCenter,
-                            val: v1m::map_to_encoder_ring_from_center(self.gain),
-                        }
-                        .into(),
-                    )
-                    .dirty(Dirty::LINE1)
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LowFreq(self.gain))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
+                        .dirty(Dirty::LINE1),
+                )
             }
-            (_, EncoderEvent::Click) => {
-                println!("CLICK!");
-                self.gain = 0.0;
-                HandledEncoderOutcome::default()
-                    .upstream(ChannelStripMsg::LowGain(0.0))
-                    .downstream(
-                        v1m::EncoderRingMsg {
-                            idx: self.hw_idx as i32,
-                            mode: v1m::EncoderRingMode::FromCenter,
-                            val: v1m::map_to_encoder_ring_from_center(0.0),
-                        }
-                        .into(),
-                    )
-            }
-            _ => HandledEncoderOutcome::default(),
+            _ => None,
         }
     }
 
@@ -607,5 +718,256 @@ impl Widget for LowGainWidget {
             _ => HandledUpstreamOutcome::default(),
         }
         // TODO
+    }
+}
+
+pub struct LMFreqWidget {
+    hw_idx: usize,
+    view: WidgetView,
+
+    freq: f32,
+    q: f32,
+}
+
+impl Widget for LMFreqWidget {
+    fn view(&self) -> &WidgetView {
+        &self.view
+    }
+    fn view_mut(&mut self) -> &mut WidgetView {
+        &mut self.view
+    }
+    fn new(hw_idx: usize) -> Self {
+        Self {
+            hw_idx,
+            view: WidgetView::new()
+                .line1_normal("LMFreq")
+                .line2_normal("Q")
+                .line1_shift("LMFreq")
+                .line2_shift("Q")
+                .color_normal(color::DARK_BLUE)
+                .color_shift(color::DARK_BLUE),
+            freq: 0.5,
+            q: 0.5,
+        }
+    }
+
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal | WidgetMode::Shift => {
+                self.freq = apply_accel(self.freq, turn);
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LmFreq(self.freq))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
+                        .dirty(Dirty::LINE1),
+                )
+            }
+            WidgetMode::Press | WidgetMode::ShiftPress => {
+                self.q = apply_accel(self.q, turn);
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LmQ(self.q))
+                        .dirty(Dirty::LINE2),
+                )
+            }
+        }
+    }
+
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
+        match msg {
+            _ => HandledUpstreamOutcome::default(),
+        }
+    }
+}
+
+pub struct LMGainWidget {
+    hw_idx: usize,
+    view: WidgetView,
+
+    gain: f32,
+}
+
+impl Widget for LMGainWidget {
+    fn view(&self) -> &WidgetView {
+        &self.view
+    }
+    fn view_mut(&mut self) -> &mut WidgetView {
+        &mut self.view
+    }
+    fn new(hw_idx: usize) -> Self {
+        Self {
+            hw_idx,
+            view: WidgetView::new()
+                .line1_normal("LMGain")
+                .line2_normal("zero")
+                .line1_shift("LMGain")
+                .line2_shift("zero")
+                .color_normal(color::DARK_BLUE)
+                .color_shift(color::DARK_BLUE),
+            gain: 0.0,
+        }
+    }
+
+    fn on_click(&mut self) -> Option<HandledEncoderOutcome> {
+        self.gain = 0.0;
+        Some(
+            HandledEncoderOutcome::default()
+                .upstream(ChannelStripMsg::LmGain(0.0))
+                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .dirty(Dirty::LINE1),
+        )
+    }
+
+    fn on_shift_click(&mut self) -> Option<HandledEncoderOutcome> {
+        self.on_click()
+    }
+
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal | WidgetMode::Shift => {
+                self.gain = apply_accel_center(self.gain, turn);
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::LmGain(self.gain))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
+                        .dirty(Dirty::LINE1),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
+        match msg {
+            _ => HandledUpstreamOutcome::default(),
+        }
+    }
+}
+
+pub struct HMGainWidget {
+    hw_idx: usize,
+    view: WidgetView,
+
+    gain: f32,
+}
+
+impl Widget for HMGainWidget {
+    fn view(&self) -> &WidgetView {
+        &self.view
+    }
+    fn view_mut(&mut self) -> &mut WidgetView {
+        &mut self.view
+    }
+    fn new(hw_idx: usize) -> Self {
+        Self {
+            hw_idx,
+            view: WidgetView::new()
+                .line1_normal("HMGain")
+                .line2_normal("zero")
+                .line1_shift("HMGain")
+                .line2_shift("zero")
+                .color_normal(color::GREEN)
+                .color_shift(color::GREEN),
+            gain: 0.0,
+        }
+    }
+
+    fn on_click(&mut self) -> Option<HandledEncoderOutcome> {
+        self.gain = 0.0;
+        Some(
+            HandledEncoderOutcome::default()
+                .upstream(ChannelStripMsg::HmGain(0.0))
+                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .dirty(Dirty::LINE1),
+        )
+    }
+
+    fn on_shift_click(&mut self) -> Option<HandledEncoderOutcome> {
+        self.on_click()
+    }
+
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal | WidgetMode::Shift => {
+                self.gain = apply_accel_center(self.gain, turn);
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::HmGain(self.gain))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
+                        .dirty(Dirty::LINE1),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
+        match msg {
+            _ => HandledUpstreamOutcome::default(),
+        }
+    }
+}
+
+pub struct HMFreqWidget {
+    hw_idx: usize,
+    view: WidgetView,
+
+    freq: f32,
+    q: f32,
+}
+
+impl Widget for HMFreqWidget {
+    fn view(&self) -> &WidgetView {
+        &self.view
+    }
+    fn view_mut(&mut self) -> &mut WidgetView {
+        &mut self.view
+    }
+    fn new(hw_idx: usize) -> Self {
+        Self {
+            hw_idx,
+            view: WidgetView::new()
+                .line1_normal("Hi Freq")
+                .line2_normal("Q")
+                .line1_shift("Hi Mode")
+                .line2_shift("Q")
+                .color_normal(color::RED)
+                .color_shift(color::RED),
+            freq: 0.5,
+            q: 0.5,
+        }
+    }
+
+    fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledEncoderOutcome> {
+        match self.view.mode {
+            //TODO:
+            WidgetMode::Disabled => None,
+            WidgetMode::Normal | WidgetMode::Shift => {
+                self.freq = apply_accel(self.freq, turn);
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::HmFreq(self.freq))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
+                        .dirty(Dirty::LINE1),
+                )
+            }
+            WidgetMode::Press | WidgetMode::ShiftPress => {
+                self.q = apply_accel(self.q, turn);
+                Some(
+                    HandledEncoderOutcome::default()
+                        .upstream(ChannelStripMsg::HmQ(self.q))
+                        .dirty(Dirty::LINE2),
+                )
+            }
+        }
+    }
+
+    fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
+        match msg {
+            _ => HandledUpstreamOutcome::default(),
+        }
     }
 }

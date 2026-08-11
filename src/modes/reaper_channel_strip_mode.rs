@@ -327,7 +327,7 @@ impl ModeHandler for ChannelStripMode {
                 // TODO: should we just assume color needs to change?
                 ModeAction::None
             }
-            v1m::UpstreamMsg::EncoderPress(msg) => {
+            v1m::UpstreamMsg::EncoderClick(msg) => {
                 println!("Got encoder press for idx {}", msg.idx);
                 // TODO: this is a hack!
                 let widget = self.widgets.at_index(msg.idx as usize);
