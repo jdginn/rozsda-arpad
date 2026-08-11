@@ -531,7 +531,7 @@ fn test_send_state_reflects_latest_value_when_moved() {
     assert_downstream_encoder_ring_led_msg!(
         &to_v1m_rx,
         send_idx_1,
-        v1m::map_to_encoder_ring(pan_1)
+        v1m::map_to_encoder_ring_from_center(pan_1)
     );
 
     // Remap to different channel - old mapping should be cleared
@@ -562,7 +562,7 @@ fn test_send_state_reflects_latest_value_when_moved() {
     assert_downstream_encoder_ring_led_msg!(
         &to_v1m_rx,
         send_idx_2,
-        v1m::map_to_encoder_ring(pan_1)
+        v1m::map_to_encoder_ring_from_center(pan_1)
     );
 
     // Verify the send can be found via find_hw_channel
@@ -605,7 +605,7 @@ fn test_send_state_reflects_latest_value_when_moved() {
     assert_downstream_encoder_ring_led_msg!(
         &to_v1m_rx,
         send_idx_2,
-        v1m::map_to_encoder_ring(pan_2)
+        v1m::map_to_encoder_ring_from_center(pan_2)
     );
 }
 
@@ -665,7 +665,7 @@ fn test_send_state_reflects_latest_value_new_send_replaces_old_send_at_index() {
     assert_downstream_encoder_ring_led_msg!(
         &to_v1m_rx,
         send_idx_1,
-        v1m::map_to_encoder_ring(pan_1)
+        v1m::map_to_encoder_ring_from_center(pan_1)
     );
 
     // Map new send to this index
@@ -734,7 +734,7 @@ fn test_send_state_reflects_latest_value_new_send_replaces_old_send_at_index() {
     assert_downstream_encoder_ring_led_msg!(
         &to_v1m_rx,
         send_idx_1,
-        v1m::map_to_encoder_ring(pan_2)
+        v1m::map_to_encoder_ring_from_center(pan_2)
     );
 }
 

@@ -15,7 +15,7 @@ use crate::track::track;
 struct Widgets {
     hp_filter: widgets::HpfWidget,
     low_freq: widgets::LowFreqWidget,
-    // low_gain: widgets::LowGainWidget,
+    low_gain: widgets::LowGainWidget,
     // lm_freq: widgets::LmFreqWidget,
     // lm_gain: widgets::LmGainWidget,
     // hm_freq: widgets::HmFreqWidget,
@@ -36,7 +36,7 @@ impl Widgets {
         Widgets {
             hp_filter: widgets::HpfWidget::new(0),
             low_freq: widgets::LowFreqWidget::new(1),
-            // low_gain: widgets::Widget::new(),
+            low_gain: widgets::Widget::new(2),
             // lm_freq: widgets::Widget::new(),
             // lm_gain: widgets::Widget::new(),
             // hm_freq: widgets::Widget::new(),
@@ -57,8 +57,8 @@ impl Widgets {
         match idx {
             0 => &mut self.hp_filter,
             1 => &mut self.low_freq,
+            2 => &mut self.low_gain,
             // FIXME: temp until we have more widgets implemented
-            2 => &mut self.hp_filter,
             3 => &mut self.low_freq,
             4 => &mut self.hp_filter,
             5 => &mut self.low_freq,
@@ -72,7 +72,6 @@ impl Widgets {
             13 => &mut self.low_freq,
             14 => &mut self.hp_filter,
             15 => &mut self.low_freq,
-            // 2 => &mut self.low_gain,
             // 3 => &mut self.lm_freq,
             // 4 => &mut self.lm_gain,
             // 5 => &mut self.hm_freq,
@@ -94,18 +93,30 @@ impl Widgets {
         let Widgets {
             hp_filter,
             low_freq,
+            low_gain,
         } = self;
 
-        [hp_filter as &mut dyn Widget, low_freq as &mut dyn Widget].into_iter()
+        [
+            hp_filter as &mut dyn Widget,
+            low_freq as &mut dyn Widget,
+            low_gain as &mut dyn Widget,
+        ]
+        .into_iter()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &dyn Widget> {
         let Widgets {
             hp_filter,
             low_freq,
+            low_gain,
         } = self;
 
-        [hp_filter as &dyn Widget, low_freq as &dyn Widget].into_iter()
+        [
+            hp_filter as &dyn Widget,
+            low_freq as &dyn Widget,
+            low_gain as &dyn Widget,
+        ]
+        .into_iter()
     }
 }
 //
@@ -318,11 +329,16 @@ impl ModeHandler for ChannelStripMode {
             }
             v1m::UpstreamMsg::EncoderPress(msg) => {
                 println!("Got encoder press for idx {}", msg.idx);
-                self.widgets
-                    .at_index(msg.idx as usize)
-                    .set_mode(widgets::ModeEvent::EncoderPress);
-                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
+                // TODO: this is a hack!
+                let widget = self.widgets.at_index(msg.idx as usize);
+                widget.set_mode(widgets::ModeEvent::EncoderPress);
+                let outcome = widget.handle_encoder_event(widgets::EncoderEvent::Click);
                 // TODO: should we just assume color needs to change?
+                self.dirty |= Dirty::LINE1 | Dirty::LINE2 | outcome.dirty;
+                outcome
+                    .downstream_msgs
+                    .into_iter()
+                    .for_each(|m| io.send_to_v1m(m));
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderRelease(msg) => {
