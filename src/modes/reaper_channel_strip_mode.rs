@@ -192,6 +192,7 @@ impl ChannelStripMode {
         outcome: widgets::HandledDownstreamOutcome,
         io: &mut dyn DownstreamIo,
     ) {
+        println!("Applying downstream outcome: {:?}", outcome);
         if let Some(snapshot) = outcome.snapshot {
             for w in self.widgets.iter_mut() {
                 if let Some(o) = w.handle_snapshot(&snapshot) {
@@ -207,11 +208,17 @@ impl ChannelStripMode {
                 }
             }
         }
+        self.dirty |= outcome.dirty;
+        for m in outcome.downstream_msgs {
+            println!("Sending downstream msg: {:?}", m);
+            io.send_to_v1m(m);
+        }
     }
 }
 
 impl ModeHandler for ChannelStripMode {
     fn on_tick(&mut self, io: &mut dyn DownstreamIo) -> ModeAction {
+        println!("Entering on_tick with dirty: {:?}", self.dirty);
         if self.dirty.intersects(Dirty::LINE1) {
             let mut msgs = vec![];
             for (i, w) in self.widgets.iter().enumerate() {
@@ -321,11 +328,13 @@ impl ModeHandler for ChannelStripMode {
         msg: v1m::UpstreamMsg,
         io: &mut dyn DownstreamIo,
     ) -> ModeAction {
+        println!("ChannelStripMode received msg from downstream: {:?}", msg);
         match msg {
             // Messages that touch widgets
             v1m::UpstreamMsg::FlipPress => {
                 let mut outcomes = Vec::new();
                 for w in self.widgets.iter_mut() {
+                    println!("In widget for FipPress");
                     if let Some(outcome) = w.handle_shift_press() {
                         outcomes.push(outcome);
                     }
@@ -347,6 +356,7 @@ impl ModeHandler for ChannelStripMode {
                 }
                 ModeAction::None
             }
+            // TODO: add banking for 8 widgets at a time
             v1m::UpstreamMsg::EncoderClick(msg) => {
                 let widget = self.widgets.at_index(msg.idx as usize);
                 if let Some(outcome) = widget.handle_encoder_click() {

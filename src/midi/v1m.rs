@@ -880,12 +880,21 @@ impl Set<Vec<TopScribbleStripMsg>> for TopScribbleStrips {
         for msg in value {
             match msg {
                 TopScribbleStripMsg::Line1Text(msg) => {
+                    if msg.idx > 7 {
+                        continue;
+                    }
                     self.line_1[msg.idx as usize] = msg.text;
                 }
                 TopScribbleStripMsg::Line2Text(msg) => {
+                    if msg.idx > 7 {
+                        continue;
+                    }
                     self.line_2[msg.idx as usize] = msg.text;
                 }
                 TopScribbleStripMsg::BackgroundColor(msg) => {
+                    if msg.idx > 7 {
+                        continue;
+                    }
                     self.background_color[msg.idx as usize] = msg.color;
                 }
             }

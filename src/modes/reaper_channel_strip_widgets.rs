@@ -504,6 +504,9 @@ fn encoder_ring_msg(hw_idx: usize, val: f32, mode: v1m::EncoderRingMode) -> v1m:
     .into()
 }
 
+// TODO: IMPORTANT: for Disabled mode, clicking encoder should instantiate the widget and set to
+// normal.
+
 // ----------------------
 // Individual Widget implementations
 // ----------------------
