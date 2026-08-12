@@ -347,7 +347,7 @@ impl ModeHandler for ReaperTrackSendsMode {
             v1m::UpstreamMsg::InputsPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
                     // TODO: is there something smarter to do here?
-                    offset: 1,
+                    offset: 0,
                     selected_track_guid: self.selected_track_guid,
                 })
             }

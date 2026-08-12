@@ -176,7 +176,7 @@ impl ModeHandler for ReaperVolumePanMode {
             v1m::UpstreamMsg::InputsPress => {
                 if let Some(guid) = self.selected_track_guid {
                     ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
-                        offset: self.core.offset(),
+                        offset: 0,
                         selected_track_guid: guid,
                     })
                 } else {

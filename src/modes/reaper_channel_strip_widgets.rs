@@ -217,11 +217,17 @@ pub trait Widget {
             WidgetMode::Disabled => None,
             WidgetMode::Normal => {
                 self.view_mut().mode = WidgetMode::Shift;
-                Some(HandledDownstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                Some(
+                    HandledDownstreamOutcome::default()
+                        .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR),
+                )
             }
             WidgetMode::Press => {
                 self.view_mut().mode = WidgetMode::ShiftPress;
-                Some(HandledDownstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                Some(
+                    HandledDownstreamOutcome::default()
+                        .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR),
+                )
             }
             WidgetMode::Shift => None,
             WidgetMode::ShiftPress => None,
@@ -235,11 +241,17 @@ pub trait Widget {
             WidgetMode::Press => None,
             WidgetMode::Shift => {
                 self.view_mut().mode = WidgetMode::Normal;
-                Some(HandledDownstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                Some(
+                    HandledDownstreamOutcome::default()
+                        .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR),
+                )
             }
             WidgetMode::ShiftPress => {
                 self.view_mut().mode = WidgetMode::Press;
-                Some(HandledDownstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2))
+                Some(
+                    HandledDownstreamOutcome::default()
+                        .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR),
+                )
             }
         }
     }
@@ -1558,13 +1570,15 @@ impl Widget for CompTypeWidget {
         &mut self.view
     }
     fn new(hw_idx: usize) -> Self {
+        const DEFAULT_COMP1_BYPASS: CompBypass = CompBypass::IN;
+        const DEFAULT_COMP2_BYPASS: CompBypass = CompBypass::OUT;
         Self {
             hw_idx,
             view: WidgetView::new()
                 .line1_normal(DEFAULT_COMP1_TYPE.as_str())
-                .line2_normal(DEFAULT_COMP1_TYPE.as_str())
+                .line2_normal(DEFAULT_COMP1_BYPASS.as_str())
                 .line1_shift(DEFAULT_COMP2_TYPE.as_str())
-                .line2_shift(DEFAULT_COMP2_TYPE.as_str())
+                .line2_shift(DEFAULT_COMP2_BYPASS.as_str())
                 .color_normal(COMP1_COLOR)
                 .color_shift(COMP2_COLOR),
             comp1_type: DEFAULT_COMP1_TYPE,

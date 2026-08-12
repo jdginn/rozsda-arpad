@@ -3,12 +3,13 @@
 pub fn compact_to_7_bytes(input: &str) -> Vec<u8> {
     const VOWELS: &[u8] = b"aeiouAEIOU";
     const SEPARATORS: &[u8] = b" _.,-";
+    const KEEP: &[u8] = b"<>";
     const NUMBERS: &[u8] = b"0123456789";
 
     // 1. Filter to ASCII alphanumerics + recognized separators
     let cleaned: Vec<u8> = input
         .bytes()
-        .filter(|b| b.is_ascii_alphanumeric() || SEPARATORS.contains(b))
+        .filter(|b| b.is_ascii_alphanumeric() || SEPARATORS.contains(b) || KEEP.contains(b))
         .collect();
 
     if cleaned.is_empty() {

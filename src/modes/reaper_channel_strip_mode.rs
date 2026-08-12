@@ -160,6 +160,8 @@ impl Widgets {
 
 pub struct ChannelStripMode {
     core: VolumeFadersCore,
+    num_channels: usize,
+    channel_offset: usize,
 
     routers: HashMap<Uuid, ChannelStripRouter>,
     selected_track_guid: Uuid,
@@ -172,6 +174,8 @@ impl ChannelStripMode {
     pub fn new(num_channels: usize, channel_offset: usize, selected_track_guid: Uuid) -> Self {
         ChannelStripMode {
             core: VolumeFadersCore::new(num_channels, channel_offset),
+            num_channels,
+            channel_offset,
             routers: HashMap::new(),
             widgets: Widgets::new(),
             selected_track_guid,
@@ -192,7 +196,6 @@ impl ChannelStripMode {
         outcome: widgets::HandledDownstreamOutcome,
         io: &mut dyn DownstreamIo,
     ) {
-        println!("Applying downstream outcome: {:?}", outcome);
         if let Some(snapshot) = outcome.snapshot {
             for w in self.widgets.iter_mut() {
                 if let Some(o) = w.handle_snapshot(&snapshot) {
@@ -210,7 +213,6 @@ impl ChannelStripMode {
         }
         self.dirty |= outcome.dirty;
         for m in outcome.downstream_msgs {
-            println!("Sending downstream msg: {:?}", m);
             io.send_to_v1m(m);
         }
     }
@@ -218,13 +220,18 @@ impl ChannelStripMode {
 
 impl ModeHandler for ChannelStripMode {
     fn on_tick(&mut self, io: &mut dyn DownstreamIo) -> ModeAction {
-        println!("Entering on_tick with dirty: {:?}", self.dirty);
         if self.dirty.intersects(Dirty::LINE1) {
             let mut msgs = vec![];
             for (i, w) in self.widgets.iter().enumerate() {
+                if i < self.channel_offset {
+                    continue;
+                }
+                if i > self.channel_offset + self.num_channels {
+                    break;
+                }
                 msgs.push(
                     v1m::TopScribbleStripLine1TextMsg {
-                        idx: i as i32,
+                        idx: (i - self.channel_offset) as i32,
                         text: w.line1_text(),
                     }
                     .into(),
@@ -235,9 +242,15 @@ impl ModeHandler for ChannelStripMode {
         if self.dirty.intersects(Dirty::LINE2) {
             let mut msgs = vec![];
             for (i, w) in self.widgets.iter().enumerate() {
+                if i < self.channel_offset {
+                    continue;
+                }
+                if i > self.channel_offset + self.num_channels {
+                    break;
+                }
                 msgs.push(
                     v1m::TopScribbleStripLine2TextMsg {
-                        idx: i as i32,
+                        idx: (i - self.channel_offset) as i32,
                         text: w.line2_text(),
                     }
                     .into(),
@@ -248,9 +261,15 @@ impl ModeHandler for ChannelStripMode {
         if self.dirty.intersects(Dirty::COLOR) {
             let mut msgs = vec![];
             for (i, w) in self.widgets.iter().enumerate() {
+                if i < self.channel_offset {
+                    continue;
+                }
+                if i > self.channel_offset + self.num_channels {
+                    break;
+                }
                 msgs.push(
                     v1m::TopScribbleStripColorMsg {
-                        idx: i as i32,
+                        idx: (i - self.channel_offset) as i32,
                         color: v1m::Color {
                             r: w.color().red,
                             g: w.color().green,
@@ -288,7 +307,7 @@ impl ModeHandler for ChannelStripMode {
                     track::DataMsg::Selected(msg) => {
                         if msg.selected {
                             ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
-                                offset: self.core.offset(),
+                                offset: 1,
                                 selected_track_guid: msg.track_guid,
                             })
                         } else {
@@ -328,13 +347,11 @@ impl ModeHandler for ChannelStripMode {
         msg: v1m::UpstreamMsg,
         io: &mut dyn DownstreamIo,
     ) -> ModeAction {
-        println!("ChannelStripMode received msg from downstream: {:?}", msg);
         match msg {
             // Messages that touch widgets
             v1m::UpstreamMsg::FlipPress => {
                 let mut outcomes = Vec::new();
                 for w in self.widgets.iter_mut() {
-                    println!("In widget for FipPress");
                     if let Some(outcome) = w.handle_shift_press() {
                         outcomes.push(outcome);
                     }
@@ -358,14 +375,18 @@ impl ModeHandler for ChannelStripMode {
             }
             // TODO: add banking for 8 widgets at a time
             v1m::UpstreamMsg::EncoderClick(msg) => {
-                let widget = self.widgets.at_index(msg.idx as usize);
+                let widget = self
+                    .widgets
+                    .at_index(msg.idx as usize + self.channel_offset);
                 if let Some(outcome) = widget.handle_encoder_click() {
                     self.apply_downstream_outcome(outcome, io);
                 }
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnInc(msg) => {
-                let widget = self.widgets.at_index(msg.idx as usize);
+                let widget = self
+                    .widgets
+                    .at_index(msg.idx as usize + self.channel_offset);
                 if let Some(outcome) =
                     widget.handle_encoder_turn(widgets::EncoderTurn::Inc { accel: msg.accel })
                 {
@@ -374,7 +395,9 @@ impl ModeHandler for ChannelStripMode {
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnDec(msg) => {
-                let widget = self.widgets.at_index(msg.idx as usize);
+                let widget = self
+                    .widgets
+                    .at_index(msg.idx as usize + self.channel_offset);
                 if let Some(outcome) =
                     widget.handle_encoder_turn(widgets::EncoderTurn::Dec { accel: msg.accel })
                 {
@@ -382,6 +405,21 @@ impl ModeHandler for ChannelStripMode {
                 }
                 ModeAction::None
             }
+            // Banking
+            v1m::UpstreamMsg::BankLeft8 => {
+                if self.channel_offset > 7 {
+                    self.channel_offset -= 8;
+                    self.dirty |= Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR;
+                }
+                ModeAction::None
+            }
+
+            v1m::UpstreamMsg::BankRight8 => {
+                self.channel_offset += 8;
+                self.dirty |= Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR;
+                ModeAction::None
+            }
+
             // Messages switch modes
             v1m::UpstreamMsg::GlobalPress => {
                 ModeAction::Transition(TransitionRequest::ToReaperVolumePan {

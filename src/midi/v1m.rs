@@ -379,6 +379,12 @@ pub enum UpstreamMsg {
     SelectPress(SelectPress),
     SelectRelease(SelectRelease),
 
+    // Banking
+    BankLeft8,
+    BankRight8,
+    BankLeft1,
+    BankRight1,
+
     // Encoder assign messages
     TrackPress,
     TrackRelease,
@@ -1499,6 +1505,27 @@ impl V1mBuilder {
         let bottom_scribbles = BottomScribbleStrips::new(self.main_midi.clone(), self.num_channels);
         let seven_segment_display = SevenSegmentDisplay::new(self.main_midi.clone(), 7);
         let touchscreen = TouchScreen::new(self.config_midi.clone());
+        // Banking
+        let mut b = Button {
+            base: self.main_midi.clone(),
+            channel: Channel::new(0),
+            midi_note: 0x2E,
+        };
+        let upstream_press = upstream.clone();
+        b.bind_press(move |velocity| match velocity {
+            127 => upstream_press.send(UpstreamMsg::BankLeft8).unwrap(),
+            _ => (),
+        });
+        let mut b = Button {
+            base: self.main_midi.clone(),
+            channel: Channel::new(0),
+            midi_note: 0x2F,
+        };
+        let upstream_press = upstream.clone();
+        b.bind_press(move |velocity| match velocity {
+            127 => upstream_press.send(UpstreamMsg::BankRight8).unwrap(),
+            _ => (),
+        });
         // Global view
         let mut b = Button {
             base: self.main_midi.clone(),
