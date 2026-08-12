@@ -1045,7 +1045,7 @@ impl Widget for HiFreqWidget {
         match self.view.mode {
             //TODO:
             WidgetMode::Disabled => None,
-            WidgetMode::Normal | WidgetMode::Shift => {
+            WidgetMode::Normal | WidgetMode::Press => {
                 self.freq = apply_accel(self.freq, turn);
                 match self.band_mode {
                     BandMode::Shelf => self.view.line2_normal = format!("{} Q", self.q),
@@ -1058,7 +1058,7 @@ impl Widget for HiFreqWidget {
                         .dirty(Dirty::LINE1),
                 )
             }
-            WidgetMode::Press | WidgetMode::ShiftPress => {
+            WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.band_mode = self.band_mode.step(turn);
                 Some(
                     HandledDownstreamOutcome::default()
@@ -1099,10 +1099,10 @@ impl Widget for HiGainWidget {
             view: WidgetView::new()
                 .line1_normal("Hi Gain")
                 .line2_normal("zero")
-                .line1_shift("Hi Gain")
+                .line1_shift("HiSides")
                 .line2_shift("zero")
                 .color_normal(color::RED)
-                .color_shift(color::RED),
+                .color_shift(color::PINK),
             gain: 0.0,
             sides_gain: 0.0,
             band_mode: BandMode::Bell,
@@ -1156,7 +1156,7 @@ impl Widget for HiGainWidget {
                 Some(
                     HandledDownstreamOutcome::default()
                         .upstream(ChannelStripMsg::HighGain(self.gain))
-                        .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
+                        .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
             }
@@ -1205,8 +1205,8 @@ impl Widget for EqPosWidget {
             view: WidgetView::new()
                 .line1_normal(DEFAULT_EQ_POS.as_str())
                 .line2_normal(DEFAULT_EQ_IN.as_str())
-                .line1_shift(DEFAULT_COMP_ORDER.as_str())
-                .line2_shift("CmpOrdr")
+                .line1_shift("CmpOrdr")
+                .line2_shift(DEFAULT_COMP_ORDER.as_str())
                 .color_normal(color::BLACK)
                 .color_shift(color::BLACK),
             eq_pos: DEFAULT_EQ_POS,
@@ -1242,11 +1242,11 @@ impl Widget for EqPosWidget {
             }
             WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.comp_order = self.comp_order.step(turn);
-                self.view.line1_shift = self.comp_order.as_str().to_string();
+                self.view.line2_shift = self.comp_order.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
                         .upstream(ChannelStripMsg::CompOrder(self.comp_order))
-                        .dirty(Dirty::LINE1),
+                        .dirty(Dirty::LINE2),
                 )
             }
         }
@@ -1663,13 +1663,15 @@ impl Widget for SatWidget {
         &mut self.view
     }
     fn new(hw_idx: usize) -> Self {
+        const DEFAULT_SAT_TYPE: SaturationType = SaturationType::Tape;
+        const DEFAULT_SAT_IN: SaturationBypass = SaturationBypass::IN;
         Self {
             hw_idx,
             view: WidgetView::new()
-                .line1_normal("Sat Drive")
-                .line2_normal("Sat Type")
-                .line1_shift("Sat Drive")
-                .line2_shift("Sat Type")
+                .line1_normal("Saturation")
+                .line2_normal(DEFAULT_SAT_TYPE.as_str())
+                .line1_shift("Saturation")
+                .line2_shift(DEFAULT_SAT_IN.as_str())
                 .color_normal(color::ORANGE)
                 .color_shift(color::ORANGE),
             sat_drive: 0.5,
@@ -1677,7 +1679,7 @@ impl Widget for SatWidget {
             sat_type: SaturationType::Tape,
         }
     }
-    fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
+    fn on_shift_click(&mut self) -> Option<HandledDownstreamOutcome> {
         self.sat_in.next();
         self.view.line2_normal = self.sat_in.as_str().to_string();
         Some(match self.sat_in {
@@ -1701,7 +1703,7 @@ impl Widget for SatWidget {
                         .dirty(Dirty::LINE1),
                 )
             }
-            WidgetMode::Press | WidgetMode::ShiftPress => {
+            WidgetMode::Press => {
                 self.sat_type = self.sat_type.step(turn);
                 self.view.line2_normal = self.sat_type.as_str().to_string();
                 Some(
@@ -1710,6 +1712,7 @@ impl Widget for SatWidget {
                         .dirty(Dirty::LINE2),
                 )
             }
+            WidgetMode::ShiftPress => None,
         }
     }
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {

@@ -213,7 +213,14 @@ impl ChannelStripMode {
         }
         self.dirty |= outcome.dirty;
         for m in outcome.downstream_msgs {
-            io.send_to_v1m(m);
+            match m {
+                v1m::DownstreamMsg::EncoderRingLED(msg) => {
+                    let mut new_msg = msg;
+                    new_msg.idx -= self.channel_offset as i32;
+                    io.send_to_v1m(new_msg.into());
+                }
+                _ => io.send_to_v1m(m),
+            }
         }
     }
 }
