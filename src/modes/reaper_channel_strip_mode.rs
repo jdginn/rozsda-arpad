@@ -16,19 +16,19 @@ struct Widgets {
     hp_filter: widgets::HpfWidget,
     low_freq: widgets::LowFreqWidget,
     low_gain: widgets::LowGainWidget,
-    // lm_freq: widgets::LmFreqWidget,
-    // lm_gain: widgets::LmGainWidget,
-    // hm_freq: widgets::HmFreqWidget,
-    // hm_gain: widgets::HmGainWidget,
-    // high_freq: widgets::HighFreqWidget,
-    // high_gain: widgets::HighGainWidget,
-    // eq_pos: widgets::EqPosWidget,
-    // comp_thresh: widgets::CompThreshWidget,
-    // comp_ratio: widgets::CompRatioWidget,
-    // comp_makeup: widgets::CompMakeupWidget,
-    // comp_type: widgets::CompTypeWidget,
-    // saturation: widgets::SaturationWidget,
-    // gain: widgets::GainWidget,
+    lm_freq: widgets::LMFreqWidget,
+    lm_gain: widgets::LMGainWidget,
+    hm_freq: widgets::HMFreqWidget,
+    hm_gain: widgets::HMGainWidget,
+    high_freq: widgets::HiFreqWidget,
+    high_gain: widgets::HiGainWidget,
+    eq_pos: widgets::EqPosWidget,
+    comp_thresh: widgets::CompThreshWidget,
+    comp_ratio: widgets::CompRatWidget,
+    comp_makeup: widgets::CompMkpWidget,
+    comp_type: widgets::CompTypeWidget,
+    saturation: widgets::SatWidget,
+    gain: widgets::GainWidget,
 }
 
 impl Widgets {
@@ -37,19 +37,19 @@ impl Widgets {
             hp_filter: widgets::HpfWidget::new(0),
             low_freq: widgets::LowFreqWidget::new(1),
             low_gain: widgets::Widget::new(2),
-            // lm_freq: widgets::Widget::new(),
-            // lm_gain: widgets::Widget::new(),
-            // hm_freq: widgets::Widget::new(),
-            // hm_gain: widgets::Widget::new(),
-            // high_freq: widgets::Widget::new(),
-            // high_gain: widgets::Widget::new(),
-            // eq_pos: widgets::Widget::new(),
-            // comp_thresh: widgets::Widget::new(),
-            // comp_ratio: widgets::Widget::new(),
-            // comp_makeup: widgets::Widget::new(),
-            // comp_type: widgets::Widget::new(),
-            // saturation: widgets::Widget::new(),
-            // gain: widgets::Widget::new(),
+            lm_freq: widgets::Widget::new(3),
+            lm_gain: widgets::Widget::new(4),
+            hm_freq: widgets::Widget::new(5),
+            hm_gain: widgets::Widget::new(6),
+            high_freq: widgets::Widget::new(7),
+            high_gain: widgets::Widget::new(8),
+            eq_pos: widgets::Widget::new(9),
+            comp_thresh: widgets::Widget::new(10),
+            comp_ratio: widgets::Widget::new(11),
+            comp_makeup: widgets::Widget::new(12),
+            comp_type: widgets::Widget::new(13),
+            saturation: widgets::Widget::new(14),
+            gain: widgets::Widget::new(15),
         }
     }
 
@@ -58,33 +58,19 @@ impl Widgets {
             0 => &mut self.hp_filter,
             1 => &mut self.low_freq,
             2 => &mut self.low_gain,
-            // FIXME: temp until we have more widgets implemented
-            3 => &mut self.low_freq,
-            4 => &mut self.hp_filter,
-            5 => &mut self.low_freq,
-            6 => &mut self.hp_filter,
-            7 => &mut self.low_freq,
-            8 => &mut self.hp_filter,
-            9 => &mut self.low_freq,
-            10 => &mut self.hp_filter,
-            11 => &mut self.low_freq,
-            12 => &mut self.hp_filter,
-            13 => &mut self.low_freq,
-            14 => &mut self.hp_filter,
-            15 => &mut self.low_freq,
-            // 3 => &mut self.lm_freq,
-            // 4 => &mut self.lm_gain,
-            // 5 => &mut self.hm_freq,
-            // 6 => &mut self.hm_gain,
-            // 7 => &mut self.high_freq,
-            // 8 => &mut self.high_gain,
-            // 9 => &mut self.eq_pos,
-            // 10 => &mut self.comp_thresh,
-            // 11 => &mut self.comp_ratio,
-            // 12 => &mut self.comp_makeup,
-            // 13 => &mut self.comp_type,
-            // 14 => &mut self.saturation,
-            // 15 => &mut self.gain,
+            3 => &mut self.lm_freq,
+            4 => &mut self.lm_gain,
+            5 => &mut self.hm_freq,
+            6 => &mut self.hm_gain,
+            7 => &mut self.high_freq,
+            8 => &mut self.high_gain,
+            9 => &mut self.eq_pos,
+            10 => &mut self.comp_thresh,
+            11 => &mut self.comp_ratio,
+            12 => &mut self.comp_makeup,
+            13 => &mut self.comp_type,
+            14 => &mut self.saturation,
+            15 => &mut self.gain,
             _ => panic!("Invalid widget index: {}", idx),
         }
     }
@@ -94,12 +80,38 @@ impl Widgets {
             hp_filter,
             low_freq,
             low_gain,
+            lm_freq,
+            lm_gain,
+            hm_freq,
+            hm_gain,
+            high_freq,
+            high_gain,
+            eq_pos,
+            comp_thresh,
+            comp_ratio,
+            comp_makeup,
+            comp_type,
+            saturation,
+            gain,
         } = self;
 
         [
             hp_filter as &mut dyn Widget,
             low_freq as &mut dyn Widget,
             low_gain as &mut dyn Widget,
+            lm_freq as &mut dyn Widget,
+            lm_gain as &mut dyn Widget,
+            hm_freq as &mut dyn Widget,
+            hm_gain as &mut dyn Widget,
+            high_freq as &mut dyn Widget,
+            high_gain as &mut dyn Widget,
+            eq_pos as &mut dyn Widget,
+            comp_thresh as &mut dyn Widget,
+            comp_ratio as &mut dyn Widget,
+            comp_makeup as &mut dyn Widget,
+            comp_type as &mut dyn Widget,
+            saturation as &mut dyn Widget,
+            gain as &mut dyn Widget,
         ]
         .into_iter()
     }
@@ -109,59 +121,42 @@ impl Widgets {
             hp_filter,
             low_freq,
             low_gain,
+            lm_freq,
+            lm_gain,
+            hm_freq,
+            hm_gain,
+            high_freq,
+            high_gain,
+            eq_pos,
+            comp_thresh,
+            comp_ratio,
+            comp_makeup,
+            comp_type,
+            saturation,
+            gain,
         } = self;
 
         [
             hp_filter as &dyn Widget,
             low_freq as &dyn Widget,
             low_gain as &dyn Widget,
+            lm_freq as &dyn Widget,
+            lm_gain as &dyn Widget,
+            hm_freq as &dyn Widget,
+            hm_gain as &dyn Widget,
+            high_freq as &dyn Widget,
+            high_gain as &dyn Widget,
+            eq_pos as &dyn Widget,
+            comp_thresh as &dyn Widget,
+            comp_ratio as &dyn Widget,
+            comp_makeup as &dyn Widget,
+            comp_type as &dyn Widget,
+            saturation as &dyn Widget,
+            gain as &dyn Widget,
         ]
         .into_iter()
     }
 }
-//
-//     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) {
-//         self.hp_filter.handle_message_from_upstream(msg);
-//         self.low_freq.handle_message_from_upstream(msg);
-//         self.low_gain.handle_message_from_upstream(msg);
-//         self.lm_freq.handle_message_from_upstream(msg);
-//         self.lm_gain.handle_message_from_upstream(msg);
-//         self.hm_freq.handle_message_from_upstream(msg);
-//         self.hm_gain.handle_message_from_upstream(msg);
-//         self.high_freq.handle_message_from_upstream(msg);
-//         self.high_gain.handle_message_from_upstream(msg);
-//         self.eq_pos.handle_message_from_upstream(msg);
-//         self.comp_thresh.handle_message_from_upstream(msg);
-//         self.comp_ratio.handle_message_from_upstream(msg);
-//         self.comp_makeup.handle_message_from_upstream(msg);
-//         self.comp_type.handle_message_from_upstream(msg);
-//         self.saturation.handle_message_from_upstream(msg);
-//         self.gain.handle_message_from_upstream(msg);
-//     }
-//
-//     fn handle_message_from_downstream(&mut self, msg: v1m::UpstreamMsg) -> Vec<ChannelStripMsg> {
-//         let mut responses = Vec::new();
-//
-//         responses.extend(self.hp_filter.handle_message_from_downstream(msg));
-//         responses.extend(self.low_freq.handle_message_from_downstream(msg));
-//         responses.extend(self.low_gain.handle_message_from_downstream(msg));
-//         responses.extend(self.lm_freq.handle_message_from_downstream(msg));
-//         responses.extend(self.lm_gain.handle_message_from_downstream(msg));
-//         responses.extend(self.hm_freq.handle_message_from_downstream(msg));
-//         responses.extend(self.hm_gain.handle_message_from_downstream(msg));
-//         responses.extend(self.high_freq.handle_message_from_downstream(msg));
-//         responses.extend(self.high_gain.handle_message_from_downstream(msg));
-//         responses.extend(self.eq_pos.handle_message_from_downstream(msg));
-//         responses.extend(self.comp_thresh.handle_message_from_downstream(msg));
-//         responses.extend(self.comp_ratio.handle_message_from_downstream(msg));
-//         responses.extend(self.comp_makeup.handle_message_from_downstream(msg));
-//         responses.extend(self.comp_type.handle_message_from_downstream(msg));
-//         responses.extend(self.saturation.handle_message_from_downstream(msg));
-//         responses.extend(self.gain.handle_message_from_downstream(msg));
-//
-//         responses
-//     }
-// }
 
 pub struct ChannelStripMode {
     core: VolumeFadersCore,
@@ -190,6 +185,28 @@ impl ChannelStripMode {
     pub fn init(mut self, io: &mut dyn UpstreamIo) -> Self {
         self.core = self.core.init(io);
         self
+    }
+
+    fn apply_downstream_outcome(
+        &mut self,
+        outcome: widgets::HandledDownstreamOutcome,
+        io: &mut dyn DownstreamIo,
+    ) {
+        if let Some(snapshot) = outcome.snapshot {
+            for w in self.widgets.iter_mut() {
+                if let Some(o) = w.handle_snapshot(&snapshot) {
+                    self.dirty |= o.dirty;
+                    for m in o.downstream_msgs {
+                        io.send_to_v1m(m);
+                    }
+                    // TODO: this needs to go through the router
+                    // outcome
+                    //     .upstream_msgs
+                    //     .into_iter()
+                    //     .for_each(|m| io.send_to_reaper(m));
+                }
+            }
+        }
     }
 }
 
@@ -306,87 +323,53 @@ impl ModeHandler for ChannelStripMode {
     ) -> ModeAction {
         match msg {
             // Messages that touch widgets
-            //
-            // FIXME: Shifts are placeholders on v1m, since we don't have a native shfit button.
-            // Replace with something else (Master/Assign?)
             v1m::UpstreamMsg::FlipPress => {
-                println!("Got flip press");
+                let mut outcomes = Vec::new();
                 for w in self.widgets.iter_mut() {
-                    w.set_mode(widgets::ModeEvent::ShiftPress);
+                    if let Some(outcome) = w.handle_shift_press() {
+                        outcomes.push(outcome);
+                    }
                 }
-                // TODO: should we just assume color needs to change?
-                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
+                for outcome in outcomes {
+                    self.apply_downstream_outcome(outcome, io);
+                }
                 ModeAction::None
             }
             v1m::UpstreamMsg::FlipRelease => {
-                println!("Got flip release");
+                let mut outcomes = Vec::new();
                 for w in self.widgets.iter_mut() {
-                    w.set_mode(widgets::ModeEvent::ShiftRelease);
+                    if let Some(outcome) = w.handle_shift_release() {
+                        outcomes.push(outcome);
+                    }
                 }
-                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
-                // TODO: should we just assume color needs to change?
+                for outcome in outcomes {
+                    self.apply_downstream_outcome(outcome, io);
+                }
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderClick(msg) => {
-                println!("Got encoder press for idx {}", msg.idx);
-                // TODO: this is a hack!
                 let widget = self.widgets.at_index(msg.idx as usize);
-                widget.set_mode(widgets::ModeEvent::EncoderPress);
-                let outcome = widget.handle_encoder_event(widgets::EncoderEvent::Click);
-                // TODO: should we just assume color needs to change?
-                self.dirty |= Dirty::LINE1 | Dirty::LINE2 | outcome.dirty;
-                outcome
-                    .downstream_msgs
-                    .into_iter()
-                    .for_each(|m| io.send_to_v1m(m));
+                if let Some(outcome) = widget.handle_encoder_click() {
+                    self.apply_downstream_outcome(outcome, io);
+                }
                 ModeAction::None
             }
-            v1m::UpstreamMsg::EncoderRelease(msg) => {
-                println!("Got encoder release for idx {}", msg.idx);
-                self.widgets
-                    .at_index(msg.idx as usize)
-                    .set_mode(widgets::ModeEvent::EncoderRelease);
-                self.dirty |= Dirty::LINE1 | Dirty::LINE2;
-                // TODO: should we just assume color needs to change?
-                ModeAction::None
-            }
-            // TODO: we can probably collapse these into each other for simplicity/legibility
             v1m::UpstreamMsg::EncoderTurnInc(msg) => {
-                let outcome = self
-                    .widgets
-                    .at_index(msg.idx as usize)
-                    .handle_encoder_event(widgets::EncoderEvent::EncoderTurn(
-                        widgets::EncoderTurn::Inc { accel: msg.accel },
-                    ));
-                self.dirty |= outcome.dirty;
-                // TODO: this needs to go through the router
-                // outcome
-                //     .upstream_msgs
-                //     .into_iter()
-                //     .for_each(|m| io.send_to_reaper(m));
-                outcome
-                    .downstream_msgs
-                    .into_iter()
-                    .for_each(|m| io.send_to_v1m(m));
+                let widget = self.widgets.at_index(msg.idx as usize);
+                if let Some(outcome) =
+                    widget.handle_encoder_turn(widgets::EncoderTurn::Inc { accel: msg.accel })
+                {
+                    self.apply_downstream_outcome(outcome, io);
+                }
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnDec(msg) => {
-                let outcome = self
-                    .widgets
-                    .at_index(msg.idx as usize)
-                    .handle_encoder_event(widgets::EncoderEvent::EncoderTurn(
-                        widgets::EncoderTurn::Dec { accel: msg.accel },
-                    ));
-                self.dirty |= outcome.dirty;
-                // TODO: this needs to go through the router
-                // outcome
-                //     .upstream_msgs
-                //     .into_iter()
-                //     .for_each(|m| io.send_to_reaper(m));
-                outcome
-                    .downstream_msgs
-                    .into_iter()
-                    .for_each(|m| io.send_to_v1m(m));
+                let widget = self.widgets.at_index(msg.idx as usize);
+                if let Some(outcome) =
+                    widget.handle_encoder_turn(widgets::EncoderTurn::Dec { accel: msg.accel })
+                {
+                    self.apply_downstream_outcome(outcome, io);
+                }
                 ModeAction::None
             }
             // Messages switch modes

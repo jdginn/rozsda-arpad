@@ -84,9 +84,9 @@ rotary_enum! {
 rotary_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EqPosition {
-        First => "EqFirst",
-        Middle => "EqMiddl",
-        Last => "EqLast",
+        First => "E>C>C>S",
+        Middle => "C>C>E>S",
+        Last => "C>C>S>E",
     }
 }
 
@@ -113,16 +113,16 @@ rotary_enum! {
 rotary_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EqBypass {
-        Engaged => "EqIN",
-        Bypassed => "EqOUT",
+        IN => "EqIN",
+        OUT => "EqOUT",
     }
 }
 
 rotary_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum CompBypass {
-        Engaged => "CompIN",
-        Bypassed => "CompOUT",
+        IN => "CompIN",
+        OUT => "CompOUT",
     }
 }
 
@@ -136,9 +136,9 @@ rotary_enum! {
 
 rotary_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum SatBypass {
-        Engaged => "SatIN",
-        Bypassed => "SatOUT",
+    pub enum SaturationBypass {
+        IN => "SatIN",
+        OUT => "SatOUT",
     }
 }
 
@@ -216,7 +216,7 @@ pub enum ChannelStripMsg {
     Comp2Bypass(Cmp2Bypass),
     Saturation(f32),
     SaturationType(SaturationType),
-    SaturationBypass(SatBypass),
+    SaturationBypass(SaturationBypass),
     Gain(f32),
     Trim(f32),
     InterfaceGain(f32),
