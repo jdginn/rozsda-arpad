@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::midi::v1m;
 use crate::modes::button::Button;
-use crate::modes::mode_manager::{DownstreamIo, UpstreamIo};
+use crate::modes::mode_manager::{DownstreamIo, ToV1m, UpstreamIo};
 use crate::track::track;
 
 // FIXME:
@@ -80,7 +80,7 @@ impl VolumeFadersCore {
         self.channel_offset
     }
 
-    pub fn init(self, io: &mut dyn UpstreamIo) -> Self {
+    pub fn init(self, io: &mut dyn ToV1m) -> Self {
         for i in 0..self.num_channels {
             io.send_to_v1m(
                 v1m::ChannelFaderMsg {
