@@ -328,15 +328,27 @@ impl OscGatedRouter {
     /// dispatch_osc gates messages until their initialization condition is met and then passes
     /// messages through to self.dispatcher.
     pub fn dispatch_osc(&mut self, packet: OscPacket) {
-        let msg = match &packet {
-            OscPacket::Message(msg) => msg,
-            _ => return,
-        };
+        self.dispatch_packet(packet);
+    }
 
+    fn dispatch_packet(&mut self, packet: OscPacket) {
+        match packet {
+            OscPacket::Message(msg) => self.dispatch_message(msg),
+            OscPacket::Bundle(bundle) => {
+                // Preserve sender ordering inside bundle
+                for p in bundle.content {
+                    self.dispatch_packet(p);
+                }
+            }
+        }
+    }
+
+    pub fn dispatch_message(&mut self, msg: OscMessage) {
+        println!("Dispatching message: {:?}", msg);
         let mut hasher = DefaultHasher::new();
         let mut gated = false;
         self.layers.iter_mut().for_each(|layer| {
-            if let Some(res) = layer.initialization_state(msg) {
+            if let Some(res) = layer.initialization_state(&msg) {
                 if let Some(hash) = res.1 {
                     hash.hash(&mut hasher)
                 }
