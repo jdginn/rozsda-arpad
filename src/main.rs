@@ -461,7 +461,7 @@ fn main() {
             let a_send = from_reaper_tx.clone();
             Box::new(
                 ContextGateBuilder::<context_kind::TrackFx>::new()
-                    .add_key_route("/track/{guid}/fx/{fx_idx}/guid")
+                    .add_key_route("/track/{guid}/fx/{fx_idx}/name")
                     .with_initialization_callback(move |ctx, key_messages| {
                         let track_guid = ctx.track_guid;
                         let a_send = a_send.clone();
@@ -501,7 +501,7 @@ fn main() {
                                         )
                                         .unwrap();
                                     println!(
-                                        "Track {} fx {} name initial value: {:?}",
+                                        "Sent FXName for {} fx {} name initial value: {:?}",
                                         track_guid.clone(),
                                         ctx.fx_idx,
                                         fx_name
