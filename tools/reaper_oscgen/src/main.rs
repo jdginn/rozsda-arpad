@@ -318,9 +318,7 @@ fn write_context_struct_types(code: &mut String, routes: &[OscRoute]) {
         .unwrap();
         // Compose capture logic
         let mut capture_fields = String::new();
-        println!("Context parameters: {:?}", ctx.parameters);
         for (i, param) in ctx.parameters.iter().enumerate() {
-            println!("param {} rust_type: {}", param.name, param.typ.as_str());
             match param.typ.as_str() {
                 "i32" => capture_fields.push_str(&format!(
                     "{}: caps[{}].parse().ok()?, ",
@@ -476,12 +474,6 @@ fn write_node_accessor_multi(code: &mut String, route: OscRoute) {
 }
 
 fn write_node_bind_trait(code: &mut String, node: &OscRoute) {
-    println!("Generating Bind trait for node: {}", node.struct_name());
-    println!(
-        "OscRoute {} with access tags: {:?}",
-        node.struct_name(),
-        node.access_tags,
-    );
     code.push_str(&format!("/// {}\n", node.osc_address));
     code.push_str(&format!(
             "impl Bind<{0}Args> for {1} {{\n    fn bind<F>(&mut self, callback: F)\n    where F: FnMut({0}Args) + 'static {{\n",
@@ -625,7 +617,12 @@ fn write_reaper(code: &mut String, routes: Vec<OscRoute>) {
             // TODO: handle multi-param endpoints and don't assume string
             code.push_str(&format!("    {}_endpoints: ", route.accessor_name(),));
             for param in route.params.iter() {
-                code.push_str(&format!("HashMap<{},", rust_type(param.typ.as_str())));
+                // println!("Adding route {} param {}", route.osc_address, param.name);
+                code.push_str(&format!(
+                    "HashMap<{}, /*{}*/",
+                    rust_type(param.typ.as_str()),
+                    param.name
+                ));
             }
             code.push_str(&route.struct_name().to_string());
             for _ in route.params.iter() {
