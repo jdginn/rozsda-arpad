@@ -4,6 +4,10 @@ use uuid::Uuid;
 pub mod rea_eq {
     use super::*;
 
+    pub fn name() -> &'static str {
+        "VST: ReaEQ (Cockos)"
+    }
+
     pub enum Param {
         FreqLowShelf(f32),
         GainLowShelf(f32),

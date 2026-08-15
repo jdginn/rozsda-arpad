@@ -6,6 +6,8 @@ use crate::modes::generated_fx_param as fx;
 use crate::modes::reaper_channel_strip_widgets::EncoderTurn;
 use crate::track::track;
 
+use crate::modes::generated_fx_param::rea_eq;
+
 macro_rules! rotary_enum {
     (
         $(#[$meta:meta])*
@@ -304,6 +306,13 @@ pub struct ChannelStripRouter {
     interface_gain: Option<FXParamIdent>,
 }
 
+// TODO: FIXME: URGENT: need to initialize this when we transition into the new mode and think about
+// barriers, etc. This should work the same as all the other mode transitions, we just need to be sure we process the messages.
+//
+// Actually, I think we don't need to do anything special here since the way barriers work means we
+// will get all the state updates though the "normal" handle_msg_from_upstream "channel", and the
+// way we designed ModeManager should make it all just work.
+
 impl ChannelStripRouter {
     pub fn new(track_guid: Uuid) -> Self {
         ChannelStripRouter {
@@ -358,6 +367,10 @@ impl ChannelStripRouter {
     }
 
     pub fn update_plugin_state(&mut self, plugin_index: i32, plugin_name: &str) {
+        println!(
+            "Updating plugin state for index {}: {}",
+            plugin_index, plugin_name
+        );
         let _lock = self.mux.lock().unwrap();
         if (plugin_index as usize) >= self.plugin_names_by_index.len() {
             self.plugin_names_by_index
@@ -415,12 +428,24 @@ impl ChannelStripRouter {
             .map(|index| index as i32)
     }
 
+    fn get_first_fx_index_string(&self, needle: &str) -> Option<i32> {
+        println!(
+            "Searching for first fx index of {:?} in {:?}",
+            needle, self.plugin_names_by_index,
+        );
+        self.plugin_names_by_index
+            .iter()
+            .position(|haystack| haystack == needle)
+            .map(|index| index as i32)
+    }
+
     pub fn translate_message_from_downstream(
         &self,
         msg: ChannelStripMsg,
     ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
+        println!("translating {:?} from downstream", msg);
         match msg {
-            ChannelStripMsg::LowFreq(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+            ChannelStripMsg::LowFreq(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
                     self.track_guid,
                     fx_index,
@@ -428,7 +453,7 @@ impl ChannelStripRouter {
                 )]),
                 None => Ok(vec![]),
             },
-            ChannelStripMsg::LowGain(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+            ChannelStripMsg::LowGain(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
                     self.track_guid,
                     fx_index,
@@ -436,7 +461,7 @@ impl ChannelStripRouter {
                 )]),
                 None => Ok(vec![]),
             },
-            ChannelStripMsg::LowQ(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+            ChannelStripMsg::LowQ(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
                     self.track_guid,
                     fx_index,
@@ -444,7 +469,7 @@ impl ChannelStripRouter {
                 )]),
                 None => Ok(vec![]),
             },
-            ChannelStripMsg::LmFreq(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+            ChannelStripMsg::LmFreq(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
                     self.track_guid,
                     fx_index,
@@ -452,7 +477,7 @@ impl ChannelStripRouter {
                 )]),
                 None => Ok(vec![]),
             },
-            ChannelStripMsg::LmGain(val) => match self.get_first_fx_index(fx::FX::ReaEQ) {
+            ChannelStripMsg::LmGain(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
                     self.track_guid,
                     fx_index,

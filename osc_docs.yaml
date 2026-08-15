@@ -253,21 +253,6 @@
   comments:
   - Sent by the server to indicate that all currently accumulated state is invalid. Practically,
   - this happens when we open a new Reaper project.
-- osc_address: /track/{track_guid}/fx/{fx_idx}/guid
-  params:
-  - name: track_guid
-    type: uuid
-    description: unique identifier for the track
-  - name: fx_idx
-    type: int
-    description: index of the FX on the track
-  arguments:
-  - name: guid
-    type: uuid
-    description: unique identifier for the FX
-  access_tags:
-  - readable
-  - queryable
 - osc_address: /track/{track_guid}/fx/{fx_idx}/name
   params:
   - name: track_guid
@@ -280,6 +265,21 @@
   - name: name
     type: string
     description: name of the FX
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/guid
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments:
+  - name: guid
+    type: uuid
+    description: unique identifier for the FX
   access_tags:
   - readable
   - queryable
@@ -332,6 +332,67 @@
   access_tags:
   - readable
   - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/value_normalized
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: value_normalized
+    type: float
+    description: normalized value of the parameter
+  access_tags:
+  - readable
+  - writeable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/toggle
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: toggle
+    type: bool
+    description: true if the parameter is a toggle
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/step_sizes
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: normal_step
+    type: float
+    description: normal step size of the parameter
+  - name: small_step
+    type: float
+    description: small step size of the parameter
+  - name: large_step
+    type: float
+    description: large step size of the parameter
+  access_tags:
+  - readable
+  - queryable
 - osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/value
   params:
   - name: track_guid
@@ -349,7 +410,24 @@
     description: value of the parameter
   access_tags:
   - readable
-  - writeable
+  - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/formatted_value
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: formatted_value
+    type: string
+    description: formatted value of the parameter
+  access_tags:
+  - readable
   - queryable
 - osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/min
   params:

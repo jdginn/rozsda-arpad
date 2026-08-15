@@ -431,8 +431,6 @@ impl TrackManager {
                 .unwrap();
         }
         for track in &tracks {
-            println!("Processing sends for track: {}", track.track_guid);
-            println!("Number of sends: {}", track.sends.len());
             for (send_index, send) in track.sends.iter().enumerate() {
                 self.to_downstream
                     .send(
@@ -795,7 +793,6 @@ impl TrackManager {
                             Ok(msg) => {
                                 match DataMsg::try_from(msg.clone()){
                                     Ok(data_msg) =>  {
-                                        println!("Track manager: message from upstream: {:?}", data_msg);
                                         manager.handle_track_data_msg(data_msg.clone());
                                         // Forward message after we process it
                                         manager.to_downstream.send(msg).unwrap();
@@ -805,7 +802,6 @@ impl TrackManager {
                                         manager.to_downstream.send(TrackMsg::Barrier(barrier_msg)).unwrap();
                                     }
                                     Err(TrackMsg::ResetAll) => {
-                                        println!("Track manager: received ResetAll from upstream");
                                         manager.reset();
                                         // Forward message after we process it
                                         manager.to_downstream.send(msg).unwrap();

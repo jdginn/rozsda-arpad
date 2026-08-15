@@ -222,10 +222,6 @@ fn main() {
                     .add_key_route("/track/{guid}/index")
                     .with_initialization_callback(move |ctx, key_messages| {
                         reaper.with_mut(|reaper| {
-                            println!(
-                                "Binding track context for track guid: {:?} with messages: {:?}",
-                                ctx.track_guid, key_messages
-                            );
                             let track_guid = ctx.track_guid;
                             reaper.track_delete(track_guid).bind({
                                 let a_send = a_send.clone();
@@ -406,12 +402,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} send {} guid initial value: {:?}",
-                                        track_guid.clone(),
-                                        send_index,
-                                        send_guid
-                                    )
                                 }
                             });
                             // Track Send Volume
@@ -428,12 +418,6 @@ fn main() {
                                             .into(),
                                         )
                                         .unwrap();
-                                    println!(
-                                        "Track {} send {} volume initial value: {:?}",
-                                        track_guid.clone(),
-                                        send_index,
-                                        send_volume
-                                    )
                                 }
                             });
                             // Track Send Pan
@@ -790,6 +774,14 @@ fn main() {
                             match reaper.track_send_pan(msg.track_guid, msg.send_index).set(generated_osc::TrackSendPanArgs{pan: msg.pan}) {
                                 Ok(_) => {},
                                 Err(e) => println!("Error setting send pan for track {} send {}", msg.track_guid, msg.send_index),
+                            };
+                        })
+                    }
+                    Ok(track::TrackMsg::FXParamValue(msg)) => {
+                        reaper.with_mut(|reaper|{
+                            match reaper.track_fx_param_value_normalized(msg.track_guid, msg.fx_index, msg.param_index).set(generated_osc::TrackFxParamValueNormalizedArgs{value_normalized: msg.value}) {
+                                Ok(_) => {},
+                                Err(e) => println!("Error setting fx param value for track {} fx {} param {}", msg.track_guid, msg.fx_index, msg.param_index),
                             };
                         })
                     }

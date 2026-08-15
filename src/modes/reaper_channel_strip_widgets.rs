@@ -473,11 +473,11 @@ impl WidgetView {
 fn apply_accel(prev: f32, turn: EncoderTurn) -> f32 {
     fn factor(accel: u8) -> f32 {
         match accel {
-            1 => 0.05,
-            2 => 0.1,
-            3 => 0.2,
-            4 => 0.4,
-            _ => 0.4,
+            1 => 0.01,
+            2 => 0.05,
+            3 => 0.1,
+            4 => 0.2,
+            _ => 0.2,
         }
     }
     match turn {
@@ -489,10 +489,10 @@ fn apply_accel(prev: f32, turn: EncoderTurn) -> f32 {
 fn apply_accel_center(prev: f32, turn: EncoderTurn) -> f32 {
     fn factor(accel: u8) -> f32 {
         match accel {
-            1 => 0.05,
-            2 => 0.1,
-            3 => 0.2,
-            4 => 0.4,
+            1 => 0.01,
+            2 => 0.05,
+            3 => 0.1,
+            4 => 0.2,
             _ => 0.4,
         }
     }
@@ -720,11 +720,11 @@ impl Widget for LowGainWidget {
     }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
-        self.gain = 0.0;
+        self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::LowGain(0.0))
-                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .upstream(ChannelStripMsg::LowGain(self.gain))
+                .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                 .dirty(Dirty::LINE1),
         )
     }
@@ -740,7 +740,7 @@ impl Widget for LowGainWidget {
                 self.gain = apply_accel_center(self.gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LowFreq(self.gain))
+                        .upstream(ChannelStripMsg::LowGain(self.gain))
                         .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                         .dirty(Dirty::LINE1),
                 )
@@ -847,11 +847,11 @@ impl Widget for LMGainWidget {
     }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
-        self.gain = 0.0;
+        self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::LmGain(0.0))
-                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .upstream(ChannelStripMsg::LmGain(self.gain))
+                .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                 .dirty(Dirty::LINE1),
         )
     }
@@ -1129,21 +1129,21 @@ impl Widget for HiGainWidget {
     // }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
-        self.gain = 0.0;
+        self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::HighGain(0.0))
-                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .upstream(ChannelStripMsg::HighGain(self.gain))
+                .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                 .dirty(Dirty::LINE1),
         )
     }
 
     fn on_shift_click(&mut self) -> Option<HandledDownstreamOutcome> {
-        self.sides_gain = 0.0;
+        self.sides_gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::HighSidesGain(0.0))
-                .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
+                .upstream(ChannelStripMsg::HighSidesGain(self.sides_gain))
+                .downstream(encoder_ring_msg(self.hw_idx, self.sides_gain, FromCenter))
                 .dirty(Dirty::LINE2),
         )
     }

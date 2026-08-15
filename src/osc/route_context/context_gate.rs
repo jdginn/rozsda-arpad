@@ -88,6 +88,7 @@ impl<K: ContextKindTrait + 'static> ContextGateBuilderTrait for ContextGateBuild
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum InitializationState {
     Uninitialized,
     AlreadyInitialized,

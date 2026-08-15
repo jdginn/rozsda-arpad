@@ -186,8 +186,15 @@ impl ChannelStripMode {
         }
     }
 
-    pub fn init(mut self, io: &mut dyn UpstreamIo) -> Self {
+    pub fn init(mut self, io: &mut dyn DownstreamIo) -> Self {
         self.core = self.core.init(io);
+        // Query full track state from Reaper to get fx info
+        io.send_to_reaper(
+            track::TrackQuery {
+                guid: self.selected_track_guid,
+            }
+            .into(),
+        );
         self
     }
 
@@ -203,11 +210,6 @@ impl ChannelStripMode {
                     for m in o.downstream_msgs {
                         io.send_to_v1m(m);
                     }
-                    // TODO: this needs to go through the router
-                    // outcome
-                    //     .upstream_msgs
-                    //     .into_iter()
-                    //     .for_each(|m| io.send_to_reaper(m));
                 }
             }
         }
@@ -220,6 +222,19 @@ impl ChannelStripMode {
                     io.send_to_v1m(new_msg.into());
                 }
                 _ => io.send_to_v1m(m),
+            }
+        }
+        for m in outcome.upstream_msgs {
+            println!("ChannelStripMode: sending upstream msg: {:?}", m);
+            let translated_messages = self
+                .routers
+                .entry(self.selected_track_guid)
+                .or_insert(ChannelStripRouter::new(self.selected_track_guid))
+                .translate_message_from_downstream(m)
+                .unwrap();
+            for tm in translated_messages {
+                println!("Sending translated message to Reaper: {:?}", tm);
+                io.send_to_reaper(tm);
             }
         }
     }
@@ -303,6 +318,10 @@ impl ModeHandler for ChannelStripMode {
     ) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
+                // println!(
+                //     "ChannelStripMode: received upstream msg: {:?}, selected_track_guid: {:?}",
+                //     msg, self.selected_track_guid
+                // );
                 match msg {
                     // If a new track is selected, initiate a mode transition to make widgets now
                     // point to that new track.
@@ -320,6 +339,14 @@ impl ModeHandler for ChannelStripMode {
                         } else {
                             ModeAction::None
                         }
+                    }
+                    track::DataMsg::FXName(msg) => {
+                        println!("GOT FX NAME MSG: {:?}\n\n\n", msg);
+                        self.routers
+                            .entry(self.selected_track_guid)
+                            .or_insert(ChannelStripRouter::new(self.selected_track_guid))
+                            .update_plugin_state(msg.fx_index, &msg.name);
+                        ModeAction::None
                     }
                     _ => {
                         // First handle the functionality that is not unique to ChannelStripMode
