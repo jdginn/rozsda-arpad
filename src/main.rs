@@ -549,18 +549,15 @@ fn main() {
                                                 .into(),
                                             )
                                             .unwrap();
-                                        println!(
-                                            "Track {} fx {} param {} name initial value: {:?}",
-                                            track_guid.clone(),
-                                            ctx.fx_idx,
-                                            ctx.param_idx,
-                                            fx_param_name
-                                        )
                                     }
                                 });
                             // Track FX Param Value
                             reaper
-                                .track_fx_param_value(track_guid, ctx.fx_idx, ctx.param_idx)
+                                .track_fx_param_value_normalized(
+                                    track_guid,
+                                    ctx.fx_idx,
+                                    ctx.param_idx,
+                                )
                                 .bind({
                                     let a_send = a_send.clone();
                                     move |fx_param_value| {
@@ -570,18 +567,11 @@ fn main() {
                                                     track_guid,
                                                     fx_index: ctx.fx_idx,
                                                     param_index: ctx.param_idx,
-                                                    value: fx_param_value.value,
+                                                    value: fx_param_value.value_normalized,
                                                 }
                                                 .into(),
                                             )
                                             .unwrap();
-                                        println!(
-                                            "Track {} fx {} param {} value initial value: {:?}",
-                                            track_guid.clone(),
-                                            ctx.fx_idx,
-                                            ctx.param_idx,
-                                            fx_param_value
-                                        )
                                     }
                                 });
                             // Track FX Param Min

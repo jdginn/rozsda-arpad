@@ -982,10 +982,6 @@ impl TrackManager {
                 {
                     if let Some(param) = fx.get_param_data(msg.param_index) {
                         param.value = msg.value;
-                        println!(
-                            "Track {} FX {} Param {} value set to {}",
-                            msg.track_guid, msg.fx_index, msg.param_index, msg.value
-                        );
                     }
                 }
             }
@@ -996,10 +992,6 @@ impl TrackManager {
                 {
                     if let Some(param) = fx.get_param_data(msg.param_index) {
                         param.min = msg.min;
-                        println!(
-                            "Track {} FX {} Param {} min set to {}",
-                            msg.track_guid, msg.fx_index, msg.param_index, msg.min
-                        );
                     }
                 }
             }

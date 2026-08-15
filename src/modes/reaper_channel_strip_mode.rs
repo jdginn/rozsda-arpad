@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::midi::v1m;
 use crate::modes::mode_manager::{
-    DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
+    DownstreamIo, ModeAction, ModeHandler, ToV1m, TransitionRequest, UpstreamIo,
 };
 use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
 use crate::modes::reaper_channel_strip_widgets as widgets;
@@ -238,6 +238,24 @@ impl ChannelStripMode {
             }
         }
     }
+
+    fn apply_upstream_outcome(
+        &mut self,
+        outcome: widgets::HandledUpstreamOutcome,
+        io: &mut dyn ToV1m,
+    ) {
+        self.dirty |= outcome.dirty;
+        for m in outcome.downstream_msgs {
+            match m {
+                v1m::DownstreamMsg::EncoderRingLED(msg) => {
+                    let mut new_msg = msg;
+                    new_msg.idx -= self.channel_offset as i32;
+                    io.send_to_v1m(new_msg.into());
+                }
+                _ => io.send_to_v1m(m),
+            }
+        }
+    }
 }
 
 impl ModeHandler for ChannelStripMode {
@@ -341,7 +359,6 @@ impl ModeHandler for ChannelStripMode {
                         }
                     }
                     track::DataMsg::FXName(msg) => {
-                        println!("GOT FX NAME MSG: {:?}\n\n\n", msg);
                         self.routers
                             .entry(self.selected_track_guid)
                             .or_insert(ChannelStripRouter::new(self.selected_track_guid))
@@ -361,8 +378,16 @@ impl ModeHandler for ChannelStripMode {
                         //
                         // ChannelStripMsgs are handled by the widgets themselves
                         if let Ok(translated_msgs) = router.translate_message_from_upstream(msg) {
+                            println!("Translated messages from upstream: {:?}", translated_msgs);
                             for translated_msg in translated_msgs {
-                                // self.widgets.handle_message_from_upstream(translated_msg);
+                                let outcomes = self
+                                    .widgets
+                                    .iter_mut()
+                                    .map(|w| w.handle_message_from_upstream(translated_msg))
+                                    .collect::<Vec<_>>();
+                                outcomes.iter().for_each(|outcome| {
+                                    self.apply_upstream_outcome(outcome.clone(), io)
+                                });
                             }
                         };
                         // Ignore unhandled payloads (e.g., Selected, SendIndex, etc.)

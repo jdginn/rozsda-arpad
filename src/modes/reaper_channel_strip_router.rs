@@ -443,7 +443,6 @@ impl ChannelStripRouter {
         &self,
         msg: ChannelStripMsg,
     ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
-        println!("translating {:?} from downstream", msg);
         match msg {
             ChannelStripMsg::LowFreq(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(

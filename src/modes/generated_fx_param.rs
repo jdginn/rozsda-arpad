@@ -8,6 +8,7 @@ pub mod rea_eq {
         "VST: ReaEQ (Cockos)"
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum Param {
         FreqLowShelf(f32),
         GainLowShelf(f32),

@@ -672,8 +672,21 @@ impl Widget for LowFreqWidget {
     }
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
+        println!("LowFreqWidget: handle_message_from_upstream: {:?}", msg);
         match msg {
-            // TODO:
+            ChannelStripMsg::LowFreq(msg) => {
+                println!("Got LowFreq msg");
+                self.freq = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.freq,
+                    FromLeft,
+                ))
+            }
+            ChannelStripMsg::LowQ(msg) => {
+                self.q = msg;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
         // TODO
@@ -751,10 +764,17 @@ impl Widget for LowGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
-            // TODO:
+            ChannelStripMsg::LowGain(msg) => {
+                println!("Gain: {}", msg);
+                self.gain = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.gain,
+                    FromCenter,
+                ))
+            }
             _ => HandledUpstreamOutcome::default(),
         }
-        // TODO
     }
 }
 
@@ -813,7 +833,27 @@ impl Widget for LMFreqWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::LmFreq(msg) => {
+                self.freq = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.freq,
+                    FromLeft,
+                ))
+            }
+            ChannelStripMsg::LmQ(msg) => {
+                self.q = msg;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+            }
             _ => HandledUpstreamOutcome::default(),
+        }
+    }
+
+    fn line2_text(&self) -> String {
+        match self.view.mode {
+            WidgetMode::Disabled => String::new(),
+            WidgetMode::Normal | WidgetMode::Press => format!("{} Q", self.q),
+            WidgetMode::Shift | WidgetMode::ShiftPress => self.view.line2_shift.clone(),
         }
     }
 }
@@ -878,6 +918,14 @@ impl Widget for LMGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::LmGain(msg) => {
+                self.gain = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.gain,
+                    FromCenter,
+                ))
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -938,7 +986,27 @@ impl Widget for HMFreqWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::HmFreq(msg) => {
+                self.freq = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.freq,
+                    FromLeft,
+                ))
+            }
+            ChannelStripMsg::HmQ(msg) => {
+                self.q = msg;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+            }
             _ => HandledUpstreamOutcome::default(),
+        }
+    }
+
+    fn line2_text(&self) -> String {
+        match self.view.mode {
+            WidgetMode::Disabled => String::new(),
+            WidgetMode::Normal | WidgetMode::Press => format!("{} Q", self.q),
+            WidgetMode::Shift | WidgetMode::ShiftPress => self.view.line2_shift.clone(),
         }
     }
 }
@@ -1003,6 +1071,14 @@ impl Widget for HMGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::HmGain(msg) => {
+                self.gain = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.gain,
+                    FromCenter,
+                ))
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1071,7 +1147,26 @@ impl Widget for HiFreqWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::HighFreq(msg) => {
+                self.freq = msg;
+                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                    self.hw_idx,
+                    self.freq,
+                    FromLeft,
+                ))
+            }
+            ChannelStripMsg::HighQ(msg) => {
+                self.q = msg;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+            }
             _ => HandledUpstreamOutcome::default(),
+        }
+    }
+    fn line2_text(&self) -> String {
+        match self.view.mode {
+            WidgetMode::Disabled => String::new(),
+            WidgetMode::Normal | WidgetMode::Press => format!("{} Q", self.q),
+            WidgetMode::Shift | WidgetMode::ShiftPress => self.view.line2_shift.clone(),
         }
     }
 }
