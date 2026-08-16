@@ -234,7 +234,6 @@ impl ChannelStripMode {
             }
         }
         for m in outcome.upstream_msgs {
-            println!("ChannelStripMode: sending upstream msg: {:?}", m);
             let translated_messages = self
                 .routers
                 .entry(self.selected_track_guid)
@@ -242,7 +241,6 @@ impl ChannelStripMode {
                 .translate_message_from_downstream(m)
                 .unwrap();
             for tm in translated_messages {
-                println!("Sending translated message to Reaper: {:?}", tm);
                 io.send_to_reaper(tm);
             }
         }

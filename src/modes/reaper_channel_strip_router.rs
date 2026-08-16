@@ -318,6 +318,21 @@ impl ChannelStripRouter {
                     Ok(vec![])
                 }
             }
+            track::DataMsg::FXEnabled(msg) => {
+                if let Some(fx_name) = self.plugin_names_by_index.get(msg.fx_index as usize) {
+                    if fx_name == rea_eq::name() && self.track_guid == msg.track_guid {
+                        if msg.enabled {
+                            Ok(vec![ChannelStripMsg::EnableEq(EqType::Digital)])
+                        } else {
+                            Ok(vec![ChannelStripMsg::DisableEq])
+                        }
+                    } else {
+                        Ok(vec![])
+                    }
+                } else {
+                    Ok(vec![])
+                }
+            }
             _ => Ok(vec![]),
         }
     }
@@ -341,6 +356,30 @@ impl ChannelStripRouter {
         msg: ChannelStripMsg,
     ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
         match msg {
+            ChannelStripMsg::EnableEq(eq_type) => match eq_type {
+                EqType::Digital => {
+                    Ok(vec![
+                        track::InstantiateFX {
+                            track_guid: self.track_guid,
+                            fx_index: 0, // TODO:
+                            fx_name: rea_eq::name().to_string(),
+                        }
+                        .into(),
+                    ])
+                }
+                _ => Ok(vec![]),
+            },
+            ChannelStripMsg::DisableEq => match self.get_first_fx_index_string(rea_eq::name()) {
+                Some(fx_index) => Ok(vec![
+                    track::FXEnabled {
+                        track_guid: self.track_guid,
+                        fx_index,
+                        enabled: false,
+                    }
+                    .into(),
+                ]),
+                None => Ok(vec![]),
+            },
             ChannelStripMsg::LowFreq(val) => match self.get_first_fx_index_string(rea_eq::name()) {
                 Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
                     self.track_guid,
