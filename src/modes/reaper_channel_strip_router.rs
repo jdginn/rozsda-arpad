@@ -429,10 +429,6 @@ impl ChannelStripRouter {
     }
 
     fn get_first_fx_index_string(&self, needle: &str) -> Option<i32> {
-        println!(
-            "Searching for first fx index of {:?} in {:?}",
-            needle, self.plugin_names_by_index,
-        );
         self.plugin_names_by_index
             .iter()
             .position(|haystack| haystack == needle)

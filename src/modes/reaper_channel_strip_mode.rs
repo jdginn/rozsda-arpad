@@ -196,10 +196,6 @@ impl ChannelStripMode {
         //     .into(),
         // );
         if let Some(hw_idx) = self.core.find_hw_channel(self.selected_track_guid) {
-            println!(
-                "Found selected track guid {:?} at hw_idx {:?}",
-                self.selected_track_guid, hw_idx
-            );
             io.send_to_v1m(
                 v1m::SelectLEDMsg {
                     idx: hw_idx as i32,
@@ -349,10 +345,6 @@ impl ModeHandler for ChannelStripMode {
     ) -> ModeAction {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
-                // println!(
-                //     "ChannelStripMode: received upstream msg: {:?}, selected_track_guid: {:?}",
-                //     msg, self.selected_track_guid
-                // );
                 match msg {
                     track::DataMsg::Name(msg) => {
                         if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
@@ -517,18 +509,8 @@ impl ModeHandler for ChannelStripMode {
             }
             v1m::UpstreamMsg::InputsPress => ModeAction::None,
             v1m::UpstreamMsg::SelectPress(msg) => {
-                println!(
-                    "SelectPress idx: {:?}, offset: {:?}",
-                    msg.idx,
-                    self.core.offset()
-                );
                 if let Some(guid) = self.core.get_guid_for_hw_channel(msg.idx as usize) {
-                    println!(
-                        "Old guid: {:?}, new guid: {:?}",
-                        self.selected_track_guid, guid
-                    );
                     if guid != self.selected_track_guid {
-                        println!("Inverting selected to reaper");
                         io.send_to_reaper(
                             track::Selected {
                                 track_guid: guid,
@@ -539,7 +521,6 @@ impl ModeHandler for ChannelStripMode {
                         if let Some(old_hw_idx) =
                             self.core.find_hw_channel(self.selected_track_guid)
                         {
-                            println!("Deselecting old guid: {:?}", self.selected_track_guid);
                             io.send_to_v1m(
                                 v1m::SelectLEDMsg {
                                     idx: old_hw_idx as i32,
@@ -555,7 +536,6 @@ impl ModeHandler for ChannelStripMode {
                             }
                             .into(),
                         );
-                        println!("Sending mode transition");
                         return ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
                             offset: 0,
                             selected_track_guid: guid,
