@@ -158,11 +158,11 @@ rotary_enum! {
 pub enum ChannelStripMsg {
     EnableEq(EqType),
     DisableEq,
-    EnableComp1,
+    EnableComp1(CompType),
     DisableComp1,
-    EnableComp2,
+    EnableComp2(CompType),
     DisableComp2,
-    EnableSaturation,
+    EnableSaturation(SaturationType),
     DisableSaturation,
     EnableGain,
     DisableGain,
@@ -472,7 +472,7 @@ impl ChannelStripRouter {
                 )]),
                 None => Ok(vec![]),
             },
-            _ => todo!(),
+            _ => Ok(vec![]),
         }
     }
 }

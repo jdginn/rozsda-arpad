@@ -158,6 +158,8 @@ pub struct ChannelStripSnapshot {
     pub eq_pos: Option<EqPosition>,
     pub low_mode: Option<BandMode>,
     pub high_mode: Option<BandMode>,
+    pub comp1_enabled: Option<bool>,
+    pub comp2_enabled: Option<bool>,
     pub comp1_type: Option<CompType>,
     pub comp2_type: Option<CompType>,
     pub comp_1_sidechain_freq: Option<f32>,
@@ -485,6 +487,10 @@ impl WidgetView {
             color_shift: color,
             ..self
         }
+    }
+
+    fn starting_mode(self, mode: WidgetMode) -> Self {
+        Self { mode, ..self }
     }
 
     // Used at runtime
@@ -1562,7 +1568,8 @@ impl Widget for EqPosWidget {
                 .line1_shift("CmpOrdr")
                 .line2_shift(DEFAULT_COMP_ORDER.as_str())
                 .color_normal(color::BLACK)
-                .color_shift(color::BLACK),
+                .color_shift(color::BLACK)
+                .starting_mode(WidgetMode::Normal),
             eq_pos: DEFAULT_EQ_POS,
             eq_in: DEFAULT_EQ_IN,
             comp_order: DEFAULT_COMP_ORDER,
@@ -1633,6 +1640,8 @@ pub struct CompThreshWidget {
     hw_idx: usize,
     view: WidgetView,
 
+    comp1_enabled: bool,
+    comp2_enabled: bool,
     comp1_thresh: f32,
     comp1_attack: f32,
     comp2_thresh: f32,
@@ -1653,12 +1662,16 @@ impl Widget for CompThreshWidget {
         Self {
             hw_idx,
             view: WidgetView::new()
+                .line1_disabled(DEFAULT_COMP1_TYPE.as_str())
+                .line2_disabled("EblCmp1")
                 .line1_normal("CompThr")
                 .line2_normal("20ms") //TODO:
                 .line1_shift("Cmp2Thr")
                 .line2_shift("20ms") //TODO:
                 .color_normal(COMP1_COLOR)
                 .color_shift(COMP2_COLOR),
+            comp1_enabled: false,
+            comp2_enabled: false,
             comp1_thresh: 0.5,
             comp1_attack: 0.5,
             comp2_thresh: 0.5,
@@ -1668,10 +1681,38 @@ impl Widget for CompThreshWidget {
         }
     }
 
+    fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => {
+                self.comp1_enabled = true;
+                self.view.mode = WidgetMode::Normal;
+                Some(
+                    HandledDownstreamOutcome::default()
+                        .upstream(ChannelStripMsg::EnableComp1(self.comp1_type))
+                        .snapshot(ChannelStripSnapshot {
+                            comp1_enabled: Some(self.comp1_enabled),
+                            ..Default::default()
+                        })
+                        .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR),
+                )
+            }
+            _ => None,
+        }
+    }
+
     fn handle_snapshot(
         &mut self,
         snapshot: &ChannelStripSnapshot,
     ) -> Option<HandledDownstreamOutcome> {
+        if let Some(comp1_enabled) = snapshot.comp1_enabled {
+            self.comp1_enabled = comp1_enabled;
+            if self.view.mode == WidgetMode::Disabled && self.comp1_enabled {
+                self.view.mode = WidgetMode::Normal;
+            }
+        }
+        if let Some(comp2_enabled) = snapshot.comp2_enabled {
+            self.comp2_enabled = comp2_enabled;
+        }
         if let Some(comp1_type) = snapshot.comp1_type {
             self.comp1_type = comp1_type;
         }
@@ -1722,6 +1763,21 @@ impl Widget for CompThreshWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableComp1(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp1 => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            // TODO: need to do something about this but it gets a little tricky
+            ChannelStripMsg::EnableComp2(_) => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp2 => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1770,6 +1826,12 @@ impl Widget for CompRatWidget {
         &mut self,
         snapshot: &ChannelStripSnapshot,
     ) -> Option<HandledDownstreamOutcome> {
+        if let Some(comp1_enabled) = snapshot.comp1_enabled
+            && self.view.mode == WidgetMode::Disabled
+            && comp1_enabled
+        {
+            self.view.mode = WidgetMode::Normal;
+        }
         if let Some(comp1_type) = snapshot.comp1_type {
             self.comp1_type = comp1_type;
         }
@@ -1817,6 +1879,21 @@ impl Widget for CompRatWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableComp1(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp1 => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            // TODO: need to do something about this but it gets a little tricky
+            ChannelStripMsg::EnableComp2(_) => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp2 => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1865,6 +1942,12 @@ impl Widget for CompMkpWidget {
         &mut self,
         snapshot: &ChannelStripSnapshot,
     ) -> Option<HandledDownstreamOutcome> {
+        if let Some(comp1_enabled) = snapshot.comp1_enabled
+            && self.view.mode == WidgetMode::Disabled
+            && comp1_enabled
+        {
+            self.view.mode = WidgetMode::Normal;
+        }
         if let Some(comp1_type) = snapshot.comp1_type {
             self.comp1_type = comp1_type;
         }
@@ -1912,6 +1995,21 @@ impl Widget for CompMkpWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableComp1(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp1 => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            // TODO: need to do something about this but it gets a little tricky
+            ChannelStripMsg::EnableComp2(_) => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp2 => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1958,7 +2056,7 @@ impl Widget for CompTypeWidget {
         self.view.line2_normal = self.comp1_in.as_str().to_string();
         Some(match self.comp1_in {
             CompBypass::IN => HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::EnableComp1)
+                .upstream(ChannelStripMsg::EnableComp1(self.comp1_type))
                 .dirty(Dirty::LINE2),
             CompBypass::OUT => HandledDownstreamOutcome::default()
                 .upstream(ChannelStripMsg::DisableComp1)
@@ -1971,7 +2069,7 @@ impl Widget for CompTypeWidget {
         self.view.line2_shift = self.comp2_in.as_str().to_string();
         Some(match self.comp2_in {
             CompBypass::IN => HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::EnableComp2)
+                .upstream(ChannelStripMsg::EnableComp2(self.comp2_type))
                 .dirty(Dirty::LINE2),
             CompBypass::OUT => HandledDownstreamOutcome::default()
                 .upstream(ChannelStripMsg::DisableComp2)
@@ -2006,6 +2104,21 @@ impl Widget for CompTypeWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableComp1(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp1 => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            // TODO: need to do something about this but it gets a little tricky
+            ChannelStripMsg::EnableComp2(_) => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableComp2 => {
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -2049,7 +2162,7 @@ impl Widget for SatWidget {
         self.view.line2_normal = self.sat_in.as_str().to_string();
         Some(match self.sat_in {
             SaturationBypass::IN => HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::EnableSaturation)
+                .upstream(ChannelStripMsg::EnableSaturation(self.sat_type))
                 .dirty(Dirty::LINE2),
             SaturationBypass::OUT => HandledDownstreamOutcome::default()
                 .upstream(ChannelStripMsg::DisableSaturation)
@@ -2082,6 +2195,14 @@ impl Widget for SatWidget {
     }
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableSaturation(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableSaturation => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -2112,7 +2233,8 @@ impl Widget for GainWidget {
                 .line1_shift("Gain")
                 .line2_shift("Trim")
                 .color_normal(color::BLACK)
-                .color_shift(color::BLACK),
+                .color_shift(color::BLACK)
+                .starting_mode(WidgetMode::Normal),
             gain: 0.5,
             interface_gain: 0.5,
             trim: 0.5,
