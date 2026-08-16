@@ -103,10 +103,6 @@ impl ReaperTrackSendsMode {
 
     pub fn find_hw_channel(&self, guid: Uuid) -> Option<usize> {
         for (hw_channel, &assigned_guid) in self.hw_assignments.iter().enumerate() {
-            println!(
-                "Checking hw_channel {} with assigned_guid {:?}",
-                hw_channel, assigned_guid
-            );
             if let Some(assigned_guid) = assigned_guid {
                 if assigned_guid == guid {
                     return Some(hw_channel);
