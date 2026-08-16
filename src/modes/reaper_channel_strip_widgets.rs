@@ -1250,7 +1250,7 @@ impl Widget for HMGainWidget {
     }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
-        self.gain = 0.0;
+        self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
                 .upstream(ChannelStripMsg::HmGain(0.0))
