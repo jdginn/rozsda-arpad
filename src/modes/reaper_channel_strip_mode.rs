@@ -173,7 +173,7 @@ pub struct ChannelStripMode {
 impl ChannelStripMode {
     pub fn new(num_channels: usize, channel_offset: usize, selected_track_guid: Uuid) -> Self {
         ChannelStripMode {
-            core: VolumeFadersCore::new(num_channels, channel_offset),
+            core: VolumeFadersCore::new(num_channels, 1),
             num_channels,
             channel_offset,
             routers: HashMap::new(),
@@ -189,12 +189,25 @@ impl ChannelStripMode {
     pub fn init(mut self, io: &mut dyn DownstreamIo) -> Self {
         self.core = self.core.init(io);
         // Query full track state from Reaper to get fx info
-        io.send_to_reaper(
-            track::TrackQuery {
-                guid: self.selected_track_guid,
-            }
-            .into(),
-        );
+        // io.send_to_reaper(
+        //     track::TrackQuery {
+        //         guid: self.selected_track_guid,
+        //     }
+        //     .into(),
+        // );
+        if let Some(hw_idx) = self.core.find_hw_channel(self.selected_track_guid) {
+            println!(
+                "Found selected track guid {:?} at hw_idx {:?}",
+                self.selected_track_guid, hw_idx
+            );
+            io.send_to_v1m(
+                v1m::SelectLEDMsg {
+                    idx: hw_idx as i32,
+                    state: v1m::LEDState::On,
+                }
+                .into(),
+            );
+        }
         self
     }
 
@@ -341,22 +354,24 @@ impl ModeHandler for ChannelStripMode {
                 //     msg, self.selected_track_guid
                 // );
                 match msg {
-                    // If a new track is selected, initiate a mode transition to make widgets now
-                    // point to that new track.
-                    //
-                    // TODO: not sure if this is true. Maybe we only want to change what we control
-                    // from the control surface and not chase whatever is selected in Reaper;
-                    // especially since Reaper can have multiple things selected, while the control
-                    // surface is one-hot by design
-                    track::DataMsg::Selected(msg) => {
-                        if msg.selected {
-                            ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
-                                offset: 1,
-                                selected_track_guid: msg.track_guid,
-                            })
-                        } else {
-                            ModeAction::None
+                    track::DataMsg::Name(msg) => {
+                        if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
+                            io.send_to_v1m(
+                                v1m::TopScribbleStripLine1TextMsg {
+                                    idx: hw_channel as i32,
+                                    text: msg.name.clone(),
+                                }
+                                .into(),
+                            );
+                            io.send_to_v1m(
+                                v1m::BottomScribbleStripLine2TextMsg {
+                                    idx: hw_channel as i32,
+                                    text: msg.name,
+                                }
+                                .into(),
+                            );
                         }
+                        ModeAction::None
                     }
                     track::DataMsg::FXName(msg) => {
                         self.routers
@@ -366,7 +381,7 @@ impl ModeHandler for ChannelStripMode {
                         ModeAction::None
                     }
                     _ => {
-                        // First handle the functionality that is not unique to ChannelStripMode
+                        // Handle the functionality that is not unique to ChannelStripMode
                         // (e.g. volume on faders, mute/arm/solo buttons)
                         self.core
                             .handle_msg_from_upstream(msg.clone(), io, |_| None);
@@ -378,7 +393,6 @@ impl ModeHandler for ChannelStripMode {
                         //
                         // ChannelStripMsgs are handled by the widgets themselves
                         if let Ok(translated_msgs) = router.translate_message_from_upstream(msg) {
-                            println!("Translated messages from upstream: {:?}", translated_msgs);
                             for translated_msg in translated_msgs {
                                 let outcomes = self
                                     .widgets
@@ -481,8 +495,17 @@ impl ModeHandler for ChannelStripMode {
 
             // Messages switch modes
             v1m::UpstreamMsg::GlobalPress => {
+                if let Some(last_selected) = self.core.find_hw_channel(self.selected_track_guid) {
+                    io.send_to_v1m(
+                        v1m::SelectLEDMsg {
+                            idx: last_selected as i32,
+                            state: v1m::LEDState::Off,
+                        }
+                        .into(),
+                    );
+                }
                 ModeAction::Transition(TransitionRequest::ToReaperVolumePan {
-                    offset: self.core.offset(),
+                    offset: 1,
                     selected_track_guid: Some(self.selected_track_guid),
                 })
             }
@@ -494,8 +517,18 @@ impl ModeHandler for ChannelStripMode {
             }
             v1m::UpstreamMsg::InputsPress => ModeAction::None,
             v1m::UpstreamMsg::SelectPress(msg) => {
+                println!(
+                    "SelectPress idx: {:?}, offset: {:?}",
+                    msg.idx,
+                    self.core.offset()
+                );
                 if let Some(guid) = self.core.get_guid_for_hw_channel(msg.idx as usize) {
+                    println!(
+                        "Old guid: {:?}, new guid: {:?}",
+                        self.selected_track_guid, guid
+                    );
                     if guid != self.selected_track_guid {
+                        println!("Inverting selected to reaper");
                         io.send_to_reaper(
                             track::Selected {
                                 track_guid: guid,
@@ -503,8 +536,28 @@ impl ModeHandler for ChannelStripMode {
                             }
                             .into(),
                         );
+                        if let Some(old_hw_idx) =
+                            self.core.find_hw_channel(self.selected_track_guid)
+                        {
+                            println!("Deselecting old guid: {:?}", self.selected_track_guid);
+                            io.send_to_v1m(
+                                v1m::SelectLEDMsg {
+                                    idx: old_hw_idx as i32,
+                                    state: v1m::LEDState::Off,
+                                }
+                                .into(),
+                            );
+                        }
+                        io.send_to_v1m(
+                            v1m::SelectLEDMsg {
+                                idx: msg.idx,
+                                state: v1m::LEDState::On,
+                            }
+                            .into(),
+                        );
+                        println!("Sending mode transition");
                         return ModeAction::Transition(TransitionRequest::ToReaperChannelStrip {
-                            offset: self.core.offset(),
+                            offset: 0,
                             selected_track_guid: guid,
                         });
                     }

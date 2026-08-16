@@ -153,6 +153,7 @@ impl HandledUpstreamOutcome {
 
 #[derive(Clone, Debug, Default)]
 pub struct ChannelStripSnapshot {
+    pub eq_enabled: Option<bool>,
     pub eq_type: Option<EqType>,
     pub eq_pos: Option<EqPosition>,
     pub low_mode: Option<BandMode>,
@@ -185,6 +186,10 @@ impl HandledDownstreamOutcome {
         self.dirty |= d;
         self
     }
+    fn snapshot(mut self, snapshot: ChannelStripSnapshot) -> Self {
+        self.snapshot = Some(snapshot);
+        self
+    }
 }
 
 pub trait Widget {
@@ -194,6 +199,18 @@ pub trait Widget {
 
     fn view(&self) -> &WidgetView;
     fn view_mut(&mut self) -> &mut WidgetView;
+
+    fn init(&self) -> Option<HandledDownstreamOutcome> {
+        Some(
+            HandledDownstreamOutcome::default()
+                .downstream(v1m::DownstreamMsg::EncoderRingLED(v1m::EncoderRingMsg {
+                    idx: self.view().mode as i32,
+                    mode: FromLeft,
+                    val: 0,
+                }))
+                .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR),
+        )
+    }
 
     fn handle_snapshot(
         &mut self,
@@ -259,8 +276,7 @@ pub trait Widget {
     fn handle_encoder_click(&mut self) -> Option<HandledDownstreamOutcome> {
         if !self.view().encoder_pressed {
             let outcome = match self.view().mode {
-                WidgetMode::Disabled => None,
-                WidgetMode::Normal => {
+                WidgetMode::Normal | WidgetMode::Disabled => {
                     if let Some(outcome) = self.on_click() {
                         Some(outcome)
                     } else {
@@ -335,12 +351,14 @@ pub struct WidgetView {
     encoder_pressed: bool,
     in_hold_mode: bool,
 
+    line1_disabled: String,
     line1_normal: String,
     line1_shift: String,
-
+    line2_disabled: String,
     line2_normal: String,
     line2_shift: String,
 
+    color_disabled: RgbColor,
     color_normal: RgbColor,
     color_shift: RgbColor,
 }
@@ -348,13 +366,20 @@ pub struct WidgetView {
 impl Default for WidgetView {
     fn default() -> Self {
         Self {
-            mode: WidgetMode::Normal,
+            mode: WidgetMode::Disabled,
             encoder_pressed: false,
             in_hold_mode: false,
+            line1_disabled: String::new(),
             line1_normal: String::new(),
             line1_shift: String::new(),
+            line2_disabled: String::new(),
             line2_normal: String::new(),
             line2_shift: String::new(),
+            color_disabled: RgbColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
             color_normal: RgbColor {
                 red: 0,
                 green: 0,
@@ -372,13 +397,20 @@ impl Default for WidgetView {
 impl WidgetView {
     fn new() -> Self {
         Self {
-            mode: WidgetMode::Normal,
+            mode: WidgetMode::Disabled,
             encoder_pressed: false,
             in_hold_mode: false,
+            line1_disabled: String::new(),
             line1_normal: String::new(),
             line1_shift: String::new(),
+            line2_disabled: String::new(),
             line2_normal: String::new(),
             line2_shift: String::new(),
+            color_disabled: RgbColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
             color_normal: RgbColor {
                 red: 0,
                 green: 0,
@@ -389,6 +421,13 @@ impl WidgetView {
                 green: 0,
                 blue: 0,
             },
+        }
+    }
+
+    fn line1_disabled(self, txt: &str) -> Self {
+        Self {
+            line1_disabled: txt.to_string(),
+            ..self
         }
     }
 
@@ -406,6 +445,13 @@ impl WidgetView {
         }
     }
 
+    fn line2_disabled(self, txt: &str) -> Self {
+        Self {
+            line2_disabled: txt.to_string(),
+            ..self
+        }
+    }
+
     fn line2_normal(self, txt: &str) -> Self {
         Self {
             line2_normal: txt.to_string(),
@@ -416,6 +462,13 @@ impl WidgetView {
     fn line2_shift(self, txt: &str) -> Self {
         Self {
             line2_shift: txt.to_string(),
+            ..self
+        }
+    }
+
+    fn color_disabled(self, color: RgbColor) -> Self {
+        Self {
+            color_disabled: color,
             ..self
         }
     }
@@ -437,7 +490,7 @@ impl WidgetView {
     // Used at runtime
     fn line1_text(&self) -> String {
         match self.mode {
-            WidgetMode::Disabled => String::new(),
+            WidgetMode::Disabled => self.line1_disabled.clone(),
             WidgetMode::Normal => self.line1_normal.clone(),
             WidgetMode::Press => self.line1_normal.clone(),
             WidgetMode::Shift => self.line1_shift.clone(),
@@ -447,7 +500,7 @@ impl WidgetView {
 
     fn line2_text(&self) -> String {
         match self.mode {
-            WidgetMode::Disabled => String::new(),
+            WidgetMode::Disabled => self.line2_disabled.clone(),
             WidgetMode::Normal => self.line2_normal.clone(),
             WidgetMode::Press => self.line2_normal.clone(),
             WidgetMode::Shift => self.line2_shift.clone(),
@@ -457,11 +510,7 @@ impl WidgetView {
 
     fn color(&self) -> RgbColor {
         match self.mode {
-            WidgetMode::Disabled => RgbColor {
-                red: 0,
-                green: 0,
-                blue: 0,
-            },
+            WidgetMode::Disabled => self.color_disabled,
             WidgetMode::Normal => self.color_normal,
             WidgetMode::Press => self.color_normal,
             WidgetMode::Shift => self.color_shift,
@@ -516,9 +565,6 @@ fn encoder_ring_msg(hw_idx: usize, val: f32, mode: v1m::EncoderRingMode) -> v1m:
     .into()
 }
 
-// TODO: IMPORTANT: for Disabled mode, clicking encoder should instantiate the widget and set to
-// normal.
-
 // ----------------------
 // Individual Widget implementations
 // ----------------------
@@ -543,7 +589,10 @@ impl Widget for HpfWidget {
         Self {
             hw_idx,
             view: WidgetView::new()
+                .line1_disabled(DEFAULT_EQ_TYPE.as_str())
+                .line2_disabled("EnablEQ")
                 .line1_normal("HP Filter")
+                .line2_normal("DisblEQ")
                 .line1_shift("EQ Type")
                 .line2_shift(DEFAULT_EQ_TYPE.as_str())
                 .color_normal(color::DARK_BROWN)
@@ -553,10 +602,59 @@ impl Widget for HpfWidget {
             eq_type: DEFAULT_EQ_TYPE,
         }
     }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        if let Some(eq_type) = snapshot.eq_type {
+            self.eq_type = eq_type;
+            self.view.line2_disabled = eq_type.as_str().to_string();
+            self.view.line2_shift = eq_type.as_str().to_string();
+        }
+        None
+    }
+    fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
+        match self.view.mode {
+            WidgetMode::Disabled => Some(
+                HandledDownstreamOutcome::default()
+                    .upstream(ChannelStripMsg::EnableEq(self.eq_type))
+                    .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+                    .snapshot(ChannelStripSnapshot {
+                        eq_enabled: Some(true),
+                        ..Default::default()
+                    }),
+            ),
+            WidgetMode::Normal | WidgetMode::Shift => Some(
+                HandledDownstreamOutcome::default()
+                    .upstream(ChannelStripMsg::DisableEq)
+                    .dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+                    .snapshot(ChannelStripSnapshot {
+                        eq_enabled: Some(false),
+                        ..Default::default()
+                    }),
+            ),
+            _ => None,
+        }
+    }
 
     fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledDownstreamOutcome> {
         match self.view.mode {
-            WidgetMode::Disabled => None,
+            WidgetMode::Disabled => {
+                self.eq_type = self.eq_type.step(turn);
+                println!("Stepping to eq type: {:?}", self.eq_type);
+                self.view.line2_shift = self.eq_type.as_str().to_string();
+                self.view.line1_disabled = self.eq_type.as_str().to_string();
+                Some(
+                    HandledDownstreamOutcome::default()
+                        .upstream(ChannelStripMsg::EqType(self.eq_type))
+                        .dirty(Dirty::LINE1),
+                )
+            }
             WidgetMode::Normal => {
                 self.freq = apply_accel(self.freq, turn);
                 Some(
@@ -577,6 +675,7 @@ impl Widget for HpfWidget {
             WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.eq_type = self.eq_type.step(turn);
                 self.view.line2_shift = self.eq_type.as_str().to_string();
+                self.view.line2_disabled = self.eq_type.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
                         .upstream(ChannelStripMsg::EqType(self.eq_type))
@@ -588,6 +687,15 @@ impl Widget for HpfWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(eq_type) => {
+                self.view.mode = WidgetMode::Normal;
+                self.eq_type = eq_type;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::HpfFreq(freq) => {
                 self.freq = freq;
                 HandledUpstreamOutcome::default()
@@ -638,6 +746,17 @@ impl Widget for LowFreqWidget {
             band_mode: DEFAULT_BAND_MODE,
         }
     }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
+    }
 
     fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledDownstreamOutcome> {
         match self.view.mode {
@@ -661,7 +780,6 @@ impl Widget for LowFreqWidget {
             }
             WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.band_mode = self.band_mode.step(turn);
-                self.view.line2_shift = self.band_mode.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
                         .upstream(ChannelStripMsg::LowBandMode(self.band_mode))
@@ -674,6 +792,14 @@ impl Widget for LowFreqWidget {
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         println!("LowFreqWidget: handle_message_from_upstream: {:?}", msg);
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::LowFreq(msg) => {
                 println!("Got LowFreq msg");
                 self.freq = msg;
@@ -695,11 +821,10 @@ impl Widget for LowFreqWidget {
     fn line2_text(&self) -> String {
         match self.view.mode {
             WidgetMode::Disabled => String::new(),
-            WidgetMode::Normal | WidgetMode::Press => match self.band_mode {
+            _ => match self.band_mode {
                 BandMode::Shelf => format!("{} Q", self.q),
                 BandMode::Bell => "".to_string(),
             },
-            WidgetMode::Shift | WidgetMode::ShiftPress => self.view.line2_shift.clone(),
         }
     }
 }
@@ -730,6 +855,17 @@ impl Widget for LowGainWidget {
                 .color_shift(color::BROWN),
             gain: 0.0,
         }
+    }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
     }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
@@ -764,6 +900,14 @@ impl Widget for LowGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::LowGain(msg) => {
                 println!("Gain: {}", msg);
                 self.gain = msg;
@@ -807,6 +951,17 @@ impl Widget for LMFreqWidget {
             q: 0.5,
         }
     }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
+    }
 
     fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledDownstreamOutcome> {
         match self.view.mode {
@@ -833,6 +988,14 @@ impl Widget for LMFreqWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::LmFreq(msg) => {
                 self.freq = msg;
                 HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
@@ -852,8 +1015,7 @@ impl Widget for LMFreqWidget {
     fn line2_text(&self) -> String {
         match self.view.mode {
             WidgetMode::Disabled => String::new(),
-            WidgetMode::Normal | WidgetMode::Press => format!("{} Q", self.q),
-            WidgetMode::Shift | WidgetMode::ShiftPress => self.view.line2_shift.clone(),
+            _ => format!("{} Q", self.q),
         }
     }
 }
@@ -895,6 +1057,17 @@ impl Widget for LMGainWidget {
                 .dirty(Dirty::LINE1),
         )
     }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
+    }
 
     fn on_shift_click(&mut self) -> Option<HandledDownstreamOutcome> {
         self.on_click()
@@ -918,6 +1091,14 @@ impl Widget for LMGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::LmGain(msg) => {
                 self.gain = msg;
                 HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
@@ -960,6 +1141,17 @@ impl Widget for HMFreqWidget {
             q: 0.5,
         }
     }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
+    }
 
     fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledDownstreamOutcome> {
         match self.view.mode {
@@ -986,6 +1178,14 @@ impl Widget for HMFreqWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::HmFreq(msg) => {
                 self.freq = msg;
                 HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
@@ -1005,8 +1205,7 @@ impl Widget for HMFreqWidget {
     fn line2_text(&self) -> String {
         match self.view.mode {
             WidgetMode::Disabled => String::new(),
-            WidgetMode::Normal | WidgetMode::Press => format!("{} Q", self.q),
-            WidgetMode::Shift | WidgetMode::ShiftPress => self.view.line2_shift.clone(),
+            _ => format!("{} Q", self.q),
         }
     }
 }
@@ -1037,6 +1236,17 @@ impl Widget for HMGainWidget {
                 .color_shift(color::GREEN),
             gain: 0.0,
         }
+    }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
     }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
@@ -1071,6 +1281,14 @@ impl Widget for HMGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::HmGain(msg) => {
                 self.gain = msg;
                 HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
@@ -1116,10 +1334,20 @@ impl Widget for HiFreqWidget {
             band_mode: DEFAULT_BAND_MODE,
         }
     }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
+    }
 
     fn handle_encoder_turn(&mut self, turn: EncoderTurn) -> Option<HandledDownstreamOutcome> {
         match self.view.mode {
-            //TODO:
             WidgetMode::Disabled => None,
             WidgetMode::Normal | WidgetMode::Press => {
                 self.freq = apply_accel(self.freq, turn);
@@ -1136,6 +1364,7 @@ impl Widget for HiFreqWidget {
             }
             WidgetMode::Shift | WidgetMode::ShiftPress => {
                 self.band_mode = self.band_mode.step(turn);
+                self.view.line2_shift = self.band_mode.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
                         .upstream(ChannelStripMsg::HighBandMode(self.band_mode))
@@ -1147,6 +1376,14 @@ impl Widget for HiFreqWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             ChannelStripMsg::HighFreq(msg) => {
                 self.freq = msg;
                 HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
@@ -1202,6 +1439,17 @@ impl Widget for HiGainWidget {
             sides_gain: 0.0,
             band_mode: BandMode::Bell,
         }
+    }
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if snapshot.eq_enabled == Some(true) {
+            self.view.mode = WidgetMode::Normal;
+        } else {
+            self.view.mode = WidgetMode::Disabled;
+        }
+        None
     }
 
     // NOTE: I don't think we actually need this, since we trust upstream to give us a repr of the
@@ -1269,6 +1517,14 @@ impl Widget for HiGainWidget {
 
     fn handle_message_from_upstream(&mut self, msg: ChannelStripMsg) -> HandledUpstreamOutcome {
         match msg {
+            ChannelStripMsg::EnableEq(_) => {
+                self.view.mode = WidgetMode::Normal;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
+            ChannelStripMsg::DisableEq => {
+                self.view.mode = WidgetMode::Disabled;
+                HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
+            }
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1282,6 +1538,8 @@ pub struct EqPosWidget {
     eq_in: EqBypass,
 
     comp_order: CompOrder,
+
+    eq_type: EqType,
 }
 
 impl Widget for EqPosWidget {
@@ -1295,6 +1553,7 @@ impl Widget for EqPosWidget {
         const DEFAULT_EQ_POS: EqPosition = EqPosition::First;
         const DEFAULT_EQ_IN: EqBypass = EqBypass::IN;
         const DEFAULT_COMP_ORDER: CompOrder = CompOrder::C1toC2;
+        const DEFAULT_EQ_TYPE: EqType = EqType::Digital;
         Self {
             hw_idx,
             view: WidgetView::new()
@@ -1307,7 +1566,18 @@ impl Widget for EqPosWidget {
             eq_pos: DEFAULT_EQ_POS,
             eq_in: DEFAULT_EQ_IN,
             comp_order: DEFAULT_COMP_ORDER,
+            eq_type: DEFAULT_EQ_TYPE,
         }
+    }
+
+    fn handle_snapshot(
+        &mut self,
+        snapshot: &ChannelStripSnapshot,
+    ) -> Option<HandledDownstreamOutcome> {
+        if let Some(eq_type) = snapshot.eq_type {
+            self.eq_type = eq_type;
+        }
+        None
     }
 
     fn on_click(&mut self) -> Option<HandledDownstreamOutcome> {
@@ -1315,7 +1585,7 @@ impl Widget for EqPosWidget {
         self.view.line2_normal = self.eq_in.as_str().to_string();
         Some(match self.eq_in {
             EqBypass::IN => HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::EnableEq)
+                .upstream(ChannelStripMsg::EnableEq(self.eq_type))
                 .dirty(Dirty::LINE2),
             EqBypass::OUT => HandledDownstreamOutcome::default()
                 .upstream(ChannelStripMsg::DisableEq)

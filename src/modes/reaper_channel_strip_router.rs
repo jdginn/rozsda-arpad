@@ -156,7 +156,7 @@ rotary_enum! {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ChannelStripMsg {
-    EnableEq,
+    EnableEq(EqType),
     DisableEq,
     EnableComp1,
     DisableComp1,
