@@ -420,7 +420,59 @@ impl ChannelStripRouter {
                 )]),
                 None => Ok(vec![]),
             },
-            _ => Ok(vec![]),
+            ChannelStripMsg::HmFreq(val) => match self.get_first_fx_index_string(rea_eq::name()) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::FreqBand3(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::HmGain(val) => match self.get_first_fx_index_string(rea_eq::name()) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::GainBand3(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::HmQ(val) => match self.get_first_fx_index_string(rea_eq::name()) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::BWBand3(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            ChannelStripMsg::HighFreq(val) => {
+                match self.get_first_fx_index_string(rea_eq::name()) {
+                    Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                        self.track_guid,
+                        fx_index,
+                        fx::rea_eq::Param::FreqHighShelf4(val),
+                    )]),
+                    None => Ok(vec![]),
+                }
+            }
+            ChannelStripMsg::HighGain(val) => {
+                match self.get_first_fx_index_string(rea_eq::name()) {
+                    Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                        self.track_guid,
+                        fx_index,
+                        fx::rea_eq::Param::GainHighShelf4(val),
+                    )]),
+                    None => Ok(vec![]),
+                }
+            }
+            ChannelStripMsg::HighQ(val) => match self.get_first_fx_index_string(rea_eq::name()) {
+                Some(fx_index) => Ok(vec![fx::rea_eq::encode_trackmsg(
+                    self.track_guid,
+                    fx_index,
+                    fx::rea_eq::Param::BWHighShelf4(val),
+                )]),
+                None => Ok(vec![]),
+            },
+            _ => todo!(),
         }
     }
 }
