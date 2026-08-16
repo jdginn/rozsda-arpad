@@ -56,27 +56,6 @@ impl ModeHandler for ReaperVolumePanMode {
         match track::DataMsg::try_from(msg) {
             Ok(msg) => {
                 match msg {
-                    track::DataMsg::Selected(msg) => {
-                        if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
-                            if msg.selected {
-                                self.selected_track_guid = Some(msg.track_guid);
-                            } else if self.selected_track_guid == Some(msg.track_guid) {
-                                self.selected_track_guid = None;
-                            }
-                            let state = match msg.selected {
-                                true => v1m::LEDState::On,
-                                false => v1m::LEDState::Off,
-                            };
-                            io.send_to_v1m(
-                                v1m::SelectLEDMsg {
-                                    idx: hw_channel as i32,
-                                    state,
-                                }
-                                .into(),
-                            );
-                        }
-                        ModeAction::None
-                    }
                     track::DataMsg::Name(msg) => {
                         if let Some(hw_channel) = self.core.find_hw_channel(msg.track_guid) {
                             io.send_to_v1m(
@@ -184,13 +163,6 @@ impl ModeHandler for ReaperVolumePanMode {
                 }
             }
             v1m::UpstreamMsg::SelectPress(select_msg) => {
-                io.send_to_v1m(
-                    v1m::SelectLEDMsg {
-                        idx: select_msg.idx,
-                        state: v1m::LEDState::On,
-                    }
-                    .into(),
-                );
                 if let Some(guid) = self.core.get_guid_for_hw_channel(select_msg.idx as usize) {
                     io.send_to_reaper(
                         track::Selected {
@@ -199,11 +171,40 @@ impl ModeHandler for ReaperVolumePanMode {
                         }
                         .into(),
                     );
+                    io.send_to_v1m(
+                        v1m::SelectLEDMsg {
+                            idx: select_msg.idx,
+                            state: v1m::LEDState::On,
+                        }
+                        .into(),
+                    );
+                } else {
+                    return ModeAction::None;
                 }
                 // TODO: what do we do with this?
                 let new_selected_track_guid =
                     self.core.get_guid_for_hw_channel(select_msg.idx as usize);
-                self.selected_track_guid = new_selected_track_guid;
+                if self.selected_track_guid != new_selected_track_guid {
+                    if let Some(guid) = self.selected_track_guid {
+                        io.send_to_reaper(
+                            track::Selected {
+                                track_guid: guid,
+                                selected: false,
+                            }
+                            .into(),
+                        );
+                        if let Some(last_selected_hw_channel) = self.core.find_hw_channel(guid) {
+                            io.send_to_v1m(
+                                v1m::SelectLEDMsg {
+                                    idx: last_selected_hw_channel as i32,
+                                    state: v1m::LEDState::Off,
+                                }
+                                .into(),
+                            );
+                        };
+                    }
+                    self.selected_track_guid = new_selected_track_guid;
+                }
                 ModeAction::None
             }
             v1m::UpstreamMsg::EncoderTurnInc(encoder_msg) => {
