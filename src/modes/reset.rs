@@ -10,7 +10,6 @@ pub fn reset_hardware(io: &mut dyn UpstreamIo, num_channels: usize) {
             }
             .into(),
         );
-        println!("Resetting select for {:?}", i);
         io.send_to_v1m(
             v1m::SelectLEDMsg {
                 idx: i as i32,
