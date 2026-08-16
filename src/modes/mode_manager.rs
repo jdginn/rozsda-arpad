@@ -337,6 +337,7 @@ impl ModeManager<HandlerFactoryFn> {
     }
 
     pub fn run(&mut self) {
+        self.reset_hardware();
         loop {
             self.step_once();
         }
