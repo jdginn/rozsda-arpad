@@ -161,32 +161,6 @@ impl ModeHandler for ReaperTrackSendsMode {
                         }
                         ModeAction::None
                     }
-                    // If a new track is selected, we need to initiate a mode transition so that we
-                    // are controlling sends for that new track
-                    //
-                    // FIXME: this behavior doesn't seem quite right in terms of intent
-                    track::DataMsg::Selected(msg) => {
-                        if msg.track_guid == self.selected_track_guid && msg.selected {
-                            // No change, skip
-                            return ModeAction::None;
-                        }
-                        // TODO: what happens if we deselect the currently selected track? Nothing?
-                        if msg.selected {
-                            self.selected_track_guid = msg.track_guid;
-                            let state = match msg.selected {
-                                true => v1m::LEDState::On,
-                                false => v1m::LEDState::Off,
-                            };
-                            io.send_to_v1m(
-                                v1m::SelectLEDMsg {
-                                    idx: self.find_hw_channel(msg.track_guid).unwrap_or(0) as i32,
-                                    state,
-                                }
-                                .into(),
-                            );
-                        }
-                        ModeAction::None
-                    }
                     track::DataMsg::SendIndex(msg) => {
                         if msg.track_guid == self.selected_track_guid {
                             // Only process send index messages for the currently selected track
