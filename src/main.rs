@@ -767,6 +767,12 @@ fn main() {
                             };
                         })
                     }
+                    Ok(track::TrackMsg::InstantiateFX(msg)) => {
+                        println!("Instantiating FX {} on track {} at index {}", msg.fx_name, msg.track_guid, msg.fx_index);
+                        reaper.with_mut(|reaper|{
+                            reaper.track_fx_instantiate(msg.track_guid, msg.fx_index).set(generated_osc::TrackFxInstantiateArgs{fx_name: msg.fx_name}).unwrap();
+                        })
+                    }
                     Ok(track::TrackMsg::FXParamValue(msg)) => {
                         reaper.with_mut(|reaper|{
                             match reaper.track_fx_param_value_normalized(msg.track_guid, msg.fx_index, msg.param_index).set(generated_osc::TrackFxParamValueNormalizedArgs{value_normalized: msg.value}) {

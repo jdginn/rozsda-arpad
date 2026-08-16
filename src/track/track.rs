@@ -31,6 +31,7 @@ pub enum TrackMsg {
     FXGuid(FXGuid),
     FXName(FXName),
     FXEnabled(FXEnabled),
+    InstantiateFX(InstantiateFX),
     FXParamName(FXParamName),
     FXParamValue(FXParamValue),
     FXParamMin(FXParamMin),
@@ -58,6 +59,7 @@ pub enum DataMsg {
     SendPan(SendPan),
     FXGuid(FXGuid),
     FXName(FXName),
+    InstantiateFX(InstantiateFX),
     FXEnabled(FXEnabled),
     FXParamName(FXParamName),
     FXParamValue(FXParamValue),
@@ -92,6 +94,7 @@ impl TryFrom<TrackMsg> for DataMsg {
             TrackMsg::FXParamMin(x) => Ok(DataMsg::FXParamMin(x)),
             TrackMsg::FXParamMax(x) => Ok(DataMsg::FXParamMax(x)),
             TrackMsg::TrackData(x) => Ok(DataMsg::TrackData(x)),
+            TrackMsg::InstantiateFX(x) => Ok(DataMsg::InstantiateFX(x)),
 
             other @ (TrackMsg::Barrier(_)
             | TrackMsg::Query(_)
@@ -247,6 +250,14 @@ pub struct FXEnabled {
     pub fx_index: i32,
     #[data]
     pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Coalescible)]
+pub struct InstantiateFX {
+    pub track_guid: Uuid,
+    pub fx_index: i32,
+    #[data]
+    pub fx_name: String,
 }
 
 #[derive(Clone, Debug, Coalescible)]
@@ -949,6 +960,7 @@ impl TrackManager {
                     );
                 }
             }
+            DataMsg::InstantiateFX(_) => {}
             DataMsg::FXEnabled(msg) => {
                 if let Some(fx) = self
                     .get_or_create_track(msg.track_guid)
