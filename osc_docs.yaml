@@ -314,6 +314,20 @@
   access_tags:
   - readable
   - queryable
+- osc_address: /track/{track_guid}/fx/{fx_idx}/instantiate
+  params:
+  - name: track_guid
+    type: uuid
+    description: unique identifier for the track
+  - name: fx_idx
+    type: int
+    description: index of the FX on the track
+  arguments:
+  - name: fx_name
+    type: string
+    description: unique identifier for the FX to instantiate
+  access_tags:
+  - writeable
 - osc_address: /track/{track_guid}/fx/{fx_idx}/param/{param_idx}/name
   params:
   - name: track_guid

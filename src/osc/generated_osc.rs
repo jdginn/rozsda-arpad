@@ -1040,6 +1040,36 @@ impl Query for TrackFxParamCount {
 }
 
 #[derive(Debug)]
+pub struct TrackFxInstantiateArgs {
+    pub fx_name: String, // unique identifier for the FX to instantiate
+}
+
+pub type TrackFxInstantiateHandler = Box<dyn FnMut(TrackFxInstantiateArgs) + 'static>;
+
+pub struct TrackFxInstantiate {
+    socket: Arc<UdpSocket>,
+    handler: Option<TrackFxInstantiateHandler>,
+    pub track_guid: Uuid,
+    pub fx_idx: i32,
+}
+
+/// /track/{track_guid}/fx/{fx_idx}/instantiate
+impl Set<TrackFxInstantiateArgs> for TrackFxInstantiate {
+    type Error = OscError;
+    fn set(&mut self, args: TrackFxInstantiateArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/track/{}/fx/{}/instantiate", self.track_guid, self.fx_idx);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![rosc::OscType::String(args.fx_name.clone())],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct TrackFxParamNameArgs {
     pub param_name: String, // name of the parameter
 }
@@ -1867,6 +1897,8 @@ pub struct Reaper {
         HashMap<Uuid, /*track_guid*/ HashMap<i32, /*fx_idx*/ TrackFxEnabled>>,
     track_fx_param_count_endpoints:
         HashMap<Uuid, /*track_guid*/ HashMap<i32, /*fx_idx*/ TrackFxParamCount>>,
+    track_fx_instantiate_endpoints:
+        HashMap<Uuid, /*track_guid*/ HashMap<i32, /*fx_idx*/ TrackFxInstantiate>>,
     track_fx_param_name_endpoints: HashMap<
         Uuid,
         /*track_guid*/ HashMap<i32, /*fx_idx*/ HashMap<i32, /*param_idx*/ TrackFxParamName>>,
@@ -1962,6 +1994,7 @@ impl Reaper {
             track_fx_guid_endpoints: HashMap::new(),
             track_fx_enabled_endpoints: HashMap::new(),
             track_fx_param_count_endpoints: HashMap::new(),
+            track_fx_instantiate_endpoints: HashMap::new(),
             track_fx_param_name_endpoints: HashMap::new(),
             track_fx_param_value_normalized_endpoints: HashMap::new(),
             track_fx_param_toggle_endpoints: HashMap::new(),
@@ -2175,6 +2208,22 @@ impl Reaper {
             .or_insert_with(|| HashMap::new())
             .entry(fx_idx.clone())
             .or_insert_with(|| TrackFxParamCount {
+                socket: self.socket.clone(),
+                track_guid: track_guid,
+                fx_idx: fx_idx,
+                handler: None,
+            })
+    }
+    pub fn track_fx_instantiate(
+        &mut self,
+        track_guid: Uuid,
+        fx_idx: i32,
+    ) -> &mut TrackFxInstantiate {
+        self.track_fx_instantiate_endpoints
+            .entry(track_guid.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(fx_idx.clone())
+            .or_insert_with(|| TrackFxInstantiate {
                 socket: self.socket.clone(),
                 track_guid: track_guid,
                 fx_idx: fx_idx,
@@ -3330,6 +3379,60 @@ pub fn dispatch_osc<F, G>(
             };
             handler(TrackFxParamCountArgs {
                 param_count: _decoded_param_count,
+            });
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/track/{track_guid}/fx/{fx_idx}/instantiate") {
+        let track_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "track_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let fx_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.track_fx_instantiate(track_guid, fx_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_fx_name = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(TrackFxInstantiateArgs {
+                fx_name: _decoded_fx_name,
             });
         }
         return;
