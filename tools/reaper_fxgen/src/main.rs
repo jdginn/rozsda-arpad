@@ -3,26 +3,45 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
-use std::path::PathBuf;
+use std::io::{self, Write as _};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 #[derive(Parser)]
 struct Cli {
     /// Path to the fx_dump yaml file
     spec: PathBuf,
-    /// Optional path to a text file containing an allow‑list of FX base names to include (one per line, supports comments with #). If not provided, all FX in the YAML will be processed.
+    /// Optional path to a text file containing an allow‑list of FX base names to include
     #[clap(short, long)]
     allow_list: Option<PathBuf>,
-    /// Output Rust file
-    #[clap(short, long, default_value = "generated_fx_param.rs")]
-    out: PathBuf,
+    /// Output directory for generated Rust modules
+    #[clap(short, long, default_value = "generated_fx")]
+    out_dir: PathBuf,
 }
 
-// FX info as represented in the YAML
 #[derive(Debug, Deserialize, Clone)]
 struct RawFx {
     fx_name: String,
+    #[serde(default)]
     params: Vec<RawFxParam>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct RawEnumValue {
+    index: usize,
+    name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct RawFxParam {
+    name: String,
+    index: i32,
+    min: f32,
+    max: f32,
+    #[serde(default)]
+    is_toggle: bool,
+    #[serde(default)]
+    presumed_enum_values: Vec<RawEnumValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,16 +53,6 @@ struct Fx {
     developer: DeveloperName,
 }
 
-// FX parameter info as represented in the YAML
-#[derive(Debug, Deserialize, Clone)]
-struct RawFxParam {
-    name: String,
-    index: i32,
-    min: f32,
-    max: f32,
-    // TODO: step size?
-}
-
 #[derive(Debug, Clone, PartialEq)]
 struct FxParam {
     name: String,
@@ -51,6 +60,23 @@ struct FxParam {
     index: i32,
     min: f32,
     max: f32,
+    kind: ParamKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ParamKind {
+    Continuous,
+    Toggle,
+    Enum {
+        enum_name: String,
+        variants: Vec<EnumVariant>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct EnumVariant {
+    repr: String,
+    raw_index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,8 +100,8 @@ enum DeveloperName {
 
 fn plugin_type_from_prefix(prefix: &str) -> PluginType {
     match prefix {
-        "VST" => PluginType::VST,
-        "AU" | "AUi" => PluginType::AU, // treat "AUi:" as AU (adjust if you want a distinct variant)
+        "VST" | "VST3" => PluginType::VST,
+        "AU" | "AUi" => PluginType::AU,
         "AAX" => PluginType::AAX,
         "LV2" => PluginType::LV2,
         "CLAP" => PluginType::CLAP,
@@ -96,7 +122,6 @@ fn developer_from_str(s: &str) -> Option<DeveloperName> {
 fn split_fx_name(input: &str) -> (String, PluginType, DeveloperName) {
     let s = input.trim();
 
-    // Special-case: exactly "Container"
     if s == "Container" {
         return (
             "Container".to_string(),
@@ -105,15 +130,12 @@ fn split_fx_name(input: &str) -> (String, PluginType, DeveloperName) {
         );
     }
 
-    // 1) Prefix / plugin type: look for "<prefix>: <rest>"
     let (plugin_type, rest) = if let Some((prefix, rest)) = s.split_once(':') {
         (plugin_type_from_prefix(prefix.trim()), rest.trim())
     } else {
-        (PluginType::Other(String::new()), s) // or pick a default PluginType if you prefer
+        (PluginType::Other(String::new()), s)
     };
 
-    // 2) Developer at end: only strip if it's a known developer in final "(...)"
-    //    If unknown, leave the parentheses in the name.
     let (name, developer) = if let Some(stripped) = rest.strip_suffix(')') {
         if let Some(open_paren) = stripped.rfind('(') {
             let dev_candidate = stripped[open_paren + 1..].trim();
@@ -133,7 +155,7 @@ fn split_fx_name(input: &str) -> (String, PluginType, DeveloperName) {
     (name, plugin_type, developer)
 }
 
-fn params_equal(p1: Vec<FxParam>, p2: Vec<RawFxParam>) -> bool {
+fn params_equal(p1: &[FxParam], p2: &[RawFxParam]) -> bool {
     if p1.len() != p2.len() {
         return false;
     }
@@ -161,88 +183,36 @@ fn plugin_type_suffix(pt: &PluginType) -> &'static str {
     }
 }
 
-fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<String>>) -> Vec<Fx> {
-    let mut plugin_names: HashMap<String, HashMap<PluginType, Fx>> = HashMap::new();
+fn rust_keywords() -> &'static [&'static str] {
+    &[
+        "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
+        "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
+        "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe",
+        "use", "where", "while", "async", "await", "dyn", "abstract", "become", "box", "do",
+        "final", "macro", "override", "priv", "try", "typeof", "unsized", "virtual", "yield",
+    ]
+}
 
-    for raw_fx in &raw_yaml_fx_list {
-        let (base_name, plugin_type, developer) = split_fx_name(&raw_fx.fx_name);
-
-        // If an allow‑list is supplied, skip FX not in the list
-        if let Some(allowed) = &allow_names {
-            if !allowed.contains(&base_name) {
-                continue;
-            }
-        }
-
-        let base_repr = sanitize_enum(&base_name);
-
-        let per_name = plugin_names.entry(base_name.clone()).or_default();
-
-        // Do we already have any entry under this base name whose params differ?
-        let needs_disambiguation = per_name
-            .values()
-            .any(|existing| !params_equal(existing.params.clone(), raw_fx.params.clone()));
-
-        // Also: if this exact plugin_type already exists but with different params,
-        // disambiguation is definitely needed (and you may want to treat as error).
-        if per_name.get(&plugin_type).is_some() {
-            panic!("Duplicate plugin type for same base name: {} with plugin type {:?} already exists. Consider disambiguating the name or checking for duplicates in the input YAML.", base_name, plugin_type);
-        }
-
-        // If disambiguation is needed, rename all existing reprs for this base name
-        // to include their plugin type suffix.
-        if needs_disambiguation {
-            for fx in per_name.values_mut() {
-                fx.repr = format!("{}_{}", base_repr, plugin_type_suffix(&fx.plugin_type));
-            }
-        }
-
-        // Insert/update this (name, plugin_type).
-        // If already present, keep the first one (or replace; your choice).
-        use std::collections::hash_map::Entry;
-        match per_name.entry(plugin_type.clone()) {
-            Entry::Vacant(v) => {
-                let repr = if needs_disambiguation {
-                    format!("{}_{}", base_repr, plugin_type_suffix(&plugin_type))
-                } else {
-                    base_repr.clone()
-                };
-
-                let params = raw_fx
-                    .params
-                    .iter()
-                    .map(|p| FxParam {
-                        name: p.name.clone(),
-                        repr: sanitize_enum(&p.name),
-                        index: p.index,
-                        min: p.min,
-                        max: p.max,
-                    })
-                    .collect();
-
-                v.insert(Fx {
-                    fx_name: raw_fx.fx_name.clone(),
-                    repr,
-                    params,
-                    plugin_type,
-                    developer,
-                });
-            }
-            Entry::Occupied(mut o) => {
-                // Already have this plugin_type for this name.
-                // Decide what you want here:
-                // - keep existing
-                // - or replace if new has "better" params
-                // For now: keep existing.
-                let _ = o.get_mut();
-            }
-        }
+fn apply_keyword_suffix(ident: &str) -> String {
+    if rust_keywords().contains(&ident) {
+        format!("{ident}_")
+    } else {
+        ident.to_string()
     }
+}
 
-    plugin_names
-        .into_values()
-        .flat_map(|type_map| type_map.into_values())
-        .collect()
+fn make_unique(base: String, used: &mut HashSet<String>) -> String {
+    if used.insert(base.clone()) {
+        return base;
+    }
+    let mut n = 2usize;
+    loop {
+        let candidate = format!("{base}_{n}");
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
 }
 
 fn sanitize_enum(input: &str) -> String {
@@ -255,8 +225,6 @@ fn sanitize_enum(input: &str) -> String {
         return "Plus".to_string();
     }
 
-    // Remove anything in parentheses (supports multiple groups).
-    // Example: "Foo (Bar) Baz (Qux)" -> "Foo  Baz "
     let mut no_parens = String::with_capacity(s.len());
     let mut depth: usize = 0;
     for ch in s.chars() {
@@ -268,11 +236,11 @@ fn sanitize_enum(input: &str) -> String {
         }
     }
 
-    // Build PascalCase by splitting on any non-alphanumeric char.
     let mut out = String::new();
     let mut new_word = true;
 
-    for ch in s.chars() {
+    // FIX: tokenize from no_parens (not s)
+    for ch in no_parens.chars() {
         if ch.is_ascii_alphanumeric() {
             if new_word {
                 out.extend(ch.to_uppercase());
@@ -285,107 +253,402 @@ fn sanitize_enum(input: &str) -> String {
         }
     }
 
-    // If nothing left after sanitizing, pick a fallback.
     if out.is_empty() {
         out = "Unnamed".to_string();
     }
 
-    // Rust identifiers can't start with a digit. If it does (including "123"),
-    // prefix with underscore.
     if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         out.insert(0, '_');
+    }
+
+    apply_keyword_suffix(&out)
+}
+
+fn pascal_to_snake(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len() + 8);
+
+    for i in 0..chars.len() {
+        let c = chars[i];
+        let prev = i.checked_sub(1).map(|j| chars[j]);
+        let next = if i + 1 < chars.len() {
+            Some(chars[i + 1])
+        } else {
+            None
+        };
+
+        let is_boundary = c.is_uppercase()
+            && i > 0
+            && match (prev, next) {
+                (Some(p), Some(n)) => p.is_lowercase() || (p.is_uppercase() && n.is_lowercase()),
+                (Some(p), None) => p.is_lowercase(),
+                _ => false,
+            };
+
+        if is_boundary {
+            out.push('_');
+        }
+        out.extend(c.to_lowercase());
     }
 
     out
 }
 
-fn pascal_to_snake(s: String) -> String {
-    let mut snake = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        // Insert underscore only when the character is uppercase and it is not the first character,
-        // and the previous character is **not** also uppercase (i.e., end of a capital run).
-        if ch.is_uppercase() && i > 0 && !s.chars().nth(i - 1).unwrap().is_uppercase() {
-            snake.push('_');
+fn build_param_kind(param: &RawFxParam, used_type_names: &mut HashSet<String>) -> ParamKind {
+    if param.is_toggle {
+        return ParamKind::Toggle;
+    }
+
+    if !param.presumed_enum_values.is_empty() {
+        let base_enum_name = sanitize_enum(&param.name);
+        let enum_name = make_unique(base_enum_name, used_type_names);
+
+        let mut used_variants = HashSet::new();
+        let mut values = param.presumed_enum_values.clone();
+        values.sort_by_key(|v| v.index);
+
+        let variants = values
+            .into_iter()
+            .map(|v| {
+                let variant_base = sanitize_enum(&v.name);
+                let repr = make_unique(variant_base, &mut used_variants);
+                EnumVariant {
+                    repr,
+                    raw_index: v.index,
+                }
+            })
+            .collect();
+
+        return ParamKind::Enum {
+            enum_name,
+            variants,
+        };
+    }
+
+    ParamKind::Continuous
+}
+
+fn process_yaml_fx(raw_yaml_fx_list: Vec<RawFx>, allow_names: Option<HashSet<String>>) -> Vec<Fx> {
+    let mut plugin_names: HashMap<String, HashMap<PluginType, Fx>> = HashMap::new();
+
+    for raw_fx in &raw_yaml_fx_list {
+        let (base_name, plugin_type, developer) = split_fx_name(&raw_fx.fx_name);
+
+        if let Some(allowed) = &allow_names {
+            if !allowed.contains(&base_name) {
+                continue;
+            }
         }
-        snake.extend(ch.to_lowercase());
+
+        let base_repr = sanitize_enum(&base_name);
+        let per_name = plugin_names.entry(base_name.clone()).or_default();
+
+        let needs_disambiguation = per_name
+            .values()
+            .any(|existing| !params_equal(&existing.params, &raw_fx.params));
+
+        if per_name.get(&plugin_type).is_some() {
+            panic!(
+                "Duplicate plugin type for same base name: {} with plugin type {:?} already exists.",
+                base_name, plugin_type
+            );
+        }
+
+        if needs_disambiguation {
+            for fx in per_name.values_mut() {
+                fx.repr = format!("{}_{}", base_repr, plugin_type_suffix(&fx.plugin_type));
+            }
+        }
+
+        use std::collections::hash_map::Entry;
+        match per_name.entry(plugin_type.clone()) {
+            Entry::Vacant(v) => {
+                let repr = if needs_disambiguation {
+                    format!("{}_{}", base_repr, plugin_type_suffix(&plugin_type))
+                } else {
+                    base_repr.clone()
+                };
+
+                let mut used_param_names = HashSet::new();
+                let mut used_type_names = HashSet::new();
+
+                let mut raw_params = raw_fx.params.clone();
+                raw_params.sort_by_key(|p| p.index);
+
+                let params = raw_params
+                    .into_iter()
+                    .map(|p| {
+                        let param_base = sanitize_enum(&p.name);
+                        let param_repr = make_unique(param_base, &mut used_param_names);
+                        let kind = build_param_kind(&p, &mut used_type_names);
+                        FxParam {
+                            name: p.name,
+                            repr: param_repr,
+                            index: p.index,
+                            min: p.min,
+                            max: p.max,
+                            kind,
+                        }
+                    })
+                    .collect();
+
+                v.insert(Fx {
+                    fx_name: raw_fx.fx_name.clone(),
+                    repr,
+                    params,
+                    plugin_type,
+                    developer,
+                });
+            }
+            Entry::Occupied(_) => {}
+        }
     }
-    snake
+
+    let mut out: Vec<Fx> = plugin_names
+        .into_values()
+        .flat_map(|type_map| type_map.into_values())
+        .collect();
+
+    out.sort_by(|a, b| a.repr.cmp(&b.repr));
+    out
 }
 
-fn write_fx_mod(code: &mut String, yaml_fx: Fx) {
-    writeln!(code, "pub mod {} {{", pascal_to_snake(yaml_fx.repr.clone())).unwrap();
-    writeln!(code, "    use super::*;\n").unwrap();
-    write_param_enum(code, yaml_fx.clone());
-    write_encode_trackmsg(code, yaml_fx.clone());
-    write_decode_trackmsg(code, yaml_fx.clone());
+fn write_fx_mod(code: &mut String, yaml_fx: &Fx) {
+    writeln!(code, "pub mod {} {{", pascal_to_snake(&yaml_fx.repr)).unwrap();
+    writeln!(code, "use super::*;\n").unwrap();
+
+    write_name_fn(code, yaml_fx);
+    writeln!(code).unwrap();
+
+    write_param_enums_for_presumed_enums(code, yaml_fx);
+    write_param_enum(code, yaml_fx);
+    write_encode_trackmsg(code, yaml_fx);
+    write_decode_trackmsg(code, yaml_fx);
+
     writeln!(code, "}}").unwrap();
 }
 
-fn write_param_enum(code: &mut String, yaml_fx: Fx) {
+fn write_name_fn(code: &mut String, yaml_fx: &Fx) {
+    writeln!(code, "pub fn name() -> &'static str {{").unwrap();
+    writeln!(code, "    {:?}\n    }}", yaml_fx.fx_name).unwrap();
+}
+
+fn write_param_enums_for_presumed_enums(code: &mut String, yaml_fx: &Fx) {
+    for param in &yaml_fx.params {
+        if let ParamKind::Enum {
+            enum_name,
+            variants,
+        } = &param.kind
+        {
+            writeln!(code, "#[derive(Debug, Clone, Copy, PartialEq)]").unwrap();
+            writeln!(code, "pub enum {} {{", enum_name).unwrap();
+            for v in variants {
+                writeln!(code, "    {},", v.repr).unwrap();
+            }
+            writeln!(code, "}}").unwrap();
+
+            writeln!(code, "impl {} {{", enum_name).unwrap();
+            writeln!(code, "pub fn to_raw(self) -> f32 {{").unwrap();
+            writeln!(code, "    match self {{").unwrap();
+            for v in variants {
+                writeln!(code, "        Self::{} => {}f32,", v.repr, v.raw_index).unwrap();
+            }
+            writeln!(code, "    }}").unwrap();
+            writeln!(code, "}}").unwrap();
+
+            writeln!(code, "pub fn from_raw(value: f32) -> Option<Self> {{").unwrap();
+            writeln!(code, "    let rounded = value.round() as isize;").unwrap();
+            writeln!(code, "    match rounded {{").unwrap();
+            for v in variants {
+                writeln!(
+                    code,
+                    "        {} => Some(Self::{}),",
+                    v.raw_index as isize, v.repr
+                )
+                .unwrap();
+            }
+            writeln!(code, "        _ => None,").unwrap();
+            writeln!(code, "    }}").unwrap();
+            writeln!(code, "}}").unwrap();
+            writeln!(code, "}}\n").unwrap();
+        }
+    }
+}
+
+fn write_param_enum(code: &mut String, yaml_fx: &Fx) {
+    writeln!(code, "#[derive(Debug, Clone, Copy, PartialEq)]").unwrap();
     writeln!(code, "pub enum Param {{").unwrap();
+
     for param in &yaml_fx.params {
-        writeln!(code, "    {}(f32),", param.repr).unwrap();
+        let ty = match &param.kind {
+            ParamKind::Toggle => "bool".to_string(),
+            ParamKind::Enum { enum_name, .. } => enum_name.clone(),
+            ParamKind::Continuous => "f32".to_string(),
+        };
+        writeln!(code, "{}({}),", param.repr, ty).unwrap();
     }
+
     writeln!(code, "}}").unwrap();
 }
 
-fn write_encode_trackmsg(code: &mut String, yaml_fx: Fx) {
+fn write_encode_trackmsg(code: &mut String, yaml_fx: &Fx) {
     writeln!(
         code,
-        "    pub fn encode_trackmsg(track_guid: Uuid, fx_index: i32, param: Param) -> track::TrackMsg {{"
+        "pub fn encode_trackmsg(track_guid: Uuid, fx_index: i32, param: Param) -> track::TrackMsg {{"
     )
     .unwrap();
-    writeln!(code, "        match param {{").unwrap();
+    writeln!(code, "match param {{").unwrap();
+
     for param in &yaml_fx.params {
-        writeln!(
-            code,
-            "            Param::{}(value) => track::FXParamValue{{",
-            &param.repr
-        )
-        .unwrap();
-        writeln!(code, "                track_guid,").unwrap();
-        writeln!(code, "                fx_index,").unwrap();
-        writeln!(code, "                param_index: {},", param.index).unwrap();
-        writeln!(code, "                value,").unwrap();
-        writeln!(code, "            }}").unwrap();
-        writeln!(code, "            .into(),").unwrap();
+        match &param.kind {
+            ParamKind::Continuous => {
+                writeln!(
+                    code,
+                    "        Param::{}(value) => track::FXParamValue {{",
+                    param.repr
+                )
+                .unwrap();
+                writeln!(code, "            track_guid,").unwrap();
+                writeln!(code, "            fx_index,").unwrap();
+                writeln!(code, "            param_index: {},", param.index).unwrap();
+                writeln!(code, "            value,").unwrap();
+                writeln!(code, "        }}").unwrap();
+                writeln!(code, "        .into(),").unwrap();
+            }
+            ParamKind::Toggle => {
+                writeln!(
+                    code,
+                    "        Param::{}(value) => track::FXParamValue {{",
+                    param.repr
+                )
+                .unwrap();
+                writeln!(code, "            track_guid,").unwrap();
+                writeln!(code, "            fx_index,").unwrap();
+                writeln!(code, "            param_index: {},", param.index).unwrap();
+                writeln!(
+                    code,
+                    "            value: if value {{ {}f32 }} else {{ {}f32 }},",
+                    param.max, param.min
+                )
+                .unwrap();
+                writeln!(code, "        }}").unwrap();
+                writeln!(code, "        .into(),").unwrap();
+            }
+            ParamKind::Enum { .. } => {
+                writeln!(
+                    code,
+                    "        Param::{}(value) => track::FXParamValue {{",
+                    param.repr
+                )
+                .unwrap();
+                writeln!(code, "            track_guid,").unwrap();
+                writeln!(code, "            fx_index,").unwrap();
+                writeln!(code, "            param_index: {},", param.index).unwrap();
+                writeln!(code, "            value: value.to_raw(),").unwrap();
+                writeln!(code, "        }}").unwrap();
+                writeln!(code, "        .into(),").unwrap();
+            }
+        }
     }
-    writeln!(code, "        }}").unwrap();
+
     writeln!(code, "    }}").unwrap();
+    writeln!(code, "}}").unwrap();
 }
 
-fn write_decode_trackmsg(code: &mut String, yaml_fx: Fx) {
+fn write_decode_trackmsg(code: &mut String, yaml_fx: &Fx) {
     writeln!(
         code,
-        "    pub fn decode_trackmsg(msg: track::FXParamValue) -> Option<Param> {{"
+        "pub fn decode_trackmsg(msg: track::FXParamValue) -> Option<Param> {{"
     )
     .unwrap();
-    writeln!(code, "        match msg.param_index {{").unwrap();
+    writeln!(code, "    match msg.param_index {{").unwrap();
+
     for param in &yaml_fx.params {
-        writeln!(
-            code,
-            "            {} => Some(Param::{}(msg.value)),",
-            param.index, param.repr
-        )
-        .unwrap();
+        match &param.kind {
+            ParamKind::Continuous => {
+                writeln!(
+                    code,
+                    "        {} => Some(Param::{}(msg.value)),",
+                    param.index, param.repr
+                )
+                .unwrap();
+            }
+            ParamKind::Toggle => {
+                let midpoint = (param.min + param.max) / 2.0;
+                writeln!(
+                    code,
+                    "        {} => Some(Param::{}(msg.value >= {}f32)),",
+                    param.index, param.repr, midpoint
+                )
+                .unwrap();
+            }
+            ParamKind::Enum { enum_name, .. } => {
+                writeln!(
+                    code,
+                    "        {} => {}::from_raw(msg.value).map(Param::{}),",
+                    param.index, enum_name, param.repr
+                )
+                .unwrap();
+            }
+        }
     }
-    writeln!(code, "            _ => None,").unwrap();
-    writeln!(code, "        }}").unwrap();
+
+    writeln!(code, "        _ => None,").unwrap();
     writeln!(code, "    }}").unwrap();
+    writeln!(code, "}}").unwrap();
 }
 
-fn write_imports(code: &mut String) {
-    writeln!(code, "use crate::track::track;").unwrap();
-    writeln!(code, "use uuid::Uuid;").unwrap();
-}
+fn write_imports(code: &mut String) {}
 
-fn write_fx_enum(code: &mut String, effects: Vec<Fx>) {
+fn write_fx_enum(code: &mut String, effects: &[Fx]) {
     writeln!(code, "#[derive(Debug, Clone, Copy, PartialEq)]").unwrap();
     writeln!(code, "pub enum FX {{").unwrap();
-    for fx in &effects {
+    for fx in effects {
+        writeln!(code, "{},", fx.repr).unwrap();
+    }
+    writeln!(code, "}}").unwrap();
+}
+
+fn write_fx_file_content(yaml_fx: &Fx) -> String {
+    let mut code = String::new();
+    write_imports(&mut code);
+    writeln!(code).unwrap();
+
+    // same body you currently emit inside module, but now at file scope
+    write_name_fn(&mut code, yaml_fx);
+    writeln!(code).unwrap();
+    write_param_enums_for_presumed_enums(&mut code, yaml_fx);
+    write_param_enum(&mut code, yaml_fx);
+    write_encode_trackmsg(&mut code, yaml_fx);
+    write_decode_trackmsg(&mut code, yaml_fx);
+
+    format_code(&code)
+}
+
+fn write_mod_rs(out_dir: &Path, effects: &[Fx]) -> io::Result<()> {
+    let mut code = String::new();
+    write_imports(&mut code);
+    writeln!(code).unwrap();
+
+    let mut module_names: Vec<String> =
+        effects.iter().map(|fx| pascal_to_snake(&fx.repr)).collect();
+    module_names.sort();
+    module_names.dedup();
+
+    for m in &module_names {
+        writeln!(code, "pub mod {};", m).unwrap();
+    }
+    writeln!(code).unwrap();
+
+    writeln!(code, "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]").unwrap();
+    writeln!(code, "pub enum FxId {{").unwrap();
+    for fx in effects {
         writeln!(code, "    {},", fx.repr).unwrap();
     }
     writeln!(code, "}}").unwrap();
+
+    let mod_rs = format_code(&code);
+    fs::write(out_dir.join("mod.rs"), mod_rs)
 }
 
 fn format_code(code: &str) -> String {
@@ -411,7 +674,6 @@ fn format_code(code: &str) -> String {
         .wait_with_output()
         .expect("Failed to read rustfmt output");
 
-    // Optional but recommended: surface rustfmt errors
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
         panic!("rustfmt failed: {}", err);
@@ -433,13 +695,10 @@ fn read_allow_list(path: &PathBuf) -> Option<HashSet<String>> {
     let mut allow_names = HashSet::new();
 
     for line in contents.lines() {
-        // Trim whitespace and ignore empty / comment lines
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        // The list contains just the base name (e.g. "AUAudioFilePlayer").
-        // We already strip prefixes/suffixes in `split_fx_name`, so we do the same here.
         let (name, _, _) = split_fx_name(line);
         allow_names.insert(name);
     }
@@ -447,36 +706,98 @@ fn read_allow_list(path: &PathBuf) -> Option<HashSet<String>> {
     Some(allow_names)
 }
 
+fn collect_files_recursively(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    if !dir.exists() {
+        return Ok(out);
+    }
+
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let meta = entry.metadata()?;
+        if meta.is_dir() {
+            out.extend(collect_files_recursively(&path)?);
+        } else if meta.is_file() {
+            out.push(path);
+        }
+    }
+    Ok(out)
+}
+
+fn prompt_yes_no(prompt: &str) -> io::Result<bool> {
+    print!("{prompt} [y/N]: ");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let s = input.trim().to_ascii_lowercase();
+    Ok(s == "y" || s == "yes")
+}
+
+fn prepare_output_directory(out_dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(out_dir)?;
+
+    let existing_files = collect_files_recursively(out_dir)?;
+    if existing_files.is_empty() {
+        return Ok(());
+    }
+
+    println!("Warning: about to delete the following files:");
+    for p in &existing_files {
+        println!("  {}", p.display());
+    }
+
+    if !prompt_yes_no("Are you sure you wish to continue?")? {
+        return Err(io::Error::new(
+            io::ErrorKind::Interrupted,
+            "Aborted by user.",
+        ));
+    }
+
+    for p in existing_files {
+        fs::remove_file(&p)?;
+    }
+
+    // optionally remove empty subdirs
+    fn remove_empty_dirs(dir: &Path) -> io::Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let p = entry.path();
+            if p.is_dir() {
+                remove_empty_dirs(&p)?;
+                if fs::read_dir(&p)?.next().is_none() {
+                    fs::remove_dir(&p)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    remove_empty_dirs(out_dir)?;
+
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
+
     let yaml = fs::read_to_string(&cli.spec).expect("Failed to read input YAML");
     let allow_names = if let Some(path) = cli.allow_list {
         read_allow_list(&path)
     } else {
         None
     };
+
     let raw_fx_list: Vec<RawFx> = serde_yaml::from_str(&yaml).expect("Failed to parse YAML");
     let processed_fx_list = process_yaml_fx(raw_fx_list, allow_names);
-    let mut code = String::new();
-    write_imports(&mut code);
-    writeln!(code, "\n").unwrap();
+
+    prepare_output_directory(&cli.out_dir).expect("Failed preparing output directory");
+
     for fx in &processed_fx_list {
-        write_fx_mod(&mut code, fx.clone());
-        writeln!(code, "\n").unwrap();
+        let module_name = pascal_to_snake(&fx.repr);
+        let file_path = cli.out_dir.join(format!("{module_name}.rs"));
+        let code = write_fx_file_content(fx);
+        fs::write(file_path, code).expect("Failed writing FX module");
     }
-    write_fx_enum(&mut code, processed_fx_list.clone());
 
-    let formatted_code = match std::panic::catch_unwind(|| format_code(&code)) {
-        Ok(formatted) => {
-            if formatted.trim().is_empty() {
-                // rustfmt output was empty, fallback to unformatted
-                &code
-            } else {
-                &formatted.clone()
-            }
-        }
-        Err(_) => &code,
-    };
-    fs::write(&cli.out, formatted_code).expect("Failed to write output Rust file");
+    write_mod_rs(&cli.out_dir, &processed_fx_list).expect("Failed writing mod.rs");
 }
-
