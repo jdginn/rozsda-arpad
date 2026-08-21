@@ -861,6 +861,43 @@ impl Bind<ServerResetArgs> for ServerReset {
 }
 
 #[derive(Debug)]
+pub struct FxDeleteArgs {}
+
+pub type FxDeleteHandler = Box<dyn FnMut(FxDeleteArgs) + 'static>;
+
+pub struct FxDelete {
+    socket: Arc<UdpSocket>,
+    handler: Option<FxDeleteHandler>,
+    pub fx_guid: Uuid,
+}
+
+/// /fx/{fx_guid}/delete
+impl Set<FxDeleteArgs> for FxDelete {
+    type Error = OscError;
+    fn set(&mut self, args: FxDeleteArgs) -> Result<(), Self::Error> {
+        let osc_address = format!("/fx/{}/delete", self.fx_guid);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+/// /fx/{fx_guid}/delete
+impl Bind<FxDeleteArgs> for FxDelete {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(FxDeleteArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+#[derive(Debug)]
 pub struct TrackFxNameArgs {
     pub name: String, // name of the FX
 }
@@ -1655,6 +1692,174 @@ impl Query for FxinfoParamMax {
 }
 
 #[derive(Debug)]
+pub struct FxinfoParamToggleArgs {
+    pub toggle: bool, // is this param toggleable?
+}
+
+pub type FxinfoParamToggleHandler = Box<dyn FnMut(FxinfoParamToggleArgs) + 'static>;
+
+pub struct FxinfoParamToggle {
+    socket: Arc<UdpSocket>,
+    handler: Option<FxinfoParamToggleHandler>,
+    pub ident: String,
+    pub param_idx: i32,
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/toggle
+impl Bind<FxinfoParamToggleArgs> for FxinfoParamToggle {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(FxinfoParamToggleArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/toggle
+impl Query for FxinfoParamToggle {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!("/fxinfo/{}/param/{}/toggle/?", self.ident, self.param_idx);
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct FxinfoParamNormalStepArgs {
+    pub normal_step: f32, // normal_step size
+}
+
+pub type FxinfoParamNormalStepHandler = Box<dyn FnMut(FxinfoParamNormalStepArgs) + 'static>;
+
+pub struct FxinfoParamNormalStep {
+    socket: Arc<UdpSocket>,
+    handler: Option<FxinfoParamNormalStepHandler>,
+    pub ident: String,
+    pub param_idx: i32,
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/normal_step
+impl Bind<FxinfoParamNormalStepArgs> for FxinfoParamNormalStep {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(FxinfoParamNormalStepArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/normal_step
+impl Query for FxinfoParamNormalStep {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!(
+            "/fxinfo/{}/param/{}/normal_step/?",
+            self.ident, self.param_idx
+        );
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct FxinfoParamPresumedEnumVariantArgs {}
+
+pub type FxinfoParamPresumedEnumVariantHandler =
+    Box<dyn FnMut(FxinfoParamPresumedEnumVariantArgs) + 'static>;
+
+pub struct FxinfoParamPresumedEnumVariant {
+    socket: Arc<UdpSocket>,
+    handler: Option<FxinfoParamPresumedEnumVariantHandler>,
+    pub ident: String,
+    pub param_idx: i32,
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/presumed_enum_variant
+impl Bind<FxinfoParamPresumedEnumVariantArgs> for FxinfoParamPresumedEnumVariant {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(FxinfoParamPresumedEnumVariantArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/presumed_enum_variant
+impl Query for FxinfoParamPresumedEnumVariant {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!(
+            "/fxinfo/{}/param/{}/presumed_enum_variant/?",
+            self.ident, self.param_idx
+        );
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct FxinfoParamFormattedValueArgs {
+    pub formatted_value: String, // formatted value of the parameter
+}
+
+pub type FxinfoParamFormattedValueHandler = Box<dyn FnMut(FxinfoParamFormattedValueArgs) + 'static>;
+
+pub struct FxinfoParamFormattedValue {
+    socket: Arc<UdpSocket>,
+    handler: Option<FxinfoParamFormattedValueHandler>,
+    pub ident: String,
+    pub param_idx: i32,
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/formatted_value
+impl Bind<FxinfoParamFormattedValueArgs> for FxinfoParamFormattedValue {
+    fn bind<F>(&mut self, callback: F)
+    where
+        F: FnMut(FxinfoParamFormattedValueArgs) + 'static,
+    {
+        self.handler = Some(Box::new(callback));
+    }
+}
+
+/// /fxinfo/{ident}/param/{param_idx}/formatted_value
+impl Query for FxinfoParamFormattedValue {
+    type Error = OscError;
+    fn query(&self) -> Result<(), Self::Error> {
+        let osc_address = format!(
+            "/fxinfo/{}/param/{}/formatted_value/?",
+            self.ident, self.param_idx
+        );
+        let osc_msg = rosc::OscMessage {
+            addr: osc_address,
+            args: vec![],
+        };
+        let packet = rosc::OscPacket::Message(osc_msg);
+        let buf = rosc::encoder::encode(&packet).map_err(|_| OscError)?;
+        self.socket.send(&buf).map_err(|_| OscError)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct FxinfoArgs {}
 
 pub type FxinfoHandler = Box<dyn FnMut(FxinfoArgs) + 'static>;
@@ -1684,6 +1889,13 @@ pub mod context {
     use uuid::Uuid;
 
     use crate::osc::route_context::ContextTrait;
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct Fx {
+        pub fx_guid: Uuid,
+    }
+
+    impl ContextTrait for Fx {}
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Fxinfo {
@@ -1738,6 +1950,26 @@ pub mod context_kind {
     use crate::osc::route_context::ContextKindTrait;
     use regex::Regex;
     use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct Fx {}
+
+    impl ContextKindTrait for Fx {
+        type Context = context::Fx;
+
+        fn context_name() -> &'static str {
+            "Fx"
+        }
+
+        fn parse(osc_address: &str) -> Option<context::Fx> {
+            let re = Regex::new(r"^/fx/([^/]+)/delete$").unwrap();
+            re.captures(osc_address).and_then(|caps| {
+                Some(context::Fx {
+                    fx_guid: Uuid::parse_str(&caps[1]).ok()?,
+                })
+            })
+        }
+    }
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct Fxinfo {}
@@ -1889,6 +2121,7 @@ pub struct Reaper {
     server_hello_endpoint: ServerHello,
     server_goodbye_endpoint: ServerGoodbye,
     server_reset_endpoint: ServerReset,
+    fx_delete_endpoints: HashMap<Uuid, /*fx_guid*/ FxDelete>,
     track_fx_name_endpoints:
         HashMap<Uuid, /*track_guid*/ HashMap<i32, /*fx_idx*/ TrackFxName>>,
     track_fx_guid_endpoints:
@@ -1946,6 +2179,14 @@ pub struct Reaper {
         HashMap<String, /*ident*/ HashMap<i32, /*param_idx*/ FxinfoParamMin>>,
     fxinfo_param_max_endpoints:
         HashMap<String, /*ident*/ HashMap<i32, /*param_idx*/ FxinfoParamMax>>,
+    fxinfo_param_toggle_endpoints:
+        HashMap<String, /*ident*/ HashMap<i32, /*param_idx*/ FxinfoParamToggle>>,
+    fxinfo_param_normal_step_endpoints:
+        HashMap<String, /*ident*/ HashMap<i32, /*param_idx*/ FxinfoParamNormalStep>>,
+    fxinfo_param_presumed_enum_variant_endpoints:
+        HashMap<String, /*ident*/ HashMap<i32, /*param_idx*/ FxinfoParamPresumedEnumVariant>>,
+    fxinfo_param_formatted_value_endpoints:
+        HashMap<String, /*ident*/ HashMap<i32, /*param_idx*/ FxinfoParamFormattedValue>>,
     fxinfo_endpoint: Fxinfo,
 }
 
@@ -1990,6 +2231,7 @@ impl Reaper {
                 socket: socket.clone(),
                 handler: None,
             },
+            fx_delete_endpoints: HashMap::new(),
             track_fx_name_endpoints: HashMap::new(),
             track_fx_guid_endpoints: HashMap::new(),
             track_fx_enabled_endpoints: HashMap::new(),
@@ -2009,6 +2251,10 @@ impl Reaper {
             fxinfo_param_name_endpoints: HashMap::new(),
             fxinfo_param_min_endpoints: HashMap::new(),
             fxinfo_param_max_endpoints: HashMap::new(),
+            fxinfo_param_toggle_endpoints: HashMap::new(),
+            fxinfo_param_normal_step_endpoints: HashMap::new(),
+            fxinfo_param_presumed_enum_variant_endpoints: HashMap::new(),
+            fxinfo_param_formatted_value_endpoints: HashMap::new(),
             fxinfo_endpoint: Fxinfo {
                 socket: socket.clone(),
                 handler: None,
@@ -2161,6 +2407,15 @@ impl Reaper {
     }
     pub fn server_reset(&mut self) -> &mut ServerReset {
         &mut self.server_reset_endpoint
+    }
+    pub fn fx_delete(&mut self, fx_guid: Uuid) -> &mut FxDelete {
+        self.fx_delete_endpoints
+            .entry(fx_guid.clone())
+            .or_insert_with(|| FxDelete {
+                socket: self.socket.clone(),
+                fx_guid: fx_guid,
+                handler: None,
+            })
     }
     pub fn track_fx_name(&mut self, track_guid: Uuid, fx_idx: i32) -> &mut TrackFxName {
         self.track_fx_name_endpoints
@@ -2450,6 +2705,66 @@ impl Reaper {
             .or_insert_with(|| HashMap::new())
             .entry(param_idx.clone())
             .or_insert_with(|| FxinfoParamMax {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
+    }
+    pub fn fxinfo_param_toggle(&mut self, ident: String, param_idx: i32) -> &mut FxinfoParamToggle {
+        self.fxinfo_param_toggle_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamToggle {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
+    }
+    pub fn fxinfo_param_normal_step(
+        &mut self,
+        ident: String,
+        param_idx: i32,
+    ) -> &mut FxinfoParamNormalStep {
+        self.fxinfo_param_normal_step_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamNormalStep {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
+    }
+    pub fn fxinfo_param_presumed_enum_variant(
+        &mut self,
+        ident: String,
+        param_idx: i32,
+    ) -> &mut FxinfoParamPresumedEnumVariant {
+        self.fxinfo_param_presumed_enum_variant_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamPresumedEnumVariant {
+                socket: self.socket.clone(),
+                ident: ident,
+                param_idx: param_idx,
+                handler: None,
+            })
+    }
+    pub fn fxinfo_param_formatted_value(
+        &mut self,
+        ident: String,
+        param_idx: i32,
+    ) -> &mut FxinfoParamFormattedValue {
+        self.fxinfo_param_formatted_value_endpoints
+            .entry(ident.clone())
+            .or_insert_with(|| HashMap::new())
+            .entry(param_idx.clone())
+            .or_insert_with(|| FxinfoParamFormattedValue {
                 socket: self.socket.clone(),
                 ident: ident,
                 param_idx: param_idx,
@@ -3164,6 +3479,26 @@ pub fn dispatch_osc<F, G>(
         let endpoint = reaper.server_reset();
         if let Some(handler) = &mut endpoint.handler {
             handler(ServerResetArgs {});
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/fx/{fx_guid}/delete") {
+        let fx_guid: Uuid = match Uuid::parse_str(&args[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "fx_guid",
+                        value: args[0].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.fx_delete(fx_guid);
+        if let Some(handler) = &mut endpoint.handler {
+            handler(FxDeleteArgs {});
         }
         return;
     }
@@ -4246,6 +4581,156 @@ pub fn dispatch_osc<F, G>(
             };
             handler(FxinfoParamMaxArgs {
                 param_max: _decoded_param_max,
+            });
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param/{param_idx}/toggle") {
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.fxinfo_param_toggle(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_toggle = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().bool() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "bool",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamToggleArgs {
+                toggle: _decoded_toggle,
+            });
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param/{param_idx}/normal_step") {
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.fxinfo_param_normal_step(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_normal_step = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().float() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "float",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamNormalStepArgs {
+                normal_step: _decoded_normal_step,
+            });
+        }
+        return;
+    }
+    if let Some(args) = match_addr(
+        addr,
+        "/fxinfo/{ident}/param/{param_idx}/presumed_enum_variant",
+    ) {
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.fxinfo_param_presumed_enum_variant(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            handler(FxinfoParamPresumedEnumVariantArgs {});
+        }
+        return;
+    }
+    if let Some(args) = match_addr(addr, "/fxinfo/{ident}/param/{param_idx}/formatted_value") {
+        let ident = args[0].clone();
+        let param_idx: i32 = match args[1].parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_decode_error(
+                    addr,
+                    DispatchError::ParamParseError {
+                        param: "param_idx",
+                        value: args[1].clone(),
+                    },
+                );
+                return;
+            }
+        };
+        let endpoint = reaper.fxinfo_param_formatted_value(ident, param_idx);
+        if let Some(handler) = &mut endpoint.handler {
+            let _decoded_formatted_value = match msg.args.get(0) {
+                Some(_raw_arg_0) => match _raw_arg_0.clone().string() {
+                    Some(v) => v,
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "string",
+                                got: osc_type_name(_raw_arg_0),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 0 });
+                    return;
+                }
+            };
+            handler(FxinfoParamFormattedValueArgs {
+                formatted_value: _decoded_formatted_value,
             });
         }
         return;

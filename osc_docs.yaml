@@ -5,7 +5,9 @@
 #
 # Each entry defines an Open Sound Control (OSC) route and specifies the OSC address, parameters, arguments, access flags, and any additional comments.
 #
-# Generally, each OSC route accepts or transmits a single argument, although this is not strictly enforced.
+# Generally, each OSC route accepts a single argument on write, although this is not strictly enforced. Routes more frequently send multiple argumetns on read/query, especially in cases
+# where the additional argument(s) provide a helpful disambiguation for the route's context beyond what is encoded in the address itself. In these situtaions, the additional arguments
+# are typically not required to understand the main behavior of the route (and an implementor could likely safely ignore them), although they are useful enough to warrant their inclusion.
 #
 # Routes may also include parameters encoded within the address itself, denoted by `{}`-delimited placeholders. These parameters are defined in a `params` section.
 # Callers should replace these placeholders with appropriate values when constructing OSC messages.
@@ -28,7 +30,7 @@
 #   Parameters are still required in the address when querying (whenever the route includes placeholders).
 #   NOTE: queryable implies readable.
 #
-# Some queryable-only routes do not respond with the same address, but instead respond on a different address. In such cases, the response(s) will be on existingroutes documented in this file.
+# Some queryable-only routes do not respond with the same address, but instead respond on a different address. In such cases, the response(s) will be on existing routes documented in this file.
 - osc_address: /num_tracks
   params: []
   arguments:
@@ -253,6 +255,15 @@
   comments:
   - Sent by the server to indicate that all currently accumulated state is invalid. Practically,
   - this happens when we open a new Reaper project.
+- osc_address: /fx/{fx_guid}/delete
+  params:
+  - name: fx_guid
+    type: uuid
+    description: unique identifier for the FX
+  arguments: []
+  access_tags:
+  - readable
+  - writeable
 - osc_address: /track/{track_guid}/fx/{fx_idx}/name
   params:
   - name: track_guid
@@ -265,6 +276,10 @@
   - name: name
     type: string
     description: name of the FX
+  readonly_arguments:
+  - name: guid
+    type: uuid
+    description: unique identifier for the FX
   access_tags:
   - readable
   - queryable
@@ -277,6 +292,10 @@
     type: int
     description: index of the FX on the track
   arguments:
+  - name: guid
+    type: uuid
+    description: unique identifier for the FX
+  readonly_arguments:
   - name: guid
     type: uuid
     description: unique identifier for the FX
@@ -295,6 +314,10 @@
   - name: enabled
     type: bool
     description: true if the FX is enabled
+  readonly_arguments:
+  - name: guid
+    type: uuid
+    description: unique identifier for the FX
   access_tags:
   - readable
   - writeable
@@ -311,6 +334,10 @@
   - name: param_count
     type: int
     description: number of parameters for the FX
+  readonly_arguments:
+  - name: guid
+    type: uuid
+    description: unique identifier for the FX
   access_tags:
   - readable
   - queryable
@@ -566,6 +593,63 @@
   - name: param_max
     type: float
     description: maximum raw value of the parameter
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /fxinfo/{ident}/param/{param_idx}/toggle
+  params:
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: toggle
+    type: bool
+    description: is this param toggleable?
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /fxinfo/{ident}/param/{param_idx}/normal_step
+  params:
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: normal_step
+    type: float
+    description: normal_step size
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /fxinfo/{ident}/param/{param_idx}/presumed_enum_variant
+  params:
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments: []
+  access_tags:
+  - readable
+  - queryable
+- osc_address: /fxinfo/{ident}/param/{param_idx}/formatted_value
+  params:
+  - name: ident
+    type: string
+    description: unique identifier for the FX
+  - name: param_idx
+    type: int
+    description: index of the parameter
+  arguments:
+  - name: formatted_value
+    type: string
+    description: formatted value of the parameter
   access_tags:
   - readable
   - queryable
