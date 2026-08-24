@@ -6,6 +6,7 @@ use crate::modes::reaper_fx::{FxId, rea_eq};
 use crate::modes::reaper_fx_adapters::{FxAdapter, rea_eq::ReaEqAdapter};
 use crate::track::track;
 
+/// Autogenerates stubs for rotating through the enum in a circular fashion appropriate for using an encoder
 macro_rules! rotary_enum {
     (
         $(#[$meta:meta])*
@@ -64,17 +65,9 @@ macro_rules! rotary_enum {
 // | 15 | Saturation  |                                  | Saturation type  |                | bypass Sat     |                 |
 // | 16 | Gain        | Interface gain (only if armed)   | Trim             |                |                |                 |
 
-pub enum FxKind {
-    Eq,
-    Comp,
-    Saturation,
-    Gain,
-    Trim,
-    InterfaceGain,
-}
-
+// Bundle of user-facing enums that provide scribble strip labels
 #[derive(Debug, Clone, Copy)]
-pub enum FxUi {
+enum FxUi {
     Eq(EqType),
     Comp(CompType),
     Saturation(SaturationType),
@@ -83,9 +76,9 @@ pub enum FxUi {
     InterfaceGain,
 }
 
+// The following are UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
+// By design, these do not need to have a 1:1 mapping to the internal logic.
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BandMode {
         Bell => "bell",
@@ -94,8 +87,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EqType {
         Digital => "Digital",
@@ -105,8 +96,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EqPosition {
         First => "E>C>C>S",
@@ -116,8 +105,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum CompOrder {
         C1toC2 => "Cmp1->2",
@@ -126,8 +113,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum CompType {
         Digital => "Digital",
@@ -140,8 +125,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EqBypass {
         IN => "EqIN",
@@ -150,8 +133,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum CompBypass {
         IN => "CompIN",
@@ -160,8 +141,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Cmp2Bypass {
         Engaged => "Cmp2IN",
@@ -170,8 +149,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SaturationBypass {
         IN => "SatIN",
@@ -180,8 +157,6 @@ rotary_enum! {
 }
 
 rotary_enum! {
-    /// UI representation of the channel strip concepts, which are mapped to actual FX parameters by the router.
-    /// By design, this does not need to have a 1:1 mapping to the internal logic.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SaturationType {
         Console => "Console",
@@ -191,6 +166,7 @@ rotary_enum! {
     }
 }
 
+/// Represents messages sent between the router and channel strip widgets (which define the UI)
 #[derive(Debug, Clone, Copy)]
 pub enum ChannelStripMsg {
     EnableEq(EqType),
@@ -261,16 +237,52 @@ pub enum ChannelStripMsg {
     InterfaceGain(f32),
 }
 
+// Architecture:
+//
+// ChannelStripRouter translates between (1) ChannelStripMsgs from ChannelStripMode and the widgets that make it up and (2) TrackMsgs, which set things in Reaper.
+//
+// Translation is mediated through adapters, which wrap autogenerated code exposing the parameters of all the Reaper VST/AU plugins we support.
+// In some cases, the adapter is a simple 1:1 translation, while in other cases there is more complex logic.
+//
+// FxCategory bounds the set of ChannelStripMsg a given FX adapter is expected to handle.
+//
+// Slots map to a specific widget in ChannelStripMode. Each Slot has a certain FxCategory it
+// accepts. Some slots (e.g. Comp1 and Comp2) accept the same FxCategory.
+//
+// SlotRole is an enum giving an identity to the given slot
+//
+// The mapping of FxCategories to Slots is known at compile time.
+//
+// The actual FX plugin mapped to a given slot changes at runtime depending on the FX chain on the
+// track in Reaper. The Router needs to keep track of which plugins are active and which of the
+// active plugins are mapped to which slots.
+//
+// Handling multiple possible plugins in the Slots is still TBD. Most likely, we will track up to N plugins of a given FxCategory, and toggle between the active
+// instance with EqType, Comp1Type, Comp2Type, etc. messages. Beyond the N we support, we'll probably start
+// removing plugins from the chain with a LRU policy.
+
+// Specifies which kind of adapter is fit to serve a given ChannelStripMsg
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FxCategory {
+    Eq,
+    Comp,
+    Saturation,
+    Gain,
+    Trim,
+    InterfaceGain,
+}
+
 impl ChannelStripMsg {
-    fn kind(&self) -> Option<FxKind> {
+    // Returns the kind of FX that this message is associated with, if any. This is used to route messages to the appropriate FX adapter.
+    fn kind(&self) -> Option<FxCategory> {
         use ChannelStripMsg::*;
         Some(match self {
-            LowFreq(_) | LowGain(_) | HighFreq(_) | EqType(_) | EqBypass(_) => FxKind::Eq,
-            CompThresh(_) | CompRatio(_) | CompType(_) | CompBypass(_) => FxKind::Comp,
-            Saturation(_) | SaturationType(_) | SaturationBypass(_) => FxKind::Saturation,
-            Gain(_) => FxKind::Gain,
-            Trim(_) => FxKind::Trim,
-            InterfaceGain(_) => FxKind::InterfaceGain,
+            LowFreq(_) | LowGain(_) | HighFreq(_) | EqType(_) | EqBypass(_) => FxCategory::Eq,
+            CompThresh(_) | CompRatio(_) | CompType(_) | CompBypass(_) => FxCategory::Comp,
+            Saturation(_) | SaturationType(_) | SaturationBypass(_) => FxCategory::Saturation,
+            Gain(_) => FxCategory::Gain,
+            Trim(_) => FxCategory::Trim,
+            InterfaceGain(_) => FxCategory::InterfaceGain,
             _ => return None, // non-routing/system msgs
         })
     }
@@ -285,19 +297,7 @@ pub enum TranslationErr {
 // These structs define actual routing logic
 // ----
 
-struct FXParamIdent {
-    fx_index: i32,
-    param_index: i32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FxCategory {
-    Eq,
-    Comp,
-    Saturation,
-    Gain,
-}
-
+/// Enumerates the different slots in the channel strip. Each slot has a specific role and accepts certain FxCategories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SlotRole {
     Eq,
@@ -307,6 +307,7 @@ enum SlotRole {
     Gain,
 }
 
+/// Specifies which slot a given FxCategory can be routed to. This is used to determine which slots are compatible with which FX adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SlotSpec {
     role: SlotRole,
@@ -321,6 +322,7 @@ struct FxSpec {
     adapter: &'static dyn FxAdapter,
 }
 
+/// Known at compile-time, doesn't change at runtime.
 pub struct RoutingRegistry {
     pub slots: &'static [SlotSpec],
     pub fx_specs: &'static [FxSpec],
@@ -429,6 +431,7 @@ impl Default for SlotBinding {
     }
 }
 
+/// The set of slots we implement, mapping to the widgets in ChannelStripMode
 struct Slots {
     eq: SlotBinding,
     comp1: SlotBinding,
@@ -506,6 +509,7 @@ impl Slots {
     }
 }
 
+/// Container for the data we track about ALL FX on the track.
 struct PluginInfo {
     name: String,
     fx_idx: usize,
@@ -515,14 +519,15 @@ struct PluginInfo {
 /// Maps named, high-level channel strip concepts to their respective parameters
 ///
 /// NOTE: we have one of these *PER TRACK*
-///
-/// TODO: the hard part will be getting this to update dynamically based on the actual FX chain on the track
 pub struct ChannelStripRouter {
+    // This applies to a single track
     track_guid: Uuid,
 
     routing_registry: RoutingRegistry,
 
+    // Keeps track of which FX plugin is mapped to each slot
     slots: Slots,
+    // All plugins on the track, regardless of whether they are currently mapped to a slot or not.
     plugins: HashMap<Uuid, PluginInfo>, // Maps Fx GUID to PluginInfo
 }
 
@@ -549,6 +554,7 @@ impl ChannelStripRouter {
             .map(|(guid, _)| *guid)
     }
 
+    /// Registers a plugin with the router, updating its name and index if it already exists, or creating a new entry if it doesn't.
     pub fn update_plugin_state(&mut self, plugin_guid: Uuid, plugin_name: &str, fx_index: i32) {
         self.plugins
             .entry(plugin_guid)
@@ -568,6 +574,7 @@ impl ChannelStripRouter {
         msg: track::DataMsg,
     ) -> Result<Vec<ChannelStripMsg>, TranslationErr> {
         match msg {
+            // This is our key message that alerts us of a new plugin
             track::DataMsg::FXName(msg) => {
                 self.update_plugin_state(msg.fx_guid, &msg.name, msg.fx_index);
 
@@ -689,7 +696,7 @@ impl ChannelStripRouter {
         msg: ChannelStripMsg,
     ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
         match msg.kind() {
-            Some(FxKind::Eq) => {
+            Some(FxCategory::Eq) => {
                 if let Some(active_instance) = &self.slots.eq.active_instance {
                     if let Some(track_msg) =
                         active_instance
