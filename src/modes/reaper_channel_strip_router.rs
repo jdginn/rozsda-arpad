@@ -269,7 +269,7 @@ enum FxCategory {
     Saturation,
     Gain,
     Trim,
-    InterfaceGain,
+    // InterfaceGain,
 }
 
 impl ChannelStripMsg {
@@ -282,7 +282,7 @@ impl ChannelStripMsg {
             Saturation(_) | SaturationType(_) | SaturationBypass(_) => FxCategory::Saturation,
             Gain(_) => FxCategory::Gain,
             Trim(_) => FxCategory::Trim,
-            InterfaceGain(_) => FxCategory::InterfaceGain,
+            // InterfaceGain(_) => FxCategory::InterfaceGain,
             _ => return None, // non-routing/system msgs
         })
     }
@@ -305,6 +305,7 @@ enum SlotRole {
     Comp2,
     Saturation,
     Gain,
+    Trim,
 }
 
 /// Specifies which slot a given FxCategory can be routed to. This is used to determine which slots are compatible with which FX adapters.
@@ -410,15 +411,15 @@ impl RoutingRegistry {
 // NOTE: as of 8/22, we no longer believe this is necessary but we could be wrong
 
 #[derive(Clone)]
-struct FxInstance {
-    spec: FxSpec,
+struct FxInstanceRef {
+    fx_id: FxId,
     guid: Uuid,
 }
 
 struct SlotBinding {
     role: SlotRole,
-    active_instance: Option<FxInstance>,
-    owned_instances: Vec<FxInstance>,
+    active_instance: Option<FxInstanceRef>,
+    owned_instances: Vec<FxInstanceRef>,
 }
 
 impl Default for SlotBinding {
@@ -438,6 +439,7 @@ struct Slots {
     comp2: SlotBinding,
     saturation: SlotBinding,
     gain: SlotBinding,
+    trim: SlotBinding,
 }
 
 impl Slots {
@@ -463,6 +465,10 @@ impl Slots {
                 role: SlotRole::Gain,
                 ..Default::default()
             },
+            trim: SlotBinding {
+                role: SlotRole::Trim,
+                ..Default::default()
+            },
         }
     }
 
@@ -473,6 +479,7 @@ impl Slots {
             SlotRole::Comp2 => &self.comp2,
             SlotRole::Saturation => &self.saturation,
             SlotRole::Gain => &self.gain,
+            SlotRole::Trim => &self.trim,
         }
     }
 
@@ -483,6 +490,7 @@ impl Slots {
             SlotRole::Comp2 => &mut self.comp2,
             SlotRole::Saturation => &mut self.saturation,
             SlotRole::Gain => &mut self.gain,
+            SlotRole::Trim => &mut self.trim,
         }
     }
 
@@ -493,6 +501,7 @@ impl Slots {
             &self.comp2,
             &self.saturation,
             &self.gain,
+            &self.trim,
         ]
         .into_iter()
     }
@@ -504,6 +513,7 @@ impl Slots {
             &mut self.comp2,
             &mut self.saturation,
             &mut self.gain,
+            &mut self.trim,
         ]
         .into_iter()
     }
@@ -514,6 +524,58 @@ struct PluginInfo {
     name: String,
     fx_idx: usize,
     enabled: bool,
+}
+
+struct PluginCatalog {
+    by_guid: HashMap<Uuid, PluginInfo>,
+    guid_by_index: HashMap<i32, Uuid>,
+}
+
+impl PluginCatalog {
+    fn new() -> Self {
+        PluginCatalog {
+            by_guid: HashMap::new(),
+            guid_by_index: HashMap::new(),
+        }
+    }
+
+    fn update_plugin_state(&mut self, plugin_guid: Uuid, plugin_name: &str, fx_index: i32) {
+        self.by_guid
+            .entry(plugin_guid)
+            .and_modify(|info| {
+                info.name = plugin_name.to_string();
+                info.fx_idx = fx_index as usize;
+            })
+            .or_insert(PluginInfo {
+                name: plugin_name.to_string(),
+                fx_idx: fx_index as usize,
+                enabled: true,
+            });
+
+        self.guid_by_index.insert(fx_index, plugin_guid);
+    }
+
+    fn delete_by_guid(&mut self, plugin_guid: Uuid) {
+        if let Some(info) = self.by_guid.remove(&plugin_guid) {
+            self.guid_by_index.remove(&(info.fx_idx as i32));
+        }
+    }
+
+    fn get_fx_guid_from_index(&self, fx_index: i32) -> Option<Uuid> {
+        self.guid_by_index.get(&fx_index).copied()
+    }
+
+    fn get_index_from_fx_guid(&self, plugin_guid: Uuid) -> Option<i32> {
+        self.by_guid
+            .get(&plugin_guid)
+            .map(|info| info.fx_idx as i32)
+    }
+
+    fn enable_by_guid(&mut self, plugin_guid: Uuid, enabled: bool) {
+        if let Some(info) = self.by_guid.get_mut(&plugin_guid) {
+            info.enabled = enabled;
+        }
+    }
 }
 
 /// Maps named, high-level channel strip concepts to their respective parameters
@@ -528,7 +590,7 @@ pub struct ChannelStripRouter {
     // Keeps track of which FX plugin is mapped to each slot
     slots: Slots,
     // All plugins on the track, regardless of whether they are currently mapped to a slot or not.
-    plugins: HashMap<Uuid, PluginInfo>, // Maps Fx GUID to PluginInfo
+    plugins: PluginCatalog,
 }
 
 impl ChannelStripRouter {
@@ -537,36 +599,8 @@ impl ChannelStripRouter {
             track_guid,
             routing_registry: RoutingRegistry::new(),
             slots: Slots::new(),
-            plugins: HashMap::new(),
+            plugins: PluginCatalog::new(),
         }
-    }
-
-    pub fn set_plugin_enable(&mut self, plugin_guid: Uuid, enabled: bool) {
-        if let Some(plugin_info) = self.plugins.get_mut(&plugin_guid) {
-            plugin_info.enabled = enabled;
-        }
-    }
-
-    fn get_fx_guid_from_index(&self, fx_index: i32) -> Option<Uuid> {
-        self.plugins
-            .iter()
-            .find(|(_, info)| info.fx_idx == fx_index as usize)
-            .map(|(guid, _)| *guid)
-    }
-
-    /// Registers a plugin with the router, updating its name and index if it already exists, or creating a new entry if it doesn't.
-    pub fn update_plugin_state(&mut self, plugin_guid: Uuid, plugin_name: &str, fx_index: i32) {
-        self.plugins
-            .entry(plugin_guid)
-            .and_modify(|info| {
-                info.name = plugin_name.to_string();
-                info.fx_idx = fx_index as usize;
-            })
-            .or_insert(PluginInfo {
-                name: plugin_name.to_string(),
-                fx_idx: fx_index as usize,
-                enabled: true,
-            });
     }
 
     pub fn translate_message_from_upstream(
@@ -576,13 +610,15 @@ impl ChannelStripRouter {
         match msg {
             // This is our key message that alerts us of a new plugin
             track::DataMsg::FXName(msg) => {
-                self.update_plugin_state(msg.fx_guid, &msg.name, msg.fx_index);
+                let mut msgs = Vec::new();
+                self.plugins
+                    .update_plugin_state(msg.fx_guid, &msg.name, msg.fx_index);
 
                 if let Some(fx_id) = self.routing_registry.name_to_fx_id.get(&msg.name) {
                     if let Some(applicable_roles) = self.routing_registry.fx_to_slots.get(fx_id) {
                         for role in applicable_roles {
-                            let instance = FxInstance {
-                                spec: **self.routing_registry.by_fx_id.get(fx_id).unwrap(),
+                            let instance = FxInstanceRef {
+                                fx_id: *fx_id,
                                 guid: msg.fx_guid,
                             };
 
@@ -594,122 +630,145 @@ impl ChannelStripRouter {
                             slot.active_instance = Some(instance);
                             match role {
                                 SlotRole::Eq => {
-                                    return Ok(vec![ChannelStripMsg::EnableEq(EqType::Digital)]);
+                                    msgs.push(ChannelStripMsg::EnableEq(EqType::Digital));
                                 }
                                 SlotRole::Comp1 => {
-                                    return Ok(vec![ChannelStripMsg::EnableComp1(
-                                        CompType::Digital,
-                                    )]);
+                                    msgs.push(ChannelStripMsg::EnableComp1(CompType::Digital));
                                 }
                                 SlotRole::Comp2 => {
-                                    return Ok(vec![ChannelStripMsg::EnableComp2(
-                                        CompType::Digital,
-                                    )]);
+                                    msgs.push(ChannelStripMsg::EnableComp2(CompType::Digital));
                                 }
                                 SlotRole::Saturation => {
-                                    return Ok(vec![ChannelStripMsg::EnableSaturation(
+                                    msgs.push(ChannelStripMsg::EnableSaturation(
                                         SaturationType::Console,
-                                    )]);
+                                    ));
                                 }
-                                SlotRole::Gain => return Ok(vec![ChannelStripMsg::EnableGain]),
+                                SlotRole::Gain => msgs.push(ChannelStripMsg::EnableGain),
+                                SlotRole::Trim => msgs.push(ChannelStripMsg::EnableTrim),
                             }
                         }
                     }
                 }
-                Ok(vec![])
+                Ok(msgs)
             }
             track::DataMsg::FXParamValue(msg) => {
-                if let Some(fx_guid) = self.get_fx_guid_from_index(msg.fx_index) {
+                let mut msgs = Vec::new();
+                if let Some(fx_guid) = self.plugins.get_fx_guid_from_index(msg.fx_index) {
                     for slot in self.slots.iter() {
                         if let Some(active_instance) = &slot.active_instance {
                             if active_instance.guid == fx_guid {
-                                if let Some(msg) = active_instance.spec.adapter.from_track(msg) {
-                                    return Ok(vec![msg]);
+                                if let Some(spec) =
+                                    self.routing_registry.by_fx_id.get(&active_instance.fx_id)
+                                {
+                                    msgs.extend(spec.adapter.from_track(msg));
                                 }
                             }
                         }
                     }
                 }
-                Ok(vec![])
+                Ok(msgs)
             }
             track::DataMsg::FXEnabled(msg) => {
+                let mut msgs = Vec::new();
                 if msg.enabled {
                     for slot in self.slots.iter_mut() {
                         for instance in &slot.owned_instances {
                             if instance.guid == msg.fx_guid {
                                 slot.active_instance = Some(instance.clone());
-                            }
-                            match instance.spec.ui_type {
-                                FxUi::Eq(eq_type) => {
-                                    return Ok(vec![ChannelStripMsg::EnableEq(eq_type)]);
-                                }
-                                FxUi::Comp(comp_type) => {
-                                    if slot.role == SlotRole::Comp1 {
-                                        return Ok(vec![ChannelStripMsg::EnableComp1(comp_type)]);
-                                    } else if slot.role == SlotRole::Comp2 {
-                                        return Ok(vec![ChannelStripMsg::EnableComp2(comp_type)]);
+                                if let Some(spec) =
+                                    self.routing_registry.by_fx_id.get(&instance.fx_id)
+                                {
+                                    match spec.ui_type {
+                                        FxUi::Eq(eq_type) => {
+                                            msgs.push(ChannelStripMsg::EnableEq(eq_type));
+                                        }
+                                        FxUi::Comp(comp_type) => {
+                                            if slot.role == SlotRole::Comp1 {
+                                                msgs.push(ChannelStripMsg::EnableComp1(comp_type));
+                                            } else if slot.role == SlotRole::Comp2 {
+                                                msgs.push(ChannelStripMsg::EnableComp2(comp_type));
+                                            }
+                                        }
+                                        FxUi::Saturation(sat_type) => {
+                                            msgs.push(ChannelStripMsg::EnableSaturation(sat_type));
+                                        }
+                                        FxUi::Gain => {
+                                            msgs.push(ChannelStripMsg::EnableGain);
+                                        }
+                                        _ => {}
                                     }
                                 }
-                                FxUi::Saturation(sat_type) => {
-                                    return Ok(vec![ChannelStripMsg::EnableSaturation(sat_type)]);
-                                }
-                                FxUi::Gain => {
-                                    return Ok(vec![ChannelStripMsg::EnableGain]);
-                                }
-                                _ => {}
                             }
                         }
                     }
-                    Ok(vec![])
                 } else {
                     for slot in self.slots.iter_mut() {
                         if let Some(active_instance) = slot.active_instance.clone() {
                             if active_instance.guid == msg.fx_guid {
                                 slot.active_instance = None;
                                 match slot.role {
-                                    SlotRole::Eq => return Ok(vec![ChannelStripMsg::DisableEq]),
+                                    SlotRole::Eq => msgs.push(ChannelStripMsg::DisableEq),
                                     SlotRole::Comp1 => {
-                                        return Ok(vec![ChannelStripMsg::DisableComp1]);
+                                        msgs.push(ChannelStripMsg::DisableComp1);
                                     }
                                     SlotRole::Comp2 => {
-                                        return Ok(vec![ChannelStripMsg::DisableComp2]);
+                                        msgs.push(ChannelStripMsg::DisableComp2);
                                     }
                                     SlotRole::Saturation => {
-                                        return Ok(vec![ChannelStripMsg::DisableSaturation]);
+                                        msgs.push(ChannelStripMsg::DisableSaturation);
                                     }
                                     SlotRole::Gain => {
-                                        return Ok(vec![ChannelStripMsg::DisableGain]);
+                                        msgs.push(ChannelStripMsg::DisableGain);
+                                    }
+                                    SlotRole::Trim => {
+                                        msgs.push(ChannelStripMsg::DisableTrim);
                                     }
                                 }
                             }
                         }
                     }
-                    Ok(vec![])
                 }
+                Ok(msgs)
             }
             _ => Ok(vec![]),
         }
+    }
+
+    fn translate_slot(&self, msg: ChannelStripMsg, slot_role: SlotRole) -> Vec<track::TrackMsg> {
+        if let Some(active_instance) = &self.slots.get(slot_role).active_instance {
+            if let Some(index) = self.plugins.get_index_from_fx_guid(active_instance.guid) {
+                if let Some(spec) = self.routing_registry.by_fx_id.get(&active_instance.fx_id) {
+                    return spec.adapter.to_track(self.track_guid, index, msg);
+                }
+            }
+        }
+        vec![]
     }
 
     pub fn translate_message_from_downstream(
         &self,
         msg: ChannelStripMsg,
     ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
+        let mut msgs = Vec::new();
         match msg.kind() {
             Some(FxCategory::Eq) => {
-                if let Some(active_instance) = &self.slots.eq.active_instance {
-                    if let Some(track_msg) =
-                        active_instance
-                            .spec
-                            .adapter
-                            .to_track(self.track_guid, 0, msg)
-                    {
-                        return Ok(vec![track_msg]);
-                    }
-                }
-                Ok(vec![])
+                msgs.extend(self.translate_slot(msg, SlotRole::Eq));
             }
-            _ => Ok(vec![]), // TODO: implement other kinds
+            Some(FxCategory::Comp) => {
+                msgs.extend(self.translate_slot(msg, SlotRole::Comp1));
+                msgs.extend(self.translate_slot(msg, SlotRole::Comp2));
+            }
+            Some(FxCategory::Saturation) => {
+                msgs.extend(self.translate_slot(msg, SlotRole::Saturation));
+            }
+            Some(FxCategory::Gain) => {
+                msgs.extend(self.translate_slot(msg, SlotRole::Gain));
+            }
+            Some(FxCategory::Trim) => {
+                msgs.extend(self.translate_slot(msg, SlotRole::Trim));
+            }
+            None => {}
         }
+        Ok(msgs)
     }
 }

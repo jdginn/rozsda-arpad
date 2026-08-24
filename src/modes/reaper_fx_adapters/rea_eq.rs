@@ -18,87 +18,87 @@ impl FxAdapter for ReaEqAdapter {
         track: uuid::Uuid,
         fx_index: i32,
         msg: ChannelStripMsg,
-    ) -> Option<crate::track::track::TrackMsg> {
+    ) -> Vec<crate::track::track::TrackMsg> {
         match msg {
-            ChannelStripMsg::LowFreq(val) => Some(rea_eq::encode_trackmsg(
+            ChannelStripMsg::LowFreq(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::FreqLowShelf(val),
-            )),
-            ChannelStripMsg::LowGain(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::LowGain(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::GainLowShelf(val),
-            )),
-            ChannelStripMsg::LowQ(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::LowQ(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::BWLowShelf(val),
-            )),
-            ChannelStripMsg::LmFreq(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::LmFreq(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::FreqBand2(val),
-            )),
-            ChannelStripMsg::LmGain(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::LmGain(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::GainBand2(val),
-            )),
-            ChannelStripMsg::LmQ(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::LmQ(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::BWBand2(val),
-            )),
-            ChannelStripMsg::HmFreq(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::HmFreq(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::FreqBand3(val),
-            )),
-            ChannelStripMsg::HmGain(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::HmGain(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::GainBand3(val),
-            )),
-            ChannelStripMsg::HmQ(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::HmQ(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::BWBand3(val),
-            )),
-            ChannelStripMsg::HighFreq(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::HighFreq(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::FreqHighShelf4(val),
-            )),
-            ChannelStripMsg::HighGain(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::HighGain(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::GainHighShelf4(val),
-            )),
-            ChannelStripMsg::HighQ(val) => Some(rea_eq::encode_trackmsg(
+            )],
+            ChannelStripMsg::HighQ(val) => vec![rea_eq::encode_trackmsg(
                 track,
                 fx_index,
                 rea_eq::Param::BWHighShelf4(val),
-            )),
-            _ => None,
+            )],
+            _ => vec![],
         }
     }
 
-    fn from_track(&self, msg: crate::track::track::FXParamValue) -> Option<ChannelStripMsg> {
+    fn from_track(&self, msg: crate::track::track::FXParamValue) -> Vec<ChannelStripMsg> {
         match rea_eq::decode_trackmsg(msg) {
-            Some(rea_eq::Param::FreqLowShelf(val)) => Some(ChannelStripMsg::LowFreq(val)),
-            Some(rea_eq::Param::GainLowShelf(val)) => Some(ChannelStripMsg::LowGain(val)),
-            Some(rea_eq::Param::BWLowShelf(val)) => Some(ChannelStripMsg::LowQ(val)),
-            Some(rea_eq::Param::FreqBand2(val)) => Some(ChannelStripMsg::LmFreq(val)),
-            Some(rea_eq::Param::GainBand2(val)) => Some(ChannelStripMsg::LmGain(val)),
-            Some(rea_eq::Param::BWBand2(val)) => Some(ChannelStripMsg::LmQ(val)),
-            Some(rea_eq::Param::FreqBand3(val)) => Some(ChannelStripMsg::HmFreq(val)),
-            Some(rea_eq::Param::GainBand3(val)) => Some(ChannelStripMsg::HmGain(val)),
-            Some(rea_eq::Param::BWBand3(val)) => Some(ChannelStripMsg::HmQ(val)),
-            Some(rea_eq::Param::FreqHighShelf4(val)) => Some(ChannelStripMsg::HighFreq(val)),
-            Some(rea_eq::Param::GainHighShelf4(val)) => Some(ChannelStripMsg::HighGain(val)),
-            Some(rea_eq::Param::BWHighShelf4(val)) => Some(ChannelStripMsg::HighQ(val)),
-            _ => None,
+            Some(rea_eq::Param::FreqLowShelf(val)) => vec![ChannelStripMsg::LowFreq(val)],
+            Some(rea_eq::Param::GainLowShelf(val)) => vec![ChannelStripMsg::LowGain(val)],
+            Some(rea_eq::Param::BWLowShelf(val)) => vec![ChannelStripMsg::LowQ(val)],
+            Some(rea_eq::Param::FreqBand2(val)) => vec![ChannelStripMsg::LmFreq(val)],
+            Some(rea_eq::Param::GainBand2(val)) => vec![ChannelStripMsg::LmGain(val)],
+            Some(rea_eq::Param::BWBand2(val)) => vec![ChannelStripMsg::LmQ(val)],
+            Some(rea_eq::Param::FreqBand3(val)) => vec![ChannelStripMsg::HmFreq(val)],
+            Some(rea_eq::Param::GainBand3(val)) => vec![ChannelStripMsg::HmGain(val)],
+            Some(rea_eq::Param::BWBand3(val)) => vec![ChannelStripMsg::HmQ(val)],
+            Some(rea_eq::Param::FreqHighShelf4(val)) => vec![ChannelStripMsg::HighFreq(val)],
+            Some(rea_eq::Param::GainHighShelf4(val)) => vec![ChannelStripMsg::HighGain(val)],
+            Some(rea_eq::Param::BWHighShelf4(val)) => vec![ChannelStripMsg::HighQ(val)],
+            _ => vec![],
         }
     }
 }

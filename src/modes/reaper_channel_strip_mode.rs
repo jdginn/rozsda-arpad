@@ -6,7 +6,7 @@ use crate::midi::v1m;
 use crate::modes::mode_manager::{
     DownstreamIo, ModeAction, ModeHandler, ToV1m, TransitionRequest, UpstreamIo,
 };
-use crate::modes::reaper_channel_strip_router::{ChannelStripMsg, ChannelStripRouter};
+use crate::modes::reaper_channel_strip_router::ChannelStripRouter;
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_channel_strip_widgets::{Dirty, Widget};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
@@ -361,13 +361,6 @@ impl ModeHandler for ChannelStripMode {
                                 .into(),
                             );
                         }
-                        ModeAction::None
-                    }
-                    track::DataMsg::FXName(msg) => {
-                        self.routers
-                            .entry(self.selected_track_guid)
-                            .or_insert(ChannelStripRouter::new(self.selected_track_guid))
-                            .update_plugin_state(msg.fx_index, &msg.name);
                         ModeAction::None
                     }
                     _ => {
