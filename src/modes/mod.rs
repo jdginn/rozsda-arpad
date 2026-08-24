@@ -1,12 +1,13 @@
 pub mod button;
 pub mod coalesce;
 pub mod color;
-pub mod generated_fx_param;
 pub mod mode_manager;
 pub mod reaper_channel_strip_mode;
 pub mod reaper_channel_strip_router;
 pub mod reaper_channel_strip_widgets;
 pub mod reaper_faders_buttons_core;
+pub mod reaper_fx;
+pub mod reaper_fx_adapters;
 pub mod reaper_track_sends_mode;
 pub mod reaper_volume_pan_mode;
 pub mod reset;

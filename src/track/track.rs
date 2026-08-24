@@ -234,6 +234,13 @@ pub struct FXName {
     pub fx_index: i32,
     #[data]
     pub name: String,
+    #[data]
+    pub fx_guid: Uuid,
+}
+
+#[derive(Clone, Debug)]
+pub struct FXDeleted {
+    pub fx_guid: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, Coalescible)]
@@ -241,7 +248,7 @@ pub struct FXGuid {
     pub track_guid: Uuid,
     pub fx_index: i32,
     #[data]
-    pub guid: Uuid,
+    pub fx_guid: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, Coalescible)]
@@ -250,6 +257,8 @@ pub struct FXEnabled {
     pub fx_index: i32,
     #[data]
     pub enabled: bool,
+    #[data]
+    pub fx_guid: Uuid,
 }
 
 #[derive(Clone, Debug, Coalescible)]
@@ -410,6 +419,15 @@ impl TrackData {
             });
         }
         self.fx.get_mut(fx_index as usize)
+    }
+
+    fn delete(&mut self, fx_guid: Uuid) -> Result<(), String> {
+        if let Some(pos) = self.fx.iter().position(|fx| fx.guid == fx_guid) {
+            self.fx.remove(pos);
+            Ok(())
+        } else {
+            Err(format!("FX with GUID {} not found", fx_guid))
+        }
     }
 }
 
@@ -572,7 +590,7 @@ impl TrackManager {
                         FXGuid {
                             track_guid: fx.track_guid,
                             fx_index: fx_index as i32,
-                            guid: fx.guid,
+                            fx_guid: fx.guid,
                         }
                         .into(),
                     )
@@ -583,6 +601,7 @@ impl TrackManager {
                             track_guid: fx.track_guid,
                             fx_index: fx_index as i32,
                             name: fx.name.clone(),
+                            fx_guid: fx.guid,
                         }
                         .into(),
                     )
@@ -593,6 +612,7 @@ impl TrackManager {
                             track_guid: fx.track_guid,
                             fx_index: fx_index as i32,
                             enabled: fx.enabled,
+                            fx_guid: fx.guid,
                         }
                         .into(),
                     )
@@ -721,7 +741,7 @@ impl TrackManager {
                     .send(TrackMsg::FXGuid(FXGuid {
                         track_guid: fx.track_guid,
                         fx_index: fx_index as i32,
-                        guid: fx.guid,
+                        fx_guid: fx.guid,
                     }))
                     .unwrap();
                 self.to_downstream
@@ -729,6 +749,7 @@ impl TrackManager {
                         track_guid: fx.track_guid,
                         fx_index: fx_index as i32,
                         name: fx.name.clone(),
+                        fx_guid: fx.guid,
                     }))
                     .unwrap();
                 self.to_downstream
@@ -736,6 +757,7 @@ impl TrackManager {
                         track_guid: fx.track_guid,
                         fx_index: fx_index as i32,
                         enabled: fx.enabled,
+                        fx_guid: fx.guid,
                     }))
                     .unwrap();
                 for (param_index, param) in fx.params.iter().enumerate() {
@@ -941,10 +963,10 @@ impl TrackManager {
                     .get_or_create_track(msg.track_guid)
                     .get_fx_data(msg.fx_index)
                 {
-                    fx.guid = msg.guid;
+                    fx.guid = msg.fx_guid;
                     println!(
                         "Track {} FX {} GUID set to {}",
-                        msg.track_guid, msg.fx_index, msg.guid
+                        msg.track_guid, msg.fx_index, msg.fx_guid
                     );
                 }
             }

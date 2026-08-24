@@ -463,7 +463,7 @@ fn main() {
                                             track::FXGuid {
                                                 track_guid,
                                                 fx_index: ctx.fx_idx,
-                                                guid: fx_guid.guid,
+                                                fx_guid: fx_guid.guid,
                                             }
                                             .into(),
                                         )
@@ -480,6 +480,7 @@ fn main() {
                                                 track_guid,
                                                 fx_index: ctx.fx_idx,
                                                 name: fx_name.name.clone(),
+                                                fx_guid: fx_name.guid.clone(),
                                             }
                                             .into(),
                                         )
@@ -502,6 +503,7 @@ fn main() {
                                                 track_guid,
                                                 fx_index: ctx.fx_idx,
                                                 enabled: fx_enabled.enabled,
+                                                fx_guid: fx_enabled.guid.clone(),
                                             }
                                             .into(),
                                         )
