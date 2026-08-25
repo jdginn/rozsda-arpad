@@ -8,11 +8,10 @@ impl FxAdapterTyped for ReaEqAdapter {
     type Msg = EqMsg;
 
     fn id(&self) -> &'static str {
-        rea_eq::name()
+        rea_eq::FX_NAME
     }
-
-    fn fx_names(&self) -> Vec<&'static str> {
-        vec![rea_eq::name()]
+    fn fx_names(&self) -> &'static [&'static str] {
+        &[rea_eq::FX_NAME]
     }
 
     fn to_track_typed(

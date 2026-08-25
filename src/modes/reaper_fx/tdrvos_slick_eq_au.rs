@@ -1,9 +1,7 @@
 use crate::track::track;
 use uuid::Uuid;
 
-pub fn name() -> &'static str {
-    "AU: TDR VOS SlickEQ (Tokyo Dawn Labs)"
-}
+pub const FX_NAME: &str = "AU: TDR VOS SlickEQ (Tokyo Dawn Labs)";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EQModel {

@@ -1,9 +1,7 @@
 use crate::track::track;
 use uuid::Uuid;
 
-pub fn name() -> &'static str {
-    "VST: ReaComp (Cockos)"
-}
+pub const FX_NAME: &str = "VST: ReaComp (Cockos)";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Param {

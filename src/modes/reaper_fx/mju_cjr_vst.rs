@@ -1,9 +1,7 @@
 use crate::track::track;
 use uuid::Uuid;
 
-pub fn name() -> &'static str {
-    "VST3: MJUCjr (Klanghelm)"
-}
+pub const FX_NAME: &str = "VST3: MJUCjr (Klanghelm)";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Param {

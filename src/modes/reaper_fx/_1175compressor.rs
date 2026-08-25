@@ -1,9 +1,7 @@
 use crate::track::track;
 use uuid::Uuid;
 
-pub fn name() -> &'static str {
-    "JS: 1175 Compressor"
-}
+pub const FX_NAME: &str = "JS: 1175 Compressor";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Ratio {

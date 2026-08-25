@@ -9,7 +9,7 @@ pub mod tdrvos_slick_eq;
 
 pub trait FxAdapterDyn: Send + Sync {
     fn id(&self) -> &'static str; // "rea_eq", "fabfilter_pro_q3", etc.
-    fn fx_names(&self) -> Vec<&'static str>; // acceptable plugin display names
+    fn fx_names(&self) -> &'static [&'static str]; // acceptable plugin display names
     fn to_track_dyn(&self, track: Uuid, fx_index: i32, msg: RoutableMsg) -> Vec<track::TrackMsg>;
     fn from_track_dyn(&self, msg: track::FXParamValue) -> Vec<RoutableMsg>;
 }
@@ -17,7 +17,7 @@ pub trait FxAdapterDyn: Send + Sync {
 pub trait FxAdapterTyped {
     type Msg: Copy; // EqMsg, CompMsg, etc.
     fn id(&self) -> &'static str;
-    fn fx_names(&self) -> Vec<&'static str>;
+    fn fx_names(&self) -> &'static [&'static str];
     fn to_track_typed(&self, track: Uuid, fx_index: i32, msg: Self::Msg) -> Vec<track::TrackMsg>;
     fn from_track_typed(&self, msg: track::FXParamValue) -> Vec<Self::Msg>;
 }
@@ -45,7 +45,7 @@ macro_rules! impl_fx_adapter_dyn_bridge {
             }
 
             #[inline]
-            fn fx_names(&self) -> Vec<&'static str> {
+            fn fx_names(&self) -> &'static [&'static str] {
                 <Self as FxAdapterTyped>::fx_names(self)
             }
 

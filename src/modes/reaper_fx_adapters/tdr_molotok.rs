@@ -8,11 +8,11 @@ impl FxAdapterTyped for TdrMolotokAdapter {
     type Msg = CompMsg;
 
     fn id(&self) -> &'static str {
-        tdr_molotok_au::name()
+        tdr_molotok_au::FX_NAME
     }
 
-    fn fx_names(&self) -> Vec<&'static str> {
-        vec![tdr_molotok_au::name()]
+    fn fx_names(&self) -> &'static [&'static str] {
+        &[tdr_molotok_au::FX_NAME]
     }
 
     fn to_track_typed(

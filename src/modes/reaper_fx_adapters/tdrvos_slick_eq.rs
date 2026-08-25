@@ -8,11 +8,11 @@ impl FxAdapterTyped for TdrvosSlickEqAdapter {
     type Msg = EqMsg;
 
     fn id(&self) -> &'static str {
-        tdrvos_slick_eq_au::name()
+        tdrvos_slick_eq_au::FX_NAME
     }
 
-    fn fx_names(&self) -> Vec<&'static str> {
-        vec![tdrvos_slick_eq_au::name()]
+    fn fx_names(&self) -> &'static [&'static str] {
+        &[tdrvos_slick_eq_au::FX_NAME]
     }
 
     fn to_track_typed(

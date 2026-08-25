@@ -429,8 +429,7 @@ fn write_fx_mod(code: &mut String, yaml_fx: &Fx) {
 }
 
 fn write_name_fn(code: &mut String, yaml_fx: &Fx) {
-    writeln!(code, "pub fn name() -> &'static str {{").unwrap();
-    writeln!(code, "    {:?}\n    }}", yaml_fx.fx_name).unwrap();
+    writeln!(code, "pub const FX_NAME: &str = {:?};\n", yaml_fx.fx_name).unwrap();
 }
 
 fn write_param_enums_for_presumed_enums(code: &mut String, yaml_fx: &Fx) {
