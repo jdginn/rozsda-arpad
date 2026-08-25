@@ -110,6 +110,7 @@ struct OscRoute {
     osc_address: String,
     params: Vec<OscParam>,
     arguments: Vec<OscArgument>,
+    readonly_arguments: Option<Vec<OscArgument>>,
     access_tags: HashSet<AccessTag>,
 }
 
@@ -581,6 +582,16 @@ fn write_node(code: &mut String, node: &OscRoute, generated_structs: &mut HashSe
                 arg.description.as_deref().unwrap_or("")
             ));
         }
+        if let Some(readonly_arguments) = &node.readonly_arguments {
+            for arg in readonly_arguments {
+                code.push_str(&format!(
+                    "    pub {}: {}, // {}\n",
+                    sanitize_path_level(&arg.name),
+                    rust_type(&arg.typ),
+                    arg.description.as_deref().unwrap_or("")
+                ));
+            }
+        }
         code.push_str("}\n\n");
         generated_structs.insert(endpoint_args_struct.clone());
     }
@@ -872,6 +883,55 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
                 code.push_str("                }\n");
                 code.push_str("            };\n");
             }
+            if let Some(readonly_arguments) = &node.readonly_arguments {
+                for (j, osc_arg) in readonly_arguments.iter().enumerate() {
+                    let arg_var = format!("_decoded_{}", sanitize_path_level(&osc_arg.name));
+                    let (type_method, type_name) = match osc_arg.typ.as_str() {
+                        "int" => ("int()", "int"),
+                        "float" => ("float()", "float"),
+                        "bool" => ("bool()", "bool"),
+                        "string" => ("string()", "string"),
+                        "uuid" => ("string()", "uuid (as string)"),
+                        _ => panic!("Unknown arg type: {}", osc_arg.typ),
+                    };
+                    code.push_str(&format!(
+                        "            let {} = match msg.args.get({}) {{\n",
+                        arg_var,
+                        j + node.arguments.len()
+                    ));
+                    code.push_str(&format!(
+                        "                Some(_raw_arg_{}) => match _raw_arg_{}.clone().{} {{\n",
+                        j + node.arguments.len(),
+                        j + node.arguments.len(),
+                        type_method
+                    ));
+                    match osc_arg.typ.as_str() {
+                        "uuid" => {
+                            code.push_str("                    Some(v) => Uuid::parse_str(&v).expect(\"Invalid UUID string\"),\n");
+                        }
+                        _ => {
+                            code.push_str("                    Some(v) => v,\n");
+                        }
+                    }
+                    code.push_str("                    None => {\n");
+                    code.push_str(&format!(
+                        "                        log_decode_error(addr, DispatchError::WrongArgumentType {{ expected: \"{}\", got: osc_type_name(_raw_arg_{}) }});\n",
+                        type_name,
+                        j + node.arguments.len()
+                    ));
+                    code.push_str("                        return;\n");
+                    code.push_str("                    }\n");
+                    code.push_str("                },\n");
+                    code.push_str("                None => {\n");
+                    code.push_str(&format!(
+                        "                    log_decode_error(addr, DispatchError::MissingArgument {{ arg_index: {} }});\n",
+                        j + node.arguments.len()
+                    ));
+                    code.push_str("                    return;\n");
+                    code.push_str("                }\n");
+                    code.push_str("            };\n");
+                }
+            }
             // Call handler with all decoded args
             code.push_str(&format!(
                 "            handler({}Args {{",
@@ -881,6 +941,13 @@ fn write_dispatcher(code: &mut String, routes: Vec<OscRoute>) {
                 let arg_name = sanitize_path_level(&osc_arg.name);
                 let arg_var = format!("_decoded_{}", arg_name);
                 code.push_str(&format!(" {}: {},", arg_name, arg_var));
+            }
+            if let Some(readonly_arguments) = &node.readonly_arguments {
+                for osc_arg in readonly_arguments {
+                    let arg_name = sanitize_path_level(&osc_arg.name);
+                    let arg_var = format!("_decoded_{}", arg_name);
+                    code.push_str(&format!(" {}: {},", arg_name, arg_var));
+                }
             }
             code.push_str(" });\n");
         }

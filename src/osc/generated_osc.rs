@@ -900,6 +900,7 @@ impl Bind<FxDeleteArgs> for FxDelete {
 #[derive(Debug)]
 pub struct TrackFxNameArgs {
     pub name: String, // name of the FX
+    pub guid: Uuid,   // unique identifier for the FX
 }
 
 pub type TrackFxNameHandler = Box<dyn FnMut(TrackFxNameArgs) + 'static>;
@@ -980,6 +981,7 @@ impl Query for TrackFxGuid {
 #[derive(Debug)]
 pub struct TrackFxEnabledArgs {
     pub enabled: bool, // true if the FX is enabled
+    pub guid: Uuid,    // unique identifier for the FX
 }
 
 pub type TrackFxEnabledHandler = Box<dyn FnMut(TrackFxEnabledArgs) + 'static>;
@@ -1036,6 +1038,7 @@ impl Query for TrackFxEnabled {
 #[derive(Debug)]
 pub struct TrackFxParamCountArgs {
     pub param_count: i32, // number of parameters for the FX
+    pub guid: Uuid,       // unique identifier for the FX
 }
 
 pub type TrackFxParamCountHandler = Box<dyn FnMut(TrackFxParamCountArgs) + 'static>;
@@ -3550,8 +3553,28 @@ pub fn dispatch_osc<F, G>(
                     return;
                 }
             };
+            let _decoded_guid = match msg.args.get(1) {
+                Some(_raw_arg_1) => match _raw_arg_1.clone().string() {
+                    Some(v) => Uuid::parse_str(&v).expect("Invalid UUID string"),
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "uuid (as string)",
+                                got: osc_type_name(_raw_arg_1),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 1 });
+                    return;
+                }
+            };
             handler(TrackFxNameArgs {
                 name: _decoded_name,
+                guid: _decoded_guid,
             });
         }
         return;
@@ -3658,8 +3681,28 @@ pub fn dispatch_osc<F, G>(
                     return;
                 }
             };
+            let _decoded_guid = match msg.args.get(1) {
+                Some(_raw_arg_1) => match _raw_arg_1.clone().string() {
+                    Some(v) => Uuid::parse_str(&v).expect("Invalid UUID string"),
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "uuid (as string)",
+                                got: osc_type_name(_raw_arg_1),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 1 });
+                    return;
+                }
+            };
             handler(TrackFxEnabledArgs {
                 enabled: _decoded_enabled,
+                guid: _decoded_guid,
             });
         }
         return;
@@ -3712,8 +3755,28 @@ pub fn dispatch_osc<F, G>(
                     return;
                 }
             };
+            let _decoded_guid = match msg.args.get(1) {
+                Some(_raw_arg_1) => match _raw_arg_1.clone().string() {
+                    Some(v) => Uuid::parse_str(&v).expect("Invalid UUID string"),
+                    None => {
+                        log_decode_error(
+                            addr,
+                            DispatchError::WrongArgumentType {
+                                expected: "uuid (as string)",
+                                got: osc_type_name(_raw_arg_1),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => {
+                    log_decode_error(addr, DispatchError::MissingArgument { arg_index: 1 });
+                    return;
+                }
+            };
             handler(TrackFxParamCountArgs {
                 param_count: _decoded_param_count,
+                guid: _decoded_guid,
             });
         }
         return;
