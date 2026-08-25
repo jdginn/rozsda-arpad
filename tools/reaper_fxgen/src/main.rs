@@ -598,7 +598,10 @@ fn write_decode_trackmsg(code: &mut String, yaml_fx: &Fx) {
     writeln!(code, "}}").unwrap();
 }
 
-fn write_imports(code: &mut String) {}
+fn write_imports(code: &mut String) {
+    writeln!(code, "use uuid::Uuid;").unwrap();
+    writeln!(code, "use crate::track::track;").unwrap();
+}
 
 fn write_fx_enum(code: &mut String, effects: &[Fx]) {
     writeln!(code, "#[derive(Debug, Clone, Copy, PartialEq)]").unwrap();
