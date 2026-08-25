@@ -277,6 +277,7 @@ impl ChannelStripMsg {
     fn kind(&self) -> Option<FxCategory> {
         use ChannelStripMsg::*;
         Some(match self {
+            // TODO: URGENT: we're missing a bunch of variants here
             LowFreq(_) | LowGain(_) | HighFreq(_) | EqType(_) | EqBypass(_) => FxCategory::Eq,
             CompThresh(_) | CompRatio(_) | CompType(_) | CompBypass(_) => FxCategory::Comp,
             Saturation(_) | SaturationType(_) | SaturationBypass(_) => FxCategory::Saturation,

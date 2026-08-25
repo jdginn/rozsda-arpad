@@ -4,6 +4,8 @@ use crate::modes::reaper_channel_strip_router::ChannelStripMsg;
 use crate::track::track;
 
 pub mod rea_eq;
+pub mod tdr_molotok;
+pub mod tdrvos_slick_eq;
 
 pub trait FxAdapter: Send + Sync {
     fn id(&self) -> &'static str; // "rea_eq", "fabfilter_pro_q3", etc.
