@@ -3,8 +3,8 @@ use crate::midi::v1m::EncoderRingMode::{FromCenter, FromLeft, Point, Width};
 use crate::modes::color;
 use crate::modes::color::RgbColor;
 use crate::modes::reaper_channel_strip_router::{
-    BandMode, ChannelStripMsg, CompBypass, CompOrder, CompType, EqBypass, EqPosition, EqType,
-    SaturationBypass, SaturationType,
+    BandMode, ChannelStripMsg, CompBypass, CompMsg, CompOrder, CompType, EqBypass, EqMsg,
+    EqPosition, EqType, GainMsg, SaturationBypass, SaturationMsg, SaturationType, TrimMsg,
 };
 
 // Scribble strips:
@@ -657,7 +657,7 @@ impl Widget for HpfWidget {
                 self.view.line1_disabled = self.eq_type.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::EqType(self.eq_type))
+                        .upstream(EqMsg::EqType(self.eq_type).into())
                         .dirty(Dirty::LINE1),
                 )
             }
@@ -665,7 +665,7 @@ impl Widget for HpfWidget {
                 self.freq = apply_accel(self.freq, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HpfFreq(self.freq))
+                        .upstream(EqMsg::HpfFreq(self.freq).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -674,7 +674,7 @@ impl Widget for HpfWidget {
                 self.slope = apply_accel(self.slope, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HpfSlope(self.slope))
+                        .upstream(EqMsg::HpfSlope(self.slope).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -684,7 +684,7 @@ impl Widget for HpfWidget {
                 self.view.line2_disabled = self.eq_type.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::EqType(self.eq_type))
+                        .upstream(EqMsg::EqType(self.eq_type).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -702,20 +702,23 @@ impl Widget for HpfWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::HpfFreq(freq) => {
-                self.freq = freq;
-                HandledUpstreamOutcome::default()
-                    .dirty(Dirty::LINE1)
-                    .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
-            }
-            ChannelStripMsg::HpfSlope(slope) => {
-                self.slope = slope;
-                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
-            }
-            ChannelStripMsg::EqType(eq_type) => {
-                self.eq_type = eq_type;
-                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::HpfFreq(freq) => {
+                    self.freq = freq;
+                    HandledUpstreamOutcome::default()
+                        .dirty(Dirty::LINE1)
+                        .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
+                }
+                EqMsg::HpfSlope(slope) => {
+                    self.slope = slope;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                EqMsg::EqType(eq_type) => {
+                    self.eq_type = eq_type;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -771,7 +774,7 @@ impl Widget for LowFreqWidget {
                 self.freq = apply_accel(self.freq, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LowFreq(self.freq))
+                        .upstream(EqMsg::LowFreq(self.freq).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -780,7 +783,7 @@ impl Widget for LowFreqWidget {
                 self.q = apply_accel(self.q, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LowSlope(self.q))
+                        .upstream(EqMsg::LowSlope(self.q).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -788,7 +791,7 @@ impl Widget for LowFreqWidget {
                 self.band_mode = self.band_mode.step(turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LowBandMode(self.band_mode))
+                        .upstream(EqMsg::LowBandMode(self.band_mode).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -806,19 +809,25 @@ impl Widget for LowFreqWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::LowFreq(msg) => {
-                println!("Got LowFreq msg");
-                self.freq = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.freq,
-                    FromLeft,
-                ))
-            }
-            ChannelStripMsg::LowQ(msg) => {
-                self.q = msg;
-                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::LowFreq(freq) => {
+                    self.freq = freq;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.freq,
+                        FromLeft,
+                    ))
+                }
+                EqMsg::LowSlope(q) => {
+                    self.q = q;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                EqMsg::LowBandMode(band_mode) => {
+                    self.band_mode = band_mode;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
         // TODO
@@ -878,7 +887,7 @@ impl Widget for LowGainWidget {
         self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::LowGain(self.gain))
+                .upstream(EqMsg::LowGain(self.gain).into())
                 .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                 .dirty(Dirty::LINE1),
         )
@@ -895,7 +904,7 @@ impl Widget for LowGainWidget {
                 self.gain = apply_accel_center(self.gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LowGain(self.gain))
+                        .upstream(EqMsg::LowGain(self.gain).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                         .dirty(Dirty::LINE1),
                 )
@@ -914,15 +923,17 @@ impl Widget for LowGainWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::LowGain(msg) => {
-                println!("Gain: {}", msg);
-                self.gain = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.gain,
-                    FromCenter,
-                ))
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::LowGain(gain) => {
+                    self.gain = gain;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.gain,
+                        FromCenter,
+                    ))
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -976,7 +987,7 @@ impl Widget for LMFreqWidget {
                 self.freq = apply_accel(self.freq, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LmFreq(self.freq))
+                        .upstream(EqMsg::LmFreq(self.freq).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -985,7 +996,7 @@ impl Widget for LMFreqWidget {
                 self.q = apply_accel(self.q, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LmQ(self.q))
+                        .upstream(EqMsg::LmQ(self.q).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1002,18 +1013,21 @@ impl Widget for LMFreqWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::LmFreq(msg) => {
-                self.freq = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.freq,
-                    FromLeft,
-                ))
-            }
-            ChannelStripMsg::LmQ(msg) => {
-                self.q = msg;
-                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::LmFreq(freq) => {
+                    self.freq = freq;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.freq,
+                        FromLeft,
+                    ))
+                }
+                EqMsg::LmQ(q) => {
+                    self.q = q;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1058,7 +1072,7 @@ impl Widget for LMGainWidget {
         self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::LmGain(self.gain))
+                .upstream(EqMsg::LmGain(self.gain).into())
                 .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                 .dirty(Dirty::LINE1),
         )
@@ -1086,7 +1100,7 @@ impl Widget for LMGainWidget {
                 self.gain = apply_accel_center(self.gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::LmGain(self.gain))
+                        .upstream(EqMsg::LmGain(self.gain).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                         .dirty(Dirty::LINE1),
                 )
@@ -1105,14 +1119,17 @@ impl Widget for LMGainWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::LmGain(msg) => {
-                self.gain = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.gain,
-                    FromCenter,
-                ))
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::LmGain(gain) => {
+                    self.gain = gain;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.gain,
+                        FromCenter,
+                    ))
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1166,7 +1183,7 @@ impl Widget for HMFreqWidget {
                 self.freq = apply_accel(self.freq, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HmFreq(self.freq))
+                        .upstream(EqMsg::HmFreq(self.freq).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -1175,7 +1192,7 @@ impl Widget for HMFreqWidget {
                 self.q = apply_accel(self.q, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HmQ(self.q))
+                        .upstream(EqMsg::HmQ(self.q).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1192,18 +1209,21 @@ impl Widget for HMFreqWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::HmFreq(msg) => {
-                self.freq = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.freq,
-                    FromLeft,
-                ))
-            }
-            ChannelStripMsg::HmQ(msg) => {
-                self.q = msg;
-                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::HmFreq(freq) => {
+                    self.freq = freq;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.freq,
+                        FromLeft,
+                    ))
+                }
+                EqMsg::HmQ(q) => {
+                    self.q = q;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1259,7 +1279,7 @@ impl Widget for HMGainWidget {
         self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::HmGain(0.0))
+                .upstream(EqMsg::HmGain(0.0).into())
                 .downstream(encoder_ring_msg(self.hw_idx, 0.0, FromCenter))
                 .dirty(Dirty::LINE1),
         )
@@ -1276,7 +1296,7 @@ impl Widget for HMGainWidget {
                 self.gain = apply_accel_center(self.gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HmGain(self.gain))
+                        .upstream(EqMsg::HmGain(self.gain).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                         .dirty(Dirty::LINE1),
                 )
@@ -1295,14 +1315,17 @@ impl Widget for HMGainWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::HmGain(msg) => {
-                self.gain = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.gain,
-                    FromCenter,
-                ))
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::HmGain(gain) => {
+                    self.gain = gain;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.gain,
+                        FromCenter,
+                    ))
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1363,7 +1386,7 @@ impl Widget for HiFreqWidget {
                 }
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HighFreq(self.freq))
+                        .upstream(EqMsg::HighFreq(self.freq).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.freq, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -1373,7 +1396,7 @@ impl Widget for HiFreqWidget {
                 self.view.line2_shift = self.band_mode.as_str().to_string();
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HighBandMode(self.band_mode))
+                        .upstream(EqMsg::HighBandMode(self.band_mode).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1390,18 +1413,25 @@ impl Widget for HiFreqWidget {
                 self.view.mode = WidgetMode::Disabled;
                 HandledUpstreamOutcome::default().dirty(Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR)
             }
-            ChannelStripMsg::HighFreq(msg) => {
-                self.freq = msg;
-                HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
-                    self.hw_idx,
-                    self.freq,
-                    FromLeft,
-                ))
-            }
-            ChannelStripMsg::HighQ(msg) => {
-                self.q = msg;
-                HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
-            }
+            ChannelStripMsg::Eq(msg) => match msg {
+                EqMsg::HighFreq(freq) => {
+                    self.freq = freq;
+                    HandledUpstreamOutcome::default().downstream(encoder_ring_msg(
+                        self.hw_idx,
+                        self.freq,
+                        FromLeft,
+                    ))
+                }
+                EqMsg::HighQ(q) => {
+                    self.q = q;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                EqMsg::HighBandMode(band_mode) => {
+                    self.band_mode = band_mode;
+                    HandledUpstreamOutcome::default().dirty(Dirty::LINE2)
+                }
+                _ => HandledUpstreamOutcome::default(),
+            },
             _ => HandledUpstreamOutcome::default(),
         }
     }
@@ -1481,7 +1511,7 @@ impl Widget for HiGainWidget {
         self.gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::HighGain(self.gain))
+                .upstream(EqMsg::HighGain(self.gain).into())
                 .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                 .dirty(Dirty::LINE1),
         )
@@ -1491,7 +1521,7 @@ impl Widget for HiGainWidget {
         self.sides_gain = 0.5;
         Some(
             HandledDownstreamOutcome::default()
-                .upstream(ChannelStripMsg::HighSidesGain(self.sides_gain))
+                .upstream(EqMsg::HighSidesGain(self.sides_gain).into())
                 .downstream(encoder_ring_msg(self.hw_idx, self.sides_gain, FromCenter))
                 .dirty(Dirty::LINE2),
         )
@@ -1504,7 +1534,7 @@ impl Widget for HiGainWidget {
                 self.gain = apply_accel_center(self.gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HighGain(self.gain))
+                        .upstream(EqMsg::HighGain(self.gain).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -1513,7 +1543,7 @@ impl Widget for HiGainWidget {
                 self.sides_gain = apply_accel_center(self.sides_gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::HighSidesGain(self.sides_gain))
+                        .upstream(EqMsg::HighSidesGain(self.sides_gain).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.sides_gain, FromCenter))
                         .dirty(Dirty::LINE2),
                 )
@@ -1732,14 +1762,14 @@ impl Widget for CompThreshWidget {
                 self.comp1_thresh = apply_accel(self.comp1_thresh, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::CompThresh(self.comp1_thresh)),
+                        .upstream(CompMsg::CompThresh(self.comp1_thresh).into()),
                 )
             }
             WidgetMode::Press => {
                 self.comp1_attack = apply_accel(self.comp1_attack, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::CompAttack(self.comp1_attack))
+                        .upstream(CompMsg::CompAttack(self.comp1_attack).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1747,14 +1777,14 @@ impl Widget for CompThreshWidget {
                 self.comp2_thresh = apply_accel(self.comp2_thresh, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Comp2Thresh(self.comp2_thresh)),
+                        .upstream(CompMsg::Comp2Thresh(self.comp2_thresh).into()),
                 )
             }
             WidgetMode::ShiftPress => {
                 self.comp2_attack = apply_accel(self.comp2_attack, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Comp2Attack(self.comp2_attack))
+                        .upstream(CompMsg::Comp2Attack(self.comp2_attack).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1848,14 +1878,14 @@ impl Widget for CompRatWidget {
                 self.comp1_ratio = apply_accel(self.comp1_ratio, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::CompRatio(self.comp1_ratio)),
+                        .upstream(CompMsg::CompRatio(self.comp1_ratio).into()),
                 )
             }
             WidgetMode::Press => {
                 self.comp1_release = apply_accel(self.comp1_release, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::CompRelease(self.comp1_release))
+                        .upstream(CompMsg::CompRelease(self.comp1_release).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1863,14 +1893,14 @@ impl Widget for CompRatWidget {
                 self.comp2_ratio = apply_accel(self.comp2_ratio, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Comp2Ratio(self.comp2_ratio)),
+                        .upstream(CompMsg::Comp2Ratio(self.comp2_ratio).into()),
                 )
             }
             WidgetMode::ShiftPress => {
                 self.comp2_release = apply_accel(self.comp2_release, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Comp2Release(self.comp2_release))
+                        .upstream(CompMsg::Comp2Release(self.comp2_release).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1964,14 +1994,14 @@ impl Widget for CompMkpWidget {
                 self.comp1_makeup = apply_accel_center(self.comp1_makeup, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::CompMakeup(self.comp1_makeup)),
+                        .upstream(CompMsg::CompMakeup(self.comp1_makeup).into()),
                 )
             }
             WidgetMode::Press => {
                 self.comp1_sidechain_freq = apply_accel(self.comp1_sidechain_freq, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::CompScFilter(self.comp1_sidechain_freq))
+                        .upstream(CompMsg::CompScFilter(self.comp1_sidechain_freq).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -1979,14 +2009,14 @@ impl Widget for CompMkpWidget {
                 self.comp2_makeup = apply_accel_center(self.comp2_makeup, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Comp2Makeup(self.comp2_makeup)),
+                        .upstream(CompMsg::Comp2Makeup(self.comp2_makeup).into()),
                 )
             }
             WidgetMode::ShiftPress => {
                 self.comp2_sidechain_freq = apply_accel(self.comp2_sidechain_freq, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Comp2ScFilter(self.comp2_sidechain_freq))
+                        .upstream(CompMsg::Comp2ScFilter(self.comp2_sidechain_freq).into())
                         .dirty(Dirty::LINE2),
                 )
             }
@@ -2176,7 +2206,7 @@ impl Widget for SatWidget {
                 self.sat_drive = apply_accel_center(self.sat_drive, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Saturation(self.sat_drive))
+                        .upstream(SaturationMsg::Saturation(self.sat_drive).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.sat_drive, FromLeft))
                         .dirty(Dirty::LINE1),
                 )
@@ -2249,7 +2279,7 @@ impl Widget for GainWidget {
                 self.gain = apply_accel_center(self.gain, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Gain(self.gain))
+                        .upstream(GainMsg::Gain(self.gain).into())
                         .downstream(encoder_ring_msg(self.hw_idx, self.gain, FromCenter))
                         .dirty(Dirty::LINE1),
                 )
@@ -2258,7 +2288,7 @@ impl Widget for GainWidget {
                 self.trim = apply_accel_center(self.trim, turn);
                 Some(
                     HandledDownstreamOutcome::default()
-                        .upstream(ChannelStripMsg::Trim(self.trim))
+                        .upstream(TrimMsg::Trim(self.trim).into())
                         .dirty(Dirty::LINE2),
                 )
             }

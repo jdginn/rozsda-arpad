@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::modes::reaper_channel_strip_widgets::EncoderTurn;
-use crate::modes::reaper_fx::{FxId, rea_eq};
-use crate::modes::reaper_fx_adapters::{FxAdapter, rea_eq::ReaEqAdapter};
+use crate::modes::reaper_fx::FxId;
+use crate::modes::reaper_fx_adapters::{FxAdapterDyn, rea_eq::ReaEqAdapter};
 use crate::track::track;
+
+use derive_enum_from::EnumFrom;
 
 /// Autogenerates stubs for rotating through the enum in a circular fashion appropriate for using an encoder
 macro_rules! rotary_enum {
@@ -167,8 +169,21 @@ rotary_enum! {
 }
 
 /// Represents messages sent between the router and channel strip widgets (which define the UI)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, EnumFrom)]
 pub enum ChannelStripMsg {
+    // Routeable messages
+    #[enum_from]
+    Eq(EqMsg),
+    #[enum_from]
+    Comp(CompMsg),
+    #[enum_from]
+    Saturation(SaturationMsg),
+    #[enum_from]
+    Gain(GainMsg),
+    #[enum_from]
+    Trim(TrimMsg),
+
+    // Non-routeable messags
     EnableEq(EqType),
     DisableEq,
     EnableComp1(CompType),
@@ -190,6 +205,60 @@ pub enum ChannelStripMsg {
     // InstantiateGain(GainFx)
     // InstantiateTrim(TrimRx)
     // InstantiateInterface(Interface)
+    EqPos(EqPosition),
+    CompOrder(CompOrder),
+    EqBypass(EqBypass),
+    CompType(CompType),
+    Comp2Type(CompType),
+    CompBypass(CompBypass),
+    Comp2Bypass(Cmp2Bypass),
+    SaturationType(SaturationType),
+    SaturationBypass(SaturationBypass),
+    InterfaceGain(f32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RoutableMsg {
+    Eq(EqMsg),
+    Comp(CompMsg),
+    Saturation(SaturationMsg),
+    Gain(GainMsg),
+    Trim(TrimMsg),
+}
+
+#[derive(Debug)]
+pub enum RouteConvertError {
+    NotRoutable(ChannelStripMsg),
+}
+
+impl TryFrom<ChannelStripMsg> for RoutableMsg {
+    type Error = RouteConvertError;
+
+    fn try_from(msg: ChannelStripMsg) -> Result<Self, Self::Error> {
+        match msg {
+            ChannelStripMsg::Eq(v) => Ok(RoutableMsg::Eq(v)),
+            ChannelStripMsg::Comp(v) => Ok(RoutableMsg::Comp(v)),
+            ChannelStripMsg::Saturation(v) => Ok(RoutableMsg::Saturation(v)),
+            ChannelStripMsg::Gain(v) => Ok(RoutableMsg::Gain(v)),
+            ChannelStripMsg::Trim(v) => Ok(RoutableMsg::Trim(v)),
+            other => Err(RouteConvertError::NotRoutable(other)),
+        }
+    }
+}
+impl From<RoutableMsg> for ChannelStripMsg {
+    fn from(value: RoutableMsg) -> Self {
+        match value {
+            RoutableMsg::Eq(m) => ChannelStripMsg::Eq(m),
+            RoutableMsg::Comp(m) => ChannelStripMsg::Comp(m),
+            RoutableMsg::Saturation(m) => ChannelStripMsg::Saturation(m),
+            RoutableMsg::Gain(m) => ChannelStripMsg::Gain(m),
+            RoutableMsg::Trim(m) => ChannelStripMsg::Trim(m),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EqMsg {
     HpfFreq(f32),
     HpfSlope(f32),
     EqType(EqType),
@@ -210,31 +279,43 @@ pub enum ChannelStripMsg {
     HighBandMode(BandMode),
     HighGain(f32),
     HighSidesGain(f32),
-    EqPos(EqPosition),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompMsg {
     CompOrder(CompOrder),
-    EqBypass(EqBypass),
+    CompBypass(CompBypass),
     CompThresh(f32),
     CompScFilter(f32),
-    Comp2Thresh(f32),
-    Comp2ScFilter(f32),
     CompRatio(f32),
     CompAttack(f32),
-    Comp2Ratio(f32),
-    Comp2Attack(f32),
     CompMakeup(f32),
     CompRelease(f32),
+    CompType(CompType),
+
+    Comp2Bypass(Cmp2Bypass),
+    Comp2Thresh(f32),
+    Comp2ScFilter(f32),
+    Comp2Ratio(f32),
+    Comp2Attack(f32),
     Comp2Makeup(f32),
     Comp2Release(f32),
-    CompType(CompType),
     Comp2Type(CompType),
-    CompBypass(CompBypass),
-    Comp2Bypass(Cmp2Bypass),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SaturationMsg {
     Saturation(f32),
-    SaturationType(SaturationType),
-    SaturationBypass(SaturationBypass),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GainMsg {
     Gain(f32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrimMsg {
     Trim(f32),
-    InterfaceGain(f32),
 }
 
 // Architecture:
@@ -272,23 +353,6 @@ enum FxCategory {
     // InterfaceGain,
 }
 
-impl ChannelStripMsg {
-    // Returns the kind of FX that this message is associated with, if any. This is used to route messages to the appropriate FX adapter.
-    fn kind(&self) -> Option<FxCategory> {
-        use ChannelStripMsg::*;
-        Some(match self {
-            // TODO: URGENT: we're missing a bunch of variants here
-            LowFreq(_) | LowGain(_) | HighFreq(_) | EqType(_) | EqBypass(_) => FxCategory::Eq,
-            CompThresh(_) | CompRatio(_) | CompType(_) | CompBypass(_) => FxCategory::Comp,
-            Saturation(_) | SaturationType(_) | SaturationBypass(_) => FxCategory::Saturation,
-            Gain(_) => FxCategory::Gain,
-            Trim(_) => FxCategory::Trim,
-            // InterfaceGain(_) => FxCategory::InterfaceGain,
-            _ => return None, // non-routing/system msgs
-        })
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum TranslationErr {
     Dummy,
@@ -321,7 +385,7 @@ struct FxSpec {
     id: FxId,
     ui_type: FxUi,
     categories: &'static [FxCategory],
-    adapter: &'static dyn FxAdapter,
+    adapter: &'static dyn FxAdapterDyn,
 }
 
 /// Known at compile-time, doesn't change at runtime.
@@ -653,7 +717,7 @@ impl ChannelStripRouter {
                 Ok(msgs)
             }
             track::DataMsg::FXParamValue(msg) => {
-                let mut msgs = Vec::new();
+                let mut msgs: Vec<ChannelStripMsg> = Vec::new();
                 if let Some(fx_guid) = self.plugins.get_fx_guid_from_index(msg.fx_index) {
                     for slot in self.slots.iter() {
                         if let Some(active_instance) = &slot.active_instance {
@@ -661,7 +725,12 @@ impl ChannelStripRouter {
                                 if let Some(spec) =
                                     self.routing_registry.by_fx_id.get(&active_instance.fx_id)
                                 {
-                                    msgs.extend(spec.adapter.from_track(msg));
+                                    msgs.extend(
+                                        spec.adapter
+                                            .from_track_dyn(msg)
+                                            .into_iter()
+                                            .map(ChannelStripMsg::from),
+                                    );
                                 }
                             }
                         }
@@ -735,11 +804,11 @@ impl ChannelStripRouter {
         }
     }
 
-    fn translate_slot(&self, msg: ChannelStripMsg, slot_role: SlotRole) -> Vec<track::TrackMsg> {
+    fn translate_slot(&self, msg: RoutableMsg, slot_role: SlotRole) -> Vec<track::TrackMsg> {
         if let Some(active_instance) = &self.slots.get(slot_role).active_instance {
             if let Some(index) = self.plugins.get_index_from_fx_guid(active_instance.guid) {
                 if let Some(spec) = self.routing_registry.by_fx_id.get(&active_instance.fx_id) {
-                    return spec.adapter.to_track(self.track_guid, index, msg);
+                    return spec.adapter.to_track_dyn(self.track_guid, index, msg);
                 }
             }
         }
@@ -751,24 +820,25 @@ impl ChannelStripRouter {
         msg: ChannelStripMsg,
     ) -> Result<Vec<track::TrackMsg>, TranslationErr> {
         let mut msgs = Vec::new();
-        match msg.kind() {
-            Some(FxCategory::Eq) => {
-                msgs.extend(self.translate_slot(msg, SlotRole::Eq));
+        if let Ok(rmsg) = RoutableMsg::try_from(msg) {
+            match rmsg {
+                RoutableMsg::Eq(eq) => {
+                    msgs.extend(self.translate_slot(rmsg, SlotRole::Eq));
+                }
+                RoutableMsg::Comp(comp) => {
+                    msgs.extend(self.translate_slot(rmsg, SlotRole::Comp1));
+                    msgs.extend(self.translate_slot(rmsg, SlotRole::Comp2));
+                }
+                RoutableMsg::Saturation(sat) => {
+                    msgs.extend(self.translate_slot(rmsg, SlotRole::Saturation));
+                }
+                RoutableMsg::Gain(gain) => {
+                    msgs.extend(self.translate_slot(rmsg, SlotRole::Gain));
+                }
+                RoutableMsg::Trim(trim) => {
+                    msgs.extend(self.translate_slot(rmsg, SlotRole::Trim));
+                }
             }
-            Some(FxCategory::Comp) => {
-                msgs.extend(self.translate_slot(msg, SlotRole::Comp1));
-                msgs.extend(self.translate_slot(msg, SlotRole::Comp2));
-            }
-            Some(FxCategory::Saturation) => {
-                msgs.extend(self.translate_slot(msg, SlotRole::Saturation));
-            }
-            Some(FxCategory::Gain) => {
-                msgs.extend(self.translate_slot(msg, SlotRole::Gain));
-            }
-            Some(FxCategory::Trim) => {
-                msgs.extend(self.translate_slot(msg, SlotRole::Trim));
-            }
-            None => {}
         }
         Ok(msgs)
     }
