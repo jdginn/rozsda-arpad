@@ -389,10 +389,7 @@ struct FxSpec {
 }
 
 /// Known at compile-time, doesn't change at runtime.
-pub struct RoutingRegistry {
-    pub slots: &'static [SlotSpec],
-    pub fx_specs: &'static [FxSpec],
-
+struct RoutingRegistry {
     pub by_fx_id: HashMap<FxId, &'static FxSpec>,
     pub fx_to_slots: HashMap<FxId, Vec<SlotRole>>, // derived
     pub name_to_fx_id: HashMap<String, FxId>,      // derived
@@ -455,8 +452,6 @@ impl RoutingRegistry {
         }
 
         RoutingRegistry {
-            slots,
-            fx_specs,
             by_fx_id,
             fx_to_slots,
             name_to_fx_id,
@@ -635,12 +630,6 @@ impl PluginCatalog {
             .get(&plugin_guid)
             .map(|info| info.fx_idx as i32)
     }
-
-    fn enable_by_guid(&mut self, plugin_guid: Uuid, enabled: bool) {
-        if let Some(info) = self.by_guid.get_mut(&plugin_guid) {
-            info.enabled = enabled;
-        }
-    }
 }
 
 /// Maps named, high-level channel strip concepts to their respective parameters
@@ -679,38 +668,38 @@ impl ChannelStripRouter {
                 self.plugins
                     .update_plugin_state(msg.fx_guid, &msg.name, msg.fx_index);
 
-                if let Some(fx_id) = self.routing_registry.name_to_fx_id.get(&msg.name) {
-                    if let Some(applicable_roles) = self.routing_registry.fx_to_slots.get(fx_id) {
-                        for role in applicable_roles {
-                            let instance = FxInstanceRef {
-                                fx_id: *fx_id,
-                                guid: msg.fx_guid,
-                            };
+                if let Some(fx_id) = self.routing_registry.name_to_fx_id.get(&msg.name)
+                    && let Some(applicable_roles) = self.routing_registry.fx_to_slots.get(fx_id)
+                {
+                    for role in applicable_roles {
+                        let instance = FxInstanceRef {
+                            fx_id: *fx_id,
+                            guid: msg.fx_guid,
+                        };
 
-                            let slot = self.slots.get_mut(*role);
-                            // TODO: this just blindly assumes that the next valid FX we get is the
-                            // one we activate. There is also no policy for purging any old owned FX.
-                            // These assumptions are probably faulty and need to be revisited.
-                            slot.owned_instances.push(instance.clone());
-                            slot.active_instance = Some(instance);
-                            match role {
-                                SlotRole::Eq => {
-                                    msgs.push(ChannelStripMsg::EnableEq(EqType::Digital));
-                                }
-                                SlotRole::Comp1 => {
-                                    msgs.push(ChannelStripMsg::EnableComp1(CompType::Digital));
-                                }
-                                SlotRole::Comp2 => {
-                                    msgs.push(ChannelStripMsg::EnableComp2(CompType::Digital));
-                                }
-                                SlotRole::Saturation => {
-                                    msgs.push(ChannelStripMsg::EnableSaturation(
-                                        SaturationType::Console,
-                                    ));
-                                }
-                                SlotRole::Gain => msgs.push(ChannelStripMsg::EnableGain),
-                                SlotRole::Trim => msgs.push(ChannelStripMsg::EnableTrim),
+                        let slot = self.slots.get_mut(*role);
+                        // TODO: this just blindly assumes that the next valid FX we get is the
+                        // one we activate. There is also no policy for purging any old owned FX.
+                        // These assumptions are probably faulty and need to be revisited.
+                        slot.owned_instances.push(instance.clone());
+                        slot.active_instance = Some(instance);
+                        match role {
+                            SlotRole::Eq => {
+                                msgs.push(ChannelStripMsg::EnableEq(EqType::Digital));
                             }
+                            SlotRole::Comp1 => {
+                                msgs.push(ChannelStripMsg::EnableComp1(CompType::Digital));
+                            }
+                            SlotRole::Comp2 => {
+                                msgs.push(ChannelStripMsg::EnableComp2(CompType::Digital));
+                            }
+                            SlotRole::Saturation => {
+                                msgs.push(ChannelStripMsg::EnableSaturation(
+                                    SaturationType::Console,
+                                ));
+                            }
+                            SlotRole::Gain => msgs.push(ChannelStripMsg::EnableGain),
+                            SlotRole::Trim => msgs.push(ChannelStripMsg::EnableTrim),
                         }
                     }
                 }
@@ -720,19 +709,17 @@ impl ChannelStripRouter {
                 let mut msgs: Vec<ChannelStripMsg> = Vec::new();
                 if let Some(fx_guid) = self.plugins.get_fx_guid_from_index(msg.fx_index) {
                     for slot in self.slots.iter() {
-                        if let Some(active_instance) = &slot.active_instance {
-                            if active_instance.guid == fx_guid {
-                                if let Some(spec) =
-                                    self.routing_registry.by_fx_id.get(&active_instance.fx_id)
-                                {
-                                    msgs.extend(
-                                        spec.adapter
-                                            .from_track_dyn(msg)
-                                            .into_iter()
-                                            .map(ChannelStripMsg::from),
-                                    );
-                                }
-                            }
+                        if let Some(active_instance) = &slot.active_instance
+                            && active_instance.guid == fx_guid
+                            && let Some(spec) =
+                                self.routing_registry.by_fx_id.get(&active_instance.fx_id)
+                        {
+                            msgs.extend(
+                                spec.adapter
+                                    .from_track_dyn(msg)
+                                    .into_iter()
+                                    .map(ChannelStripMsg::from),
+                            );
                         }
                     }
                 }
@@ -773,26 +760,26 @@ impl ChannelStripRouter {
                     }
                 } else {
                     for slot in self.slots.iter_mut() {
-                        if let Some(active_instance) = slot.active_instance.clone() {
-                            if active_instance.guid == msg.fx_guid {
-                                slot.active_instance = None;
-                                match slot.role {
-                                    SlotRole::Eq => msgs.push(ChannelStripMsg::DisableEq),
-                                    SlotRole::Comp1 => {
-                                        msgs.push(ChannelStripMsg::DisableComp1);
-                                    }
-                                    SlotRole::Comp2 => {
-                                        msgs.push(ChannelStripMsg::DisableComp2);
-                                    }
-                                    SlotRole::Saturation => {
-                                        msgs.push(ChannelStripMsg::DisableSaturation);
-                                    }
-                                    SlotRole::Gain => {
-                                        msgs.push(ChannelStripMsg::DisableGain);
-                                    }
-                                    SlotRole::Trim => {
-                                        msgs.push(ChannelStripMsg::DisableTrim);
-                                    }
+                        if let Some(active_instance) = slot.active_instance.clone()
+                            && active_instance.guid == msg.fx_guid
+                        {
+                            slot.active_instance = None;
+                            match slot.role {
+                                SlotRole::Eq => msgs.push(ChannelStripMsg::DisableEq),
+                                SlotRole::Comp1 => {
+                                    msgs.push(ChannelStripMsg::DisableComp1);
+                                }
+                                SlotRole::Comp2 => {
+                                    msgs.push(ChannelStripMsg::DisableComp2);
+                                }
+                                SlotRole::Saturation => {
+                                    msgs.push(ChannelStripMsg::DisableSaturation);
+                                }
+                                SlotRole::Gain => {
+                                    msgs.push(ChannelStripMsg::DisableGain);
+                                }
+                                SlotRole::Trim => {
+                                    msgs.push(ChannelStripMsg::DisableTrim);
                                 }
                             }
                         }
@@ -805,12 +792,11 @@ impl ChannelStripRouter {
     }
 
     fn translate_slot(&self, msg: RoutableMsg, slot_role: SlotRole) -> Vec<track::TrackMsg> {
-        if let Some(active_instance) = &self.slots.get(slot_role).active_instance {
-            if let Some(index) = self.plugins.get_index_from_fx_guid(active_instance.guid) {
-                if let Some(spec) = self.routing_registry.by_fx_id.get(&active_instance.fx_id) {
-                    return spec.adapter.to_track_dyn(self.track_guid, index, msg);
-                }
-            }
+        if let Some(active_instance) = &self.slots.get(slot_role).active_instance
+            && let Some(index) = self.plugins.get_index_from_fx_guid(active_instance.guid)
+            && let Some(spec) = self.routing_registry.by_fx_id.get(&active_instance.fx_id)
+        {
+            return spec.adapter.to_track_dyn(self.track_guid, index, msg);
         }
         vec![]
     }
@@ -822,20 +808,20 @@ impl ChannelStripRouter {
         let mut msgs = Vec::new();
         if let Ok(rmsg) = RoutableMsg::try_from(msg) {
             match rmsg {
-                RoutableMsg::Eq(eq) => {
+                RoutableMsg::Eq(_) => {
                     msgs.extend(self.translate_slot(rmsg, SlotRole::Eq));
                 }
-                RoutableMsg::Comp(comp) => {
+                RoutableMsg::Comp(_) => {
                     msgs.extend(self.translate_slot(rmsg, SlotRole::Comp1));
                     msgs.extend(self.translate_slot(rmsg, SlotRole::Comp2));
                 }
-                RoutableMsg::Saturation(sat) => {
+                RoutableMsg::Saturation(_) => {
                     msgs.extend(self.translate_slot(rmsg, SlotRole::Saturation));
                 }
-                RoutableMsg::Gain(gain) => {
+                RoutableMsg::Gain(_) => {
                     msgs.extend(self.translate_slot(rmsg, SlotRole::Gain));
                 }
-                RoutableMsg::Trim(trim) => {
+                RoutableMsg::Trim(_) => {
                     msgs.extend(self.translate_slot(rmsg, SlotRole::Trim));
                 }
             }
