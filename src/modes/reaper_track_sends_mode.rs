@@ -7,8 +7,8 @@ use crate::midi::v1m;
 use crate::modes::mode_manager::{
     DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
 };
-use crate::track::track;
-use crate::track::track::TrackMsg;
+use crate::track;
+use crate::track::TrackMsg;
 
 #[derive(Clone, Default)]
 pub struct TrackSendInfo {

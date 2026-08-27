@@ -20,7 +20,7 @@ impl FxAdapterTyped for TdrvosSlickEqAdapter {
         track: uuid::Uuid,
         fx_index: i32,
         msg: EqMsg,
-    ) -> Vec<crate::track::track::TrackMsg> {
+    ) -> Vec<crate::track::TrackMsg> {
         match msg {
             EqMsg::LowFreq(val) => vec![tdrvos_slick_eq_au::encode_trackmsg(
                 track,
@@ -85,7 +85,7 @@ impl FxAdapterTyped for TdrvosSlickEqAdapter {
         }
     }
 
-    fn from_track_typed(&self, msg: crate::track::track::FXParamValue) -> Vec<Self::Msg> {
+    fn from_track_typed(&self, msg: crate::track::FXParamValue) -> Vec<Self::Msg> {
         match tdrvos_slick_eq_au::decode_trackmsg(msg) {
             Some(tdrvos_slick_eq_au::Param::LOWFreq(val)) => vec![EqMsg::LowFreq(val)],
             Some(tdrvos_slick_eq_au::Param::LOWGain(val)) => vec![EqMsg::LowGain(val)],

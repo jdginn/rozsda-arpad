@@ -10,7 +10,7 @@ use crate::modes::reaper_channel_strip_router::ChannelStripRouter;
 use crate::modes::reaper_channel_strip_widgets as widgets;
 use crate::modes::reaper_channel_strip_widgets::{Dirty, Widget};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
-use crate::track::track;
+use crate::track;
 
 struct Widgets {
     hp_filter: widgets::HpfWidget,

@@ -10,7 +10,7 @@ use crate::modes::reaper_channel_strip_mode::ChannelStripMode;
 use crate::modes::reaper_track_sends_mode::ReaperTrackSendsMode;
 use crate::modes::reaper_volume_pan_mode::ReaperVolumePanMode;
 use crate::modes::reset;
-use crate::track::track::TrackMsg;
+use crate::track::TrackMsg;
 
 // Global atomic counter for unique IDs
 static BARRIER_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));

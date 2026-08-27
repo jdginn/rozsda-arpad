@@ -26,7 +26,7 @@ use osc::route_context::{ContextGateBuilder, OscGatedRouterBuilder};
 
 use arpad_rust::midi::v1m;
 use arpad_rust::modes::mode_manager;
-use arpad_rust::track::track;
+use arpad_rust::track;
 
 use crate::shared::Shared;
 use crate::traits::{Bind, Query, Set};

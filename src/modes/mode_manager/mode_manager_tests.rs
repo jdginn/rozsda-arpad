@@ -1,6 +1,6 @@
 mod tests {
     use crate::modes::mode_manager::*;
-    use crate::track::track;
+    use crate::track;
 
     use crossbeam_channel::{Receiver, Sender, unbounded};
     use std::time::Duration;

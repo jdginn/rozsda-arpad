@@ -20,7 +20,7 @@ impl FxAdapterTyped for TdrMolotokAdapter {
         track: uuid::Uuid,
         fx_index: i32,
         msg: CompMsg,
-    ) -> Vec<crate::track::track::TrackMsg> {
+    ) -> Vec<crate::track::TrackMsg> {
         match msg {
             CompMsg::CompThresh(val) | CompMsg::Comp2Thresh(val) => {
                 vec![tdr_molotok_au::encode_trackmsg(
@@ -68,7 +68,7 @@ impl FxAdapterTyped for TdrMolotokAdapter {
         }
     }
 
-    fn from_track_typed(&self, msg: crate::track::track::FXParamValue) -> Vec<CompMsg> {
+    fn from_track_typed(&self, msg: crate::track::FXParamValue) -> Vec<CompMsg> {
         match tdr_molotok_au::decode_trackmsg(msg) {
             Some(tdr_molotok_au::Param::Thresh(val)) => vec![CompMsg::CompThresh(val)],
             Some(tdr_molotok_au::Param::Ratio(val)) => vec![CompMsg::CompRatio(val)],

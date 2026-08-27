@@ -19,7 +19,7 @@ impl FxAdapterTyped for ReaEqAdapter {
         track: uuid::Uuid,
         fx_index: i32,
         msg: EqMsg,
-    ) -> Vec<crate::track::track::TrackMsg> {
+    ) -> Vec<crate::track::TrackMsg> {
         match msg {
             EqMsg::LowFreq(val) => vec![rea_eq::encode_trackmsg(
                 track,
@@ -85,7 +85,7 @@ impl FxAdapterTyped for ReaEqAdapter {
         }
     }
 
-    fn from_track_typed(&self, msg: crate::track::track::FXParamValue) -> Vec<EqMsg> {
+    fn from_track_typed(&self, msg: crate::track::FXParamValue) -> Vec<EqMsg> {
         match rea_eq::decode_trackmsg(msg) {
             Some(rea_eq::Param::FreqLowShelf(val)) => vec![EqMsg::LowFreq(val)],
             Some(rea_eq::Param::GainLowShelf(val)) => vec![EqMsg::LowGain(val)],

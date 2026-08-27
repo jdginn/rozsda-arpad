@@ -7,7 +7,7 @@ use crate::modes::mode_manager::{
     DownstreamIo, ModeAction, ModeHandler, TransitionRequest, UpstreamIo,
 };
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
-use crate::track::track;
+use crate::track;
 
 /// Implements a mode where that "basic" reaper functionality is mapped to the channel strips on
 /// the control surface, namely:

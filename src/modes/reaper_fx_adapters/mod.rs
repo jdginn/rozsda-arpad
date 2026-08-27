@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use crate::modes::reaper_channel_strip_router::RoutableMsg;
-use crate::track::track;
+use crate::track;
 
 pub mod rea_eq;
 pub mod tdr_molotok;
@@ -55,7 +55,7 @@ macro_rules! impl_fx_adapter_dyn_bridge {
                 track: uuid::Uuid,
                 fx_index: i32,
                 msg: RoutableMsg,
-            ) -> Vec<crate::track::track::TrackMsg> {
+            ) -> Vec<crate::track::TrackMsg> {
                 match msg {
                     RoutableMsg::$variant(inner) => {
                         <Self as FxAdapterTyped>::to_track_typed(self, track, fx_index, inner)
@@ -65,7 +65,7 @@ macro_rules! impl_fx_adapter_dyn_bridge {
             }
 
             #[inline]
-            fn from_track_dyn(&self, msg: crate::track::track::FXParamValue) -> Vec<RoutableMsg> {
+            fn from_track_dyn(&self, msg: crate::track::FXParamValue) -> Vec<RoutableMsg> {
                 <Self as FxAdapterTyped>::from_track_typed(self, msg)
                     .into_iter()
                     .map(RoutableMsg::$variant)

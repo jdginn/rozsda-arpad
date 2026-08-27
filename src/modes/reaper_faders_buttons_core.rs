@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::midi::v1m;
 use crate::modes::button::Button;
 use crate::modes::mode_manager::{DownstreamIo, ToV1m, UpstreamIo};
-use crate::track::track;
+use crate::track;
 
 // FIXME:
 // KNOWN BUGS:
