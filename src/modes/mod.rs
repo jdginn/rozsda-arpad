@@ -12,3 +12,4 @@ pub mod reaper_track_sends_mode;
 pub mod reaper_volume_pan_mode;
 pub mod reset;
 pub mod timer_scheduler;
+pub mod widget;

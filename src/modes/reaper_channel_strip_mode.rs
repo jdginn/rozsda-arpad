@@ -8,8 +8,11 @@ use crate::modes::mode_manager::{
 };
 use crate::modes::reaper_channel_strip_router::ChannelStripRouter;
 use crate::modes::reaper_channel_strip_widgets as widgets;
-use crate::modes::reaper_channel_strip_widgets::{Dirty, Widget};
+use crate::modes::reaper_channel_strip_widgets::{
+    ChannelStripWidget, DownstreamOutcome, UpstreamOutcome,
+};
 use crate::modes::reaper_faders_buttons_core::VolumeFadersCore;
+use crate::modes::widget::{Dirty, EncoderTurn, Widget};
 use crate::track;
 
 struct Widgets {
@@ -36,24 +39,24 @@ impl Widgets {
         Widgets {
             hp_filter: widgets::HpfWidget::new(0),
             low_freq: widgets::LowFreqWidget::new(1),
-            low_gain: widgets::Widget::new(2),
-            lm_freq: widgets::Widget::new(3),
-            lm_gain: widgets::Widget::new(4),
-            hm_freq: widgets::Widget::new(5),
-            hm_gain: widgets::Widget::new(6),
-            high_freq: widgets::Widget::new(7),
-            high_gain: widgets::Widget::new(8),
-            eq_pos: widgets::Widget::new(9),
-            comp_thresh: widgets::Widget::new(10),
-            comp_ratio: widgets::Widget::new(11),
-            comp_makeup: widgets::Widget::new(12),
-            comp_type: widgets::Widget::new(13),
-            saturation: widgets::Widget::new(14),
-            gain: widgets::Widget::new(15),
+            low_gain: widgets::LowGainWidget::new(2),
+            lm_freq: widgets::LMFreqWidget::new(3),
+            lm_gain: widgets::LMGainWidget::new(4),
+            hm_freq: widgets::HMFreqWidget::new(5),
+            hm_gain: widgets::HMGainWidget::new(6),
+            high_freq: widgets::HiFreqWidget::new(7),
+            high_gain: widgets::HiGainWidget::new(8),
+            eq_pos: widgets::EqPosWidget::new(9),
+            comp_thresh: widgets::CompThreshWidget::new(10),
+            comp_ratio: widgets::CompRatWidget::new(11),
+            comp_makeup: widgets::CompMkpWidget::new(12),
+            comp_type: widgets::CompTypeWidget::new(13),
+            saturation: widgets::SatWidget::new(14),
+            gain: widgets::GainWidget::new(15),
         }
     }
 
-    fn at_index(&mut self, idx: usize) -> &mut dyn Widget {
+    fn at_index(&mut self, idx: usize) -> &mut ChannelStripWidget {
         match idx {
             0 => &mut self.hp_filter,
             1 => &mut self.low_freq,
@@ -75,7 +78,7 @@ impl Widgets {
         }
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut dyn Widget> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut ChannelStripWidget> {
         let Widgets {
             hp_filter,
             low_freq,
@@ -96,27 +99,27 @@ impl Widgets {
         } = self;
 
         [
-            hp_filter as &mut dyn Widget,
-            low_freq as &mut dyn Widget,
-            low_gain as &mut dyn Widget,
-            lm_freq as &mut dyn Widget,
-            lm_gain as &mut dyn Widget,
-            hm_freq as &mut dyn Widget,
-            hm_gain as &mut dyn Widget,
-            high_freq as &mut dyn Widget,
-            high_gain as &mut dyn Widget,
-            eq_pos as &mut dyn Widget,
-            comp_thresh as &mut dyn Widget,
-            comp_ratio as &mut dyn Widget,
-            comp_makeup as &mut dyn Widget,
-            comp_type as &mut dyn Widget,
-            saturation as &mut dyn Widget,
-            gain as &mut dyn Widget,
+            hp_filter as &mut ChannelStripWidget,
+            low_freq as &mut ChannelStripWidget,
+            low_gain as &mut ChannelStripWidget,
+            lm_freq as &mut ChannelStripWidget,
+            lm_gain as &mut ChannelStripWidget,
+            hm_freq as &mut ChannelStripWidget,
+            hm_gain as &mut ChannelStripWidget,
+            high_freq as &mut ChannelStripWidget,
+            high_gain as &mut ChannelStripWidget,
+            eq_pos as &mut ChannelStripWidget,
+            comp_thresh as &mut ChannelStripWidget,
+            comp_ratio as &mut ChannelStripWidget,
+            comp_makeup as &mut ChannelStripWidget,
+            comp_type as &mut ChannelStripWidget,
+            saturation as &mut ChannelStripWidget,
+            gain as &mut ChannelStripWidget,
         ]
         .into_iter()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &dyn Widget> {
+    pub fn iter(&self) -> impl Iterator<Item = &ChannelStripWidget> {
         let Widgets {
             hp_filter,
             low_freq,
@@ -137,22 +140,22 @@ impl Widgets {
         } = self;
 
         [
-            hp_filter as &dyn Widget,
-            low_freq as &dyn Widget,
-            low_gain as &dyn Widget,
-            lm_freq as &dyn Widget,
-            lm_gain as &dyn Widget,
-            hm_freq as &dyn Widget,
-            hm_gain as &dyn Widget,
-            high_freq as &dyn Widget,
-            high_gain as &dyn Widget,
-            eq_pos as &dyn Widget,
-            comp_thresh as &dyn Widget,
-            comp_ratio as &dyn Widget,
-            comp_makeup as &dyn Widget,
-            comp_type as &dyn Widget,
-            saturation as &dyn Widget,
-            gain as &dyn Widget,
+            hp_filter as &ChannelStripWidget,
+            low_freq as &ChannelStripWidget,
+            low_gain as &ChannelStripWidget,
+            lm_freq as &ChannelStripWidget,
+            lm_gain as &ChannelStripWidget,
+            hm_freq as &ChannelStripWidget,
+            hm_gain as &ChannelStripWidget,
+            high_freq as &ChannelStripWidget,
+            high_gain as &ChannelStripWidget,
+            eq_pos as &ChannelStripWidget,
+            comp_thresh as &ChannelStripWidget,
+            comp_ratio as &ChannelStripWidget,
+            comp_makeup as &ChannelStripWidget,
+            comp_type as &ChannelStripWidget,
+            saturation as &ChannelStripWidget,
+            gain as &ChannelStripWidget,
         ]
         .into_iter()
     }
@@ -167,7 +170,7 @@ pub struct ChannelStripMode {
     selected_track_guid: Uuid,
 
     widgets: Widgets,
-    dirty: widgets::Dirty,
+    dirty: Dirty,
 }
 
 impl ChannelStripMode {
@@ -179,10 +182,7 @@ impl ChannelStripMode {
             routers: HashMap::new(),
             widgets: Widgets::new(),
             selected_track_guid,
-            dirty: widgets::Dirty::default()
-                | widgets::Dirty::LINE1
-                | widgets::Dirty::LINE2
-                | widgets::Dirty::COLOR,
+            dirty: Dirty::default() | Dirty::LINE1 | Dirty::LINE2 | Dirty::COLOR,
         }
     }
 
@@ -207,11 +207,7 @@ impl ChannelStripMode {
         self
     }
 
-    fn apply_downstream_outcome(
-        &mut self,
-        outcome: widgets::HandledDownstreamOutcome,
-        io: &mut dyn DownstreamIo,
-    ) {
+    fn apply_downstream_outcome(&mut self, outcome: DownstreamOutcome, io: &mut dyn DownstreamIo) {
         if let Some(snapshot) = outcome.snapshot {
             for w in self.widgets.iter_mut() {
                 if let Some(o) = w.handle_snapshot(&snapshot) {
@@ -246,11 +242,7 @@ impl ChannelStripMode {
         }
     }
 
-    fn apply_upstream_outcome(
-        &mut self,
-        outcome: widgets::HandledUpstreamOutcome,
-        io: &mut dyn ToV1m,
-    ) {
+    fn apply_upstream_outcome(&mut self, outcome: UpstreamOutcome, io: &mut dyn ToV1m) {
         self.dirty |= outcome.dirty;
         for m in outcome.downstream_msgs {
             match m {
@@ -328,7 +320,7 @@ impl ModeHandler for ChannelStripMode {
             }
             io.send_to_v1m(v1m::DownstreamMsg::TopScribbleStripBatch(msgs));
         }
-        self.dirty = widgets::Dirty::default();
+        self.dirty = Dirty::default();
         ModeAction::None
     }
 
@@ -444,7 +436,7 @@ impl ModeHandler for ChannelStripMode {
                     .widgets
                     .at_index(msg.idx as usize + self.channel_offset);
                 if let Some(outcome) =
-                    widget.handle_encoder_turn(widgets::EncoderTurn::Inc { accel: msg.accel })
+                    widget.handle_encoder_turn(EncoderTurn::Inc { accel: msg.accel })
                 {
                     self.apply_downstream_outcome(outcome, io);
                 }
@@ -455,7 +447,7 @@ impl ModeHandler for ChannelStripMode {
                     .widgets
                     .at_index(msg.idx as usize + self.channel_offset);
                 if let Some(outcome) =
-                    widget.handle_encoder_turn(widgets::EncoderTurn::Dec { accel: msg.accel })
+                    widget.handle_encoder_turn(EncoderTurn::Dec { accel: msg.accel })
                 {
                     self.apply_downstream_outcome(outcome, io);
                 }

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::modes::reaper_channel_strip_widgets::EncoderTurn;
 use crate::modes::reaper_fx::FxId;
 use crate::modes::reaper_fx_adapters::{FxAdapterDyn, rea_eq::ReaEqAdapter};
+use crate::modes::widget::EncoderTurn;
 use crate::track;
 
 use derive_enum_from::EnumFrom;
